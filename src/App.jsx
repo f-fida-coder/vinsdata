@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
@@ -10,11 +11,6 @@ const NAV_ICONS = {
   dashboard: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1" />
-    </svg>
-  ),
-  files: (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
     </svg>
   ),
   vehicles: (
@@ -34,7 +30,7 @@ const NAV_ICONS = {
   ),
 };
 
-function Sidebar() {
+function Sidebar({ open, onClose }) {
   const { user, logout } = useAuth();
 
   const linkClass = ({ isActive }) =>
@@ -45,71 +41,106 @@ function Sidebar() {
     }`;
 
   return (
-    <aside className="w-[260px] bg-gradient-to-b from-gray-900 to-gray-800 min-h-screen flex flex-col border-r border-white/5">
-      {/* Logo */}
-      <div className="px-6 py-6">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
-            <span className="text-white font-bold text-sm">V</span>
+    <>
+      {/* Mobile overlay */}
+      {open && (
+        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={onClose} />
+      )}
+
+      <aside className={`
+        fixed lg:sticky top-0 left-0 z-50 h-screen
+        w-[260px] bg-gradient-to-b from-gray-900 to-gray-800 flex flex-col border-r border-white/5
+        transition-transform duration-300 ease-in-out
+        ${open ? 'translate-x-0' : '-translate-x-full'}
+        lg:translate-x-0
+      `}>
+        {/* Logo + close btn on mobile */}
+        <div className="px-6 py-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
+              <span className="text-white font-bold text-sm">V</span>
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-white tracking-tight">VIN Dashboard</h2>
+              <p className="text-[11px] text-gray-500 font-medium">File Management System</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-base font-bold text-white tracking-tight">VIN Dashboard</h2>
-            <p className="text-[11px] text-gray-500 font-medium">File Management System</p>
+          <button onClick={onClose} className="lg:hidden w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-white/10">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        {/* User card */}
+        <div className="mx-4 mb-6 p-3 rounded-xl bg-white/5 border border-white/5">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
+              {user.name.charAt(0)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-white truncate">{user.name}</p>
+              <p className="text-[11px] text-gray-500 capitalize">{user.role}</p>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* User card */}
-      <div className="mx-4 mb-6 p-3 rounded-xl bg-white/5 border border-white/5">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold">
-            {user.name.charAt(0)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-white truncate">{user.name}</p>
-            <p className="text-[11px] text-gray-500 capitalize">{user.role}</p>
-          </div>
+        {/* Nav */}
+        <nav className="flex-1 px-4 space-y-1">
+          <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider px-4 mb-2">Menu</p>
+          <NavLink to="/" end className={linkClass} onClick={onClose}>{NAV_ICONS.dashboard} Dashboard</NavLink>
+          <NavLink to="/vehicles" className={linkClass} onClick={onClose}>{NAV_ICONS.vehicles} Vehicles</NavLink>
+          {user.role === 'admin' && (
+            <NavLink to="/users" className={linkClass} onClick={onClose}>{NAV_ICONS.users} Users</NavLink>
+          )}
+        </nav>
+
+        {/* Logout */}
+        <div className="p-4">
+          <button
+            onClick={() => { onClose(); logout(); }}
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-400 hover:text-red-400 hover:bg-red-500/5 rounded-xl transition-all duration-200"
+          >
+            {NAV_ICONS.logout} Sign Out
+          </button>
         </div>
-      </div>
+      </aside>
+    </>
+  );
+}
 
-      {/* Nav */}
-      <nav className="flex-1 px-4 space-y-1">
-        <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider px-4 mb-2">Menu</p>
-        <NavLink to="/" end className={linkClass}>{NAV_ICONS.dashboard} Dashboard</NavLink>
-        <NavLink to="/files" className={linkClass}>{NAV_ICONS.files} Files</NavLink>
-        <NavLink to="/vehicles" className={linkClass}>{NAV_ICONS.vehicles} Vehicles</NavLink>
-        {user.role === 'admin' && (
-          <NavLink to="/users" className={linkClass}>{NAV_ICONS.users} Users</NavLink>
-        )}
-      </nav>
-
-      {/* Logout */}
-      <div className="p-4">
-        <button
-          onClick={logout}
-          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-400 hover:text-red-400 hover:bg-red-500/5 rounded-xl transition-all duration-200"
-        >
-          {NAV_ICONS.logout} Sign Out
-        </button>
+function MobileHeader({ onMenuOpen }) {
+  return (
+    <div className="lg:hidden sticky top-0 z-30 bg-white border-b border-gray-100 px-4 py-3 flex items-center gap-3">
+      <button onClick={onMenuOpen} className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 transition-colors">
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+      </button>
+      <div className="flex items-center gap-2">
+        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+          <span className="text-white font-bold text-xs">V</span>
+        </div>
+        <span className="text-sm font-bold text-gray-900">VIN Dashboard</span>
       </div>
-    </aside>
+    </div>
   );
 }
 
 function DashboardLayout() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   return (
-    <div className="flex">
-      <Sidebar />
-      <main className="flex-1 bg-[#f8f9fc] min-h-screen p-8 overflow-auto">
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/files" element={<DashboardPage />} />
-          <Route path="/vehicles" element={<VehiclesPage />} />
-          <Route path="/users" element={<UsersPage />} />
-          <Route path="/logs" element={<LogsPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </main>
+    <div className="flex min-h-screen">
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <div className="flex-1 flex flex-col min-w-0">
+        <MobileHeader onMenuOpen={() => setSidebarOpen(true)} />
+        <main className="flex-1 bg-[#f8f9fc] p-4 sm:p-6 lg:p-8 overflow-auto">
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/vehicles" element={<VehiclesPage />} />
+            <Route path="/users" element={<UsersPage />} />
+            <Route path="/logs" element={<LogsPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+      </div>
     </div>
   );
 }
