@@ -8,8 +8,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'vin_dashboard');
-define('DB_USER', 'root');
+define('DB_NAME', 'u487877829_vins_data');
+define('DB_USER', 'u487877829_vinsdata');
 define('DB_PASS', '***SCRUBBED***');
 
 function initSession(): void
