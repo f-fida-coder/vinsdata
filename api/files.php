@@ -145,20 +145,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
 } elseif ($_SERVER['REQUEST_METHOD'] === 'PATCH') {
     $input = json_decode(file_get_contents("php://input"), true);
-    $ids = $input['ids'] ?? [];
-    $isInvalid = $input['is_invalid'] ?? null;
 
-    if (empty($ids) || $isInvalid === null) {
+    // Bulk invalid toggle
+    if (isset($input['ids'])) {
+        $ids = $input['ids'];
+        $isInvalid = $input['is_invalid'] ?? null;
+
+        if (empty($ids) || $isInvalid === null) {
+            http_response_code(400);
+            echo json_encode(["success" => false, "message" => "ids array and is_invalid are required"]);
+            exit();
+        }
+
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $db->prepare("UPDATE files SET is_invalid = ?, updated_at = NOW() WHERE id IN ($placeholders)");
+        $stmt->execute(array_merge([$isInvalid ? 1 : 0], $ids));
+
+        echo json_encode(["success" => true]);
+
+    // Single file edit
+    } elseif (isset($input['id'])) {
+        $fileId = $input['id'];
+        $fileName = $input['file_name'] ?? null;
+        $year = $input['year'] ?? null;
+        $version = $input['version'] ?? null;
+
+        if (empty($fileId)) {
+            http_response_code(400);
+            echo json_encode(["success" => false, "message" => "File id is required"]);
+            exit();
+        }
+
+        $fields = [];
+        $params = [':id' => $fileId];
+
+        if ($fileName !== null) {
+            $fields[] = "file_name = :file_name";
+            $params[':file_name'] = $fileName;
+        }
+        if ($year !== null) {
+            $fields[] = "year = :year";
+            $params[':year'] = $year ?: null;
+        }
+        if ($version !== null) {
+            $fields[] = "version = :version";
+            $params[':version'] = $version ?: null;
+        }
+
+        if (empty($fields)) {
+            http_response_code(400);
+            echo json_encode(["success" => false, "message" => "No fields to update"]);
+            exit();
+        }
+
+        $fields[] = "updated_at = NOW()";
+        $sql = "UPDATE files SET " . implode(', ', $fields) . " WHERE id = :id";
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+
+        echo json_encode(["success" => true]);
+
+    } else {
         http_response_code(400);
-        echo json_encode(["success" => false, "message" => "ids array and is_invalid are required"]);
-        exit();
+        echo json_encode(["success" => false, "message" => "Invalid request"]);
     }
-
-    $placeholders = implode(',', array_fill(0, count($ids), '?'));
-    $stmt = $db->prepare("UPDATE files SET is_invalid = ?, updated_at = NOW() WHERE id IN ($placeholders)");
-    $stmt->execute(array_merge([$isInvalid ? 1 : 0], $ids));
-
-    echo json_encode(["success" => true]);
 
 } elseif ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
     $input = json_decode(file_get_contents("php://input"), true);

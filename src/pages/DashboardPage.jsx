@@ -35,6 +35,9 @@ export default function DashboardPage() {
   const [stageNotes, setStageNotes] = useState('');
   const [uploading, setUploading] = useState(false);
 
+  // Edit modal
+  const [editModal, setEditModal] = useState(null); // { id, file_name, year, version }
+
   // Checkbox selection
   const [selected, setSelected] = useState(new Set());
 
@@ -189,6 +192,24 @@ export default function DashboardPage() {
       fetchFiles();
     } catch {
       setError('Failed to delete file');
+    }
+  };
+
+  const handleEdit = async (e) => {
+    e.preventDefault();
+    if (!editModal) return;
+    setError('');
+    try {
+      await api.patch('/files', {
+        id: editModal.id,
+        file_name: editModal.file_name,
+        year: editModal.year,
+        version: editModal.version,
+      });
+      setEditModal(null);
+      fetchFiles();
+    } catch {
+      setError('Failed to update file');
     }
   };
 
@@ -447,6 +468,13 @@ export default function DashboardPage() {
                             <span className="text-xs text-green-600 font-medium">Done</span>
                           )}
                           <button
+                            onClick={() => setEditModal({ id: file.id, file_name: file.file_name, year: file.year || '', version: file.version || '' })}
+                            className="text-xs text-blue-500 hover:text-blue-700 hover:bg-blue-50 px-2 py-1 rounded-md transition-colors"
+                            title="Edit file"
+                          >
+                            Edit
+                          </button>
+                          <button
                             onClick={() => handleDelete(file.id, file.file_name)}
                             className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded-md transition-colors"
                             title="Delete file"
@@ -529,7 +557,14 @@ export default function DashboardPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Upload Generated File</label>
                 <input
                   type="file"
-                  onChange={(e) => setSelectedFile(e.target.files[0] || null)}
+                  onChange={(e) => {
+                    const f = e.target.files[0] || null;
+                    setSelectedFile(f);
+                    if (f) {
+                      const nameWithoutExt = f.name.replace(/\.[^/.]+$/, '');
+                      setNewFile((prev) => ({ ...prev, file_name: prev.file_name || nameWithoutExt }));
+                    }
+                  }}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:bg-blue-50 file:text-blue-600 file:text-sm"
                 />
               </div>
@@ -548,6 +583,54 @@ export default function DashboardPage() {
                 >
                   {submitting ? 'Adding...' : 'Add File'}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit File Modal */}
+      {editModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-lg">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-800">Edit File</h2>
+              <button onClick={() => setEditModal(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+            </div>
+            <form onSubmit={handleEdit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">File Name</label>
+                <input
+                  type="text"
+                  value={editModal.file_name}
+                  onChange={(e) => setEditModal({ ...editModal, file_name: e.target.value })}
+                  required
+                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
+                  <input
+                    type="number"
+                    value={editModal.year}
+                    onChange={(e) => setEditModal({ ...editModal, year: e.target.value })}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Version</label>
+                  <input
+                    type="text"
+                    value={editModal.version}
+                    onChange={(e) => setEditModal({ ...editModal, version: e.target.value })}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setEditModal(null)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50">Cancel</button>
+                <button type="submit" className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Save</button>
               </div>
             </form>
           </div>
