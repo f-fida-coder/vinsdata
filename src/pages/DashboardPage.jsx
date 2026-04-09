@@ -18,14 +18,14 @@ const NEXT_STAGE = { generated: 'carfax', carfax: 'filter', filter: 'tlo' };
 function Modal({ open, onClose, title, width = 'max-w-md', children }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-gray-900/60" />
-      <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${width} animate-[fadeIn_0.2s]`} onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+      <div className={`relative bg-white w-full ${width} sm:rounded-2xl rounded-t-2xl shadow-2xl max-h-[90vh] sm:max-h-[85vh] flex flex-col`} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-gray-100 shrink-0">
+          <h2 className="text-base sm:text-lg font-semibold text-gray-900">{title}</h2>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">&times;</button>
         </div>
-        <div className="px-6 py-5">{children}</div>
+        <div className="px-5 sm:px-6 py-5 overflow-y-auto">{children}</div>
       </div>
     </div>
   );
@@ -273,14 +273,14 @@ export default function DashboardPage() {
   return (
     <div className="max-w-[1600px] mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 sm:mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{totalFiles} total files across all stages</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">Dashboard</h1>
+          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">{totalFiles} total files across all stages</p>
         </div>
         <button
           onClick={() => setShowModal(true)}
-          className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-5 py-2.5 rounded-xl text-sm font-medium shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 hover:-translate-y-0.5 transition-all duration-200"
+          className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-4 sm:px-5 py-2.5 rounded-xl text-sm font-medium shadow-lg shadow-blue-500/25 hover:shadow-xl transition-all duration-200 w-full sm:w-auto"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
           Add File
@@ -299,7 +299,7 @@ export default function DashboardPage() {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-6 sm:mb-8">
         {STAGES.map((s) => (
           <StatCard key={s} label={STAGE_META[s].label} count={stageCounts[s]} color={STAGE_META[s].color === 'amber' ? 'amber' : STAGE_META[s].color === 'orange' ? 'orange' : STAGE_META[s].color === 'emerald' ? 'emerald' : 'blue'} icon={STAGE_META[s].icon} />
         ))}
@@ -307,21 +307,21 @@ export default function DashboardPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-6 shadow-sm">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex items-center gap-2 text-gray-400 mr-1">
+      <div className="bg-white rounded-2xl border border-gray-100 p-3 sm:p-4 mb-4 sm:mb-6 shadow-sm">
+        <div className="flex flex-wrap items-end gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 text-gray-400 mr-1 w-full sm:w-auto mb-1 sm:mb-0">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
             <span className="text-xs font-semibold uppercase tracking-wider">Filters</span>
           </div>
-          <select value={filters.vehicle_id} onChange={(e) => setFilters({ ...filters, vehicle_id: e.target.value })} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+          <select value={filters.vehicle_id} onChange={(e) => setFilters({ ...filters, vehicle_id: e.target.value })} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none flex-1 sm:flex-none min-w-0">
             <option value="">All Vehicles</option>
             {vehicles.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
           </select>
-          <select value={filters.stage} onChange={(e) => setFilters({ ...filters, stage: e.target.value })} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+          <select value={filters.stage} onChange={(e) => setFilters({ ...filters, stage: e.target.value })} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none flex-1 sm:flex-none min-w-0">
             <option value="">All Stages</option>
             {STAGES.map((s) => <option key={s} value={s}>{STAGE_META[s].label}</option>)}
           </select>
-          <input type="number" value={filters.year} onChange={(e) => setFilters({ ...filters, year: e.target.value })} placeholder="Year" className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm w-24 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+          <input type="number" value={filters.year} onChange={(e) => setFilters({ ...filters, year: e.target.value })} placeholder="Year" className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm w-20 sm:w-24 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
           {hasFilters && (
             <button onClick={() => setFilters({ vehicle_id: '', stage: '', year: '' })} className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-2">
               Clear all
@@ -332,7 +332,7 @@ export default function DashboardPage() {
 
       {/* Bulk Actions */}
       {selected.size > 0 && (
-        <div className="bg-blue-50 border border-blue-100 rounded-2xl px-5 py-3 mb-4 flex flex-wrap items-center gap-3 animate-[fadeIn_0.2s]">
+        <div className="bg-blue-50 border border-blue-100 rounded-2xl px-3 sm:px-5 py-3 mb-4 flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-md bg-blue-600 text-white flex items-center justify-center text-xs font-bold">{selected.size}</div>
             <span className="text-sm font-medium text-blue-800">selected</span>
@@ -348,13 +348,13 @@ export default function DashboardPage() {
       {/* Table */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20">
+          <div className="flex flex-col items-center justify-center py-16 sm:py-20">
             <div className="w-10 h-10 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
             <p className="text-sm text-gray-400 mt-3">Loading files...</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[800px]">
               <thead>
                 <tr className="border-b border-gray-100">
                   <th className="pl-5 pr-2 py-4 w-10">
