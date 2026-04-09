@@ -19,7 +19,7 @@ function Modal({ open, onClose, title, width = 'max-w-md', children }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-gray-900/60" />
       <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${width} animate-[fadeIn_0.2s]`} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
@@ -74,7 +74,7 @@ function StagePipeline({ stages, uploads, currentStage, invalid }) {
         } else if (status === 'confirmed') {
           dotClass = 'bg-emerald-500'; ringClass = 'ring-emerald-100';
         } else if (status === 'pending') {
-          dotClass = 'bg-amber-400 animate-pulse'; ringClass = 'ring-amber-100';
+          dotClass = 'bg-amber-400'; ringClass = 'ring-amber-100';
         } else if (isCurrent) {
           dotClass = 'bg-blue-400'; ringClass = 'ring-blue-100';
         } else {
