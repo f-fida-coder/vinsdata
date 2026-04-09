@@ -124,6 +124,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode($stmt->fetchAll());
     }
 
+} elseif ($_SERVER['REQUEST_METHOD'] === 'PATCH') {
+    $input = json_decode(file_get_contents("php://input"), true);
+    $fileId = $input['file_id'] ?? null;
+    $stage = $input['stage'] ?? null;
+    $status = $input['status'] ?? null;
+
+    if (empty($fileId) || empty($stage) || !in_array($status, ['pending', 'confirmed'], true)) {
+        http_response_code(400);
+        echo json_encode(["success" => false, "message" => "file_id, stage, and valid status (pending/confirmed) are required"]);
+        exit();
+    }
+
+    $stmt = $db->prepare("UPDATE file_uploads SET status = :status WHERE file_id = :file_id AND stage = :stage");
+    $stmt->execute([':status' => $status, ':file_id' => $fileId, ':stage' => $stage]);
+
+    if ($stmt->rowCount() === 0) {
+        http_response_code(404);
+        echo json_encode(["success" => false, "message" => "Upload not found"]);
+        exit();
+    }
+
+    echo json_encode(["success" => true]);
+
 } else {
     http_response_code(405);
     echo json_encode(["success" => false, "message" => "Method not allowed"]);
