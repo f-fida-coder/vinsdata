@@ -1,21 +1,150 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api, { uploadFile, getDownloadUrl } from '../api';
 
 const STAGES = ['generated', 'carfax', 'filter', 'tlo'];
 
-const STAGE_COLORS = {
-  generated: { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-400' },
-  carfax: { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-400' },
-  filter: { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-400' },
-  tlo: { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-400' },
+const STAGE_META = {
+  generated: { color: 'blue', icon: '1', label: 'Generated' },
+  carfax: { color: 'amber', icon: '2', label: 'Carfax' },
+  filter: { color: 'orange', icon: '3', label: 'Filter' },
+  tlo: { color: 'emerald', icon: '4', label: 'TLO' },
 };
 
-const NEXT_STAGE = {
-  generated: 'carfax',
-  carfax: 'filter',
-  filter: 'tlo',
-};
+const NEXT_STAGE = { generated: 'carfax', carfax: 'filter', filter: 'tlo' };
+
+// --- Reusable UI Components ---
+
+function Modal({ open, onClose, title, width = 'max-w-md', children }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" />
+      <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${width} animate-[fadeIn_0.2s]`} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">&times;</button>
+        </div>
+        <div className="px-6 py-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, count, color, icon }) {
+  const colors = {
+    blue: 'from-blue-500 to-blue-600 shadow-blue-500/20',
+    amber: 'from-amber-500 to-amber-600 shadow-amber-500/20',
+    orange: 'from-orange-500 to-orange-600 shadow-orange-500/20',
+    emerald: 'from-emerald-500 to-emerald-600 shadow-emerald-500/20',
+    red: 'from-red-500 to-red-600 shadow-red-500/20',
+  };
+  const bgColors = {
+    blue: 'bg-blue-50 text-blue-700 border-blue-100',
+    amber: 'bg-amber-50 text-amber-700 border-amber-100',
+    orange: 'bg-orange-50 text-orange-700 border-orange-100',
+    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+    red: 'bg-red-50 text-red-700 border-red-100',
+  };
+  return (
+    <div className={`bg-white rounded-2xl p-5 border ${bgColors[color].split(' ')[2]} shadow-sm hover:shadow-md transition-shadow`}>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">{label}</p>
+          <p className="text-3xl font-bold mt-1 text-gray-900">{count}</p>
+        </div>
+        <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${colors[color]} shadow-lg flex items-center justify-center text-white text-sm font-bold`}>
+          {icon}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StagePipeline({ stages, uploads, currentStage, invalid }) {
+  return (
+    <div className="flex items-center">
+      {stages.map((s, i) => {
+        const upload = uploads.find((u) => u.stage === s);
+        const status = upload?.status;
+        const isCurrent = currentStage === s;
+        let dotClass, ringClass;
+        if (invalid) {
+          dotClass = 'bg-red-200'; ringClass = 'ring-red-100';
+        } else if (status === 'confirmed') {
+          dotClass = 'bg-emerald-500'; ringClass = 'ring-emerald-100';
+        } else if (status === 'pending') {
+          dotClass = 'bg-amber-400 animate-pulse'; ringClass = 'ring-amber-100';
+        } else if (isCurrent) {
+          dotClass = 'bg-blue-400'; ringClass = 'ring-blue-100';
+        } else {
+          dotClass = 'bg-gray-200'; ringClass = 'ring-gray-50';
+        }
+        const tooltip = status === 'confirmed' ? 'Confirmed' : status === 'pending' ? 'Pending Review' : isCurrent ? 'Current' : 'Waiting';
+        return (
+          <div key={s} className="flex items-center">
+            <div className="relative group">
+              <div className={`w-4 h-4 rounded-full ${dotClass} ring-4 ${ringClass} transition-all`} />
+              <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] px-2 py-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                {STAGE_META[s].label}: {tooltip}
+              </div>
+            </div>
+            {i < stages.length - 1 && (
+              <div className={`w-5 h-0.5 ${status === 'confirmed' && !invalid ? 'bg-emerald-300' : 'bg-gray-200'}`} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ActionDropdown({ file, onMove, onEdit, onDelete, onNotify, invalid, next }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handleClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+      >
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16"><circle cx="8" cy="3" r="1.5" /><circle cx="8" cy="8" r="1.5" /><circle cx="8" cy="13" r="1.5" /></svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-44 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-30">
+          {!invalid && next && (
+            <button onClick={() => { setOpen(false); onMove(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+              Move to {next}
+            </button>
+          )}
+          <button onClick={() => { setOpen(false); onEdit(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+            Edit details
+          </button>
+          <button onClick={() => { setOpen(false); onNotify(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-green-700 hover:bg-green-50 transition-colors">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" /></svg>
+            Notify via WhatsApp
+          </button>
+          <div className="my-1 border-t border-gray-100" />
+          <button onClick={() => { setOpen(false); onDelete(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Main Component ---
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -28,759 +157,425 @@ export default function DashboardPage() {
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
-  // Stage change modal
   const [stageModal, setStageModal] = useState(null);
   const [stageFile, setStageFile] = useState(null);
   const [stageNotes, setStageNotes] = useState('');
   const [uploading, setUploading] = useState(false);
-
-  // Edit modal
   const [editModal, setEditModal] = useState(null);
-
-  // WhatsApp notify modal
-  const [notifyModal, setNotifyModal] = useState(null); // { fileName, stage }
+  const [notifyModal, setNotifyModal] = useState(null);
   const [teamMembers, setTeamMembers] = useState([]);
-
-  // Checkbox selection
   const [selected, setSelected] = useState(new Set());
 
   const fetchFiles = useCallback(async () => {
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
       const params = {};
       if (filters.vehicle_id) params.vehicle_id = filters.vehicle_id;
       if (filters.stage) params.stage = filters.stage;
       if (filters.year) params.year = filters.year;
       const res = await api.get('/files', { params });
-      setFiles(res.data);
-      setSelected(new Set());
-    } catch {
-      setError('Failed to load files');
-    } finally {
-      setLoading(false);
-    }
+      setFiles(res.data); setSelected(new Set());
+    } catch { setError('Failed to load files'); }
+    finally { setLoading(false); }
   }, [filters]);
 
   const fetchVehicles = async () => {
-    try {
-      const res = await api.get('/vehicles');
-      setVehicles(res.data);
-    } catch {
-      setError('Failed to load vehicles');
-    }
+    try { const res = await api.get('/vehicles'); setVehicles(res.data); }
+    catch { setError('Failed to load vehicles'); }
   };
 
   useEffect(() => { fetchVehicles(); }, []);
   useEffect(() => { fetchFiles(); }, [fetchFiles]);
 
-  const stageCounts = STAGES.reduce((acc, stage) => {
-    acc[stage] = files.filter((f) => f.current_stage === stage && !f.is_invalid).length;
-    return acc;
-  }, {});
+  const stageCounts = STAGES.reduce((acc, s) => { acc[s] = files.filter((f) => f.current_stage === s && !f.is_invalid).length; return acc; }, {});
   const invalidCount = files.filter((f) => f.is_invalid).length;
+  const totalFiles = files.length;
 
-  // Checkbox handlers
-  const toggleSelect = (id) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const toggleSelectAll = () => {
-    if (selected.size === files.length) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(files.map((f) => f.id)));
-    }
-  };
+  const toggleSelect = (id) => setSelected((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleSelectAll = () => setSelected(selected.size === files.length ? new Set() : new Set(files.map((f) => f.id)));
 
   const handleBulkInvalid = async (markInvalid) => {
     if (selected.size === 0) return;
-    const ids = Array.from(selected);
-    const action = markInvalid ? 'Mark' : 'Unmark';
-    if (!window.confirm(`${action} ${ids.length} file(s) as invalid?`)) return;
-    setError('');
-    try {
-      await api.patch('/files', { ids, is_invalid: markInvalid });
-      fetchFiles();
-    } catch {
-      setError('Failed to update files');
-    }
+    if (!window.confirm(`${markInvalid ? 'Mark' : 'Unmark'} ${selected.size} file(s) as invalid?`)) return;
+    try { await api.patch('/files', { ids: Array.from(selected), is_invalid: markInvalid }); fetchFiles(); }
+    catch { setError('Failed to update files'); }
   };
 
   const handleBulkDelete = async () => {
-    if (selected.size === 0) return;
-    if (!window.confirm(`Delete ${selected.size} file(s) and all their uploads? This cannot be undone.`)) return;
-    setError('');
-    try {
-      for (const id of selected) {
-        await api.delete('/files', { data: { id } });
-      }
-      fetchFiles();
-    } catch {
-      setError('Failed to delete files');
-    }
+    if (!window.confirm(`Delete ${selected.size} file(s)? This cannot be undone.`)) return;
+    try { for (const id of selected) await api.delete('/files', { data: { id } }); fetchFiles(); }
+    catch { setError('Failed to delete files'); }
   };
 
-  // Open stage change modal
-  const handleStageChange = (fileId, newStage, fileName) => {
-    setStageModal({ fileId, stage: newStage, fileName });
-    setStageFile(null);
-    setStageNotes('');
-  };
+  const handleStageChange = (fileId, stage, fileName) => { setStageModal({ fileId, stage, fileName }); setStageFile(null); setStageNotes(''); };
 
-  // Submit stage change + file upload
   const handleStageSubmit = async () => {
-    if (!stageModal) return;
-    if (!stageFile) {
-      setError('You must upload a file to move to the next stage');
-      return;
-    }
-    setUploading(true);
-    setError('');
+    if (!stageModal || !stageFile) { setError('You must upload a file to move to the next stage'); return; }
+    setUploading(true); setError('');
     try {
-      await api.put('/files', {
-        id: stageModal.fileId,
-        stage: stageModal.stage,
-        notes: stageNotes || '',
-      });
-
+      await api.put('/files', { id: stageModal.fileId, stage: stageModal.stage, notes: stageNotes || '' });
       await uploadFile(stageModal.fileId, stageModal.stage, stageFile);
-
-      setStageModal(null);
-      setStageFile(null);
-      setStageNotes('');
-      fetchFiles();
-    } catch {
-      setError('Failed to update stage');
-    } finally {
-      setUploading(false);
-    }
+      setStageModal(null); setStageFile(null); setStageNotes(''); fetchFiles();
+    } catch { setError('Failed to update stage'); }
+    finally { setUploading(false); }
   };
 
   const handleAddFile = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setError('');
+    e.preventDefault(); setSubmitting(true); setError('');
     try {
-      const res = await api.post('/files', {
-        vehicle_id: Number(newFile.vehicle_id),
-        file_name: newFile.file_name,
-        year: newFile.year ? Number(newFile.year) : null,
-        version: newFile.version || null,
-      });
-
-      if (selectedFile && res.data.id) {
-        await uploadFile(res.data.id, 'generated', selectedFile);
-      }
-
-      setShowModal(false);
-      setNewFile({ vehicle_id: '', file_name: '', year: '', version: '' });
-      setSelectedFile(null);
-      fetchFiles();
-    } catch {
-      setError('Failed to add file');
-    } finally {
-      setSubmitting(false);
-    }
+      const res = await api.post('/files', { vehicle_id: Number(newFile.vehicle_id), file_name: newFile.file_name, year: newFile.year ? Number(newFile.year) : null, version: newFile.version || null });
+      if (selectedFile && res.data.id) await uploadFile(res.data.id, 'generated', selectedFile);
+      setShowModal(false); setNewFile({ vehicle_id: '', file_name: '', year: '', version: '' }); setSelectedFile(null); fetchFiles();
+    } catch { setError('Failed to add file'); }
+    finally { setSubmitting(false); }
   };
 
   const handleDelete = async (fileId, fileName) => {
-    if (!window.confirm(`Delete "${fileName}" and all its uploaded files? This cannot be undone.`)) return;
-    setError('');
-    try {
-      await api.delete('/files', { data: { id: fileId } });
-      fetchFiles();
-    } catch {
-      setError('Failed to delete file');
-    }
+    if (!window.confirm(`Delete "${fileName}"?`)) return;
+    try { await api.delete('/files', { data: { id: fileId } }); fetchFiles(); }
+    catch { setError('Failed to delete file'); }
   };
 
   const handleEdit = async (e) => {
     e.preventDefault();
-    if (!editModal) return;
-    setError('');
-    try {
-      await api.patch('/files', {
-        id: editModal.id,
-        file_name: editModal.file_name,
-        year: editModal.year,
-        version: editModal.version,
-      });
-      setEditModal(null);
-      fetchFiles();
-    } catch {
-      setError('Failed to update file');
-    }
+    try { await api.patch('/files', { id: editModal.id, file_name: editModal.file_name, year: editModal.year, version: editModal.version }); setEditModal(null); fetchFiles(); }
+    catch { setError('Failed to update file'); }
   };
 
   const handleConfirm = async (fileId, stage, fileName) => {
-    setError('');
     try {
-      await api.patch('/upload', { file_id: fileId, stage, status: 'confirmed' });
-      fetchFiles();
-      // Show notify modal
+      await api.patch('/upload', { file_id: fileId, stage, status: 'confirmed' }); fetchFiles();
       const nextStage = NEXT_STAGE[stage];
       if (nextStage) {
-        try {
-          const res = await api.get('/users');
-          setTeamMembers(res.data.filter((u) => u.phone));
-        } catch { /* ignore */ }
+        try { const res = await api.get('/users'); setTeamMembers(res.data.filter((u) => u.phone)); } catch {}
         setNotifyModal({ fileName, stage, nextStage });
       }
-    } catch {
-      setError('Failed to confirm upload');
-    }
+    } catch { setError('Failed to confirm upload'); }
+  };
+
+  const openNotify = async (fileName, currentStage) => {
+    try {
+      const res = await api.get('/users');
+      setTeamMembers(res.data.filter((u) => u.phone));
+    } catch {}
+    const nextStage = NEXT_STAGE[currentStage] || 'next';
+    setNotifyModal({ fileName, stage: currentStage, nextStage });
   };
 
   const sendWhatsApp = (phone, fileName, nextStage) => {
-    const cleanPhone = phone.replace(/[^0-9]/g, '');
-    const message = `Hi! The file "*${fileName}*" has been confirmed and is ready for the *${nextStage}* stage. Please start working on it.`;
-    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
+    const msg = `Hi! The file "*${fileName}*" has been confirmed and is ready for the *${nextStage}* stage. Please start working on it.`;
+    window.open(`https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
     setNotifyModal(null);
   };
 
-  const clearFilters = () => setFilters({ vehicle_id: '', stage: '', year: '' });
+  const hasFilters = filters.vehicle_id || filters.stage || filters.year;
 
   return (
-    <div>
+    <div className="max-w-[1600px] mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Dashboard</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{totalFiles} total files across all stages</p>
+        </div>
         <button
           onClick={() => setShowModal(true)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-5 py-2.5 rounded-xl text-sm font-medium shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 hover:-translate-y-0.5 transition-all duration-200"
         >
-          + Add File
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+          Add File
         </button>
       </div>
 
-      {/* Error Toast */}
+      {/* Error */}
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md mb-6 flex items-center justify-between">
-          <span>{error}</span>
-          <button onClick={() => setError('')} className="text-red-400 hover:text-red-600">&times;</button>
+        <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl mb-6 flex items-center justify-between animate-[fadeIn_0.2s]">
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
+            {error}
+          </div>
+          <button onClick={() => setError('')} className="text-red-400 hover:text-red-600 p-1">&times;</button>
         </div>
       )}
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        {STAGES.map((stage) => (
-          <div
-            key={stage}
-            className={`bg-white rounded-lg p-4 border-l-4 ${STAGE_COLORS[stage].border} shadow-sm`}
-          >
-            <p className="text-sm text-gray-500 capitalize">{stage}</p>
-            <p className={`text-3xl font-bold mt-1 ${STAGE_COLORS[stage].text}`}>
-              {stageCounts[stage]}
-            </p>
-          </div>
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        {STAGES.map((s) => (
+          <StatCard key={s} label={STAGE_META[s].label} count={stageCounts[s]} color={STAGE_META[s].color === 'amber' ? 'amber' : STAGE_META[s].color === 'orange' ? 'orange' : STAGE_META[s].color === 'emerald' ? 'emerald' : 'blue'} icon={STAGE_META[s].icon} />
         ))}
-        <div className="bg-white rounded-lg p-4 border-l-4 border-red-400 shadow-sm">
-          <p className="text-sm text-gray-500">Invalid</p>
-          <p className="text-3xl font-bold mt-1 text-red-600">{invalidCount}</p>
-        </div>
+        <StatCard label="Invalid" count={invalidCount} color="red" icon="!" />
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg p-4 shadow-sm mb-6 flex flex-wrap items-end gap-4">
-        <div>
-          <label className="block text-sm text-gray-600 mb-1">Vehicle</label>
-          <select
-            value={filters.vehicle_id}
-            onChange={(e) => setFilters({ ...filters, vehicle_id: e.target.value })}
-            className="border border-gray-300 rounded-md px-3 py-2 text-sm"
-          >
+      <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-6 shadow-sm">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex items-center gap-2 text-gray-400 mr-1">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+            <span className="text-xs font-semibold uppercase tracking-wider">Filters</span>
+          </div>
+          <select value={filters.vehicle_id} onChange={(e) => setFilters({ ...filters, vehicle_id: e.target.value })} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
             <option value="">All Vehicles</option>
-            {vehicles.map((v) => (
-              <option key={v.id} value={v.id}>{v.name}</option>
-            ))}
+            {vehicles.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
           </select>
-        </div>
-        <div>
-          <label className="block text-sm text-gray-600 mb-1">Stage</label>
-          <select
-            value={filters.stage}
-            onChange={(e) => setFilters({ ...filters, stage: e.target.value })}
-            className="border border-gray-300 rounded-md px-3 py-2 text-sm"
-          >
+          <select value={filters.stage} onChange={(e) => setFilters({ ...filters, stage: e.target.value })} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
             <option value="">All Stages</option>
-            {STAGES.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
+            {STAGES.map((s) => <option key={s} value={s}>{STAGE_META[s].label}</option>)}
           </select>
+          <input type="number" value={filters.year} onChange={(e) => setFilters({ ...filters, year: e.target.value })} placeholder="Year" className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm w-24 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+          {hasFilters && (
+            <button onClick={() => setFilters({ vehicle_id: '', stage: '', year: '' })} className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-2">
+              Clear all
+            </button>
+          )}
         </div>
-        <div>
-          <label className="block text-sm text-gray-600 mb-1">Year</label>
-          <input
-            type="number"
-            value={filters.year}
-            onChange={(e) => setFilters({ ...filters, year: e.target.value })}
-            placeholder="e.g. 2003"
-            className="border border-gray-300 rounded-md px-3 py-2 text-sm w-28"
-          />
-        </div>
-        <button
-          onClick={clearFilters}
-          className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2 border border-gray-300 rounded-md"
-        >
-          Clear Filters
-        </button>
       </div>
 
-      {/* Bulk Actions Bar */}
+      {/* Bulk Actions */}
       {selected.size > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-4 flex flex-wrap items-center gap-3">
-          <span className="text-sm font-medium text-blue-800">{selected.size} selected</span>
-          <button
-            onClick={() => handleBulkInvalid(true)}
-            className="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-md transition-colors"
-          >
-            Mark Invalid
-          </button>
-          <button
-            onClick={() => handleBulkInvalid(false)}
-            className="text-xs bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1.5 rounded-md transition-colors"
-          >
-            Mark Valid
-          </button>
-          <button
-            onClick={handleBulkDelete}
-            className="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-md transition-colors"
-          >
-            Delete Selected
-          </button>
-          <button
-            onClick={() => setSelected(new Set())}
-            className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1.5"
-          >
-            Clear
-          </button>
+        <div className="bg-blue-50 border border-blue-100 rounded-2xl px-5 py-3 mb-4 flex flex-wrap items-center gap-3 animate-[fadeIn_0.2s]">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md bg-blue-600 text-white flex items-center justify-center text-xs font-bold">{selected.size}</div>
+            <span className="text-sm font-medium text-blue-800">selected</span>
+          </div>
+          <div className="h-5 w-px bg-blue-200" />
+          <button onClick={() => handleBulkInvalid(true)} className="inline-flex items-center gap-1.5 text-xs font-medium bg-white border border-red-200 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors">Mark Invalid</button>
+          <button onClick={() => handleBulkInvalid(false)} className="inline-flex items-center gap-1.5 text-xs font-medium bg-white border border-emerald-200 text-emerald-600 px-3 py-1.5 rounded-lg hover:bg-emerald-50 transition-colors">Mark Valid</button>
+          <button onClick={handleBulkDelete} className="inline-flex items-center gap-1.5 text-xs font-medium bg-white border border-red-200 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors">Delete</button>
+          <button onClick={() => setSelected(new Set())} className="text-xs text-blue-500 hover:text-blue-700 ml-auto">Deselect all</button>
         </div>
       )}
 
-      {/* Files Table */}
-      <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+      {/* Table */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="w-10 h-10 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
+            <p className="text-sm text-gray-400 mt-3">Loading files...</p>
           </div>
         ) : (
-          <table className="w-full text-sm text-left">
-            <thead className="bg-gray-50 text-gray-600 uppercase text-xs">
-              <tr>
-                <th className="px-4 py-3 w-10">
-                  <input
-                    type="checkbox"
-                    checked={files.length > 0 && selected.size === files.length}
-                    onChange={toggleSelectAll}
-                    className="rounded border-gray-300"
-                  />
-                </th>
-                <th className="px-4 py-3">File Name</th>
-                <th className="px-4 py-3">Vehicle</th>
-                <th className="px-4 py-3">Year</th>
-                <th className="px-4 py-3">Version</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Stage Progress</th>
-                <th className="px-4 py-3">Downloads</th>
-                <th className="px-4 py-3">Last Updated</th>
-                <th className="px-4 py-3">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {files.length === 0 ? (
-                <tr>
-                  <td colSpan="10" className="px-4 py-8 text-center text-gray-400">
-                    No files found.
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="pl-5 pr-2 py-4 w-10">
+                    <input type="checkbox" checked={files.length > 0 && selected.size === files.length} onChange={toggleSelectAll} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                  </th>
+                  <th className="px-4 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">File</th>
+                  <th className="px-4 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Vehicle</th>
+                  <th className="px-4 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Year</th>
+                  <th className="px-4 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Pipeline</th>
+                  <th className="px-4 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Downloads</th>
+                  <th className="px-4 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Updated</th>
+                  <th className="px-4 py-4 w-12"></th>
                 </tr>
-              ) : (
-                files.map((file, i) => {
-                  const colors = STAGE_COLORS[file.current_stage] || STAGE_COLORS.generated;
+              </thead>
+              <tbody>
+                {files.length === 0 ? (
+                  <tr>
+                    <td colSpan="9" className="py-16 text-center">
+                      <div className="flex flex-col items-center">
+                        <svg className="w-12 h-12 text-gray-200 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                        <p className="text-sm text-gray-400">No files found</p>
+                        <button onClick={() => setShowModal(true)} className="text-sm text-blue-600 hover:text-blue-700 font-medium mt-1">Add your first file</button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : files.map((file) => {
                   const next = NEXT_STAGE[file.current_stage];
-                  const uploaded = file.uploaded_stages || [];
                   const uploads = file.uploads || [];
                   const invalid = !!file.is_invalid;
-                  const getUploadStatus = (s) => {
-                    const u = uploads.find((x) => x.stage === s);
-                    return u ? u.status : null;
-                  };
                   return (
-                    <tr
-                      key={file.id}
-                      className={`hover:bg-gray-100 ${i % 2 === 1 ? 'bg-gray-50' : ''} ${invalid ? 'opacity-60' : ''}`}
-                    >
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={selected.has(file.id)}
-                          onChange={() => toggleSelect(file.id)}
-                          className="rounded border-gray-300"
-                        />
+                    <tr key={file.id} className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${invalid ? 'opacity-50' : ''}`}>
+                      <td className="pl-5 pr-2 py-3.5">
+                        <input type="checkbox" checked={selected.has(file.id)} onChange={() => toggleSelect(file.id)} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                       </td>
-                      <td className="px-4 py-3 font-medium">
-                        <button
-                          onClick={() => navigate(`/logs?file_id=${file.id}&name=${encodeURIComponent(file.file_name)}`)}
-                          className={`hover:underline ${invalid ? 'text-gray-400 line-through' : 'text-blue-600 hover:text-blue-800'}`}
-                        >
+                      <td className="px-4 py-3.5">
+                        <button onClick={() => navigate(`/logs?file_id=${file.id}&name=${encodeURIComponent(file.file_name)}`)} className={`text-sm font-medium hover:underline ${invalid ? 'text-gray-400 line-through' : 'text-gray-900 hover:text-blue-600'}`}>
                           {file.file_name}
                         </button>
+                        {file.version && <span className="ml-2 text-[10px] font-medium text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{file.version}</span>}
                       </td>
-                      <td className="px-4 py-3">{file.vehicle_name}</td>
-                      <td className="px-4 py-3">{file.year || '—'}</td>
-                      <td className="px-4 py-3">{file.version || '—'}</td>
-                      {/* Status Badge */}
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3.5 text-sm text-gray-600">{file.vehicle_name}</td>
+                      <td className="px-4 py-3.5 text-sm text-gray-600">{file.year || '—'}</td>
+                      <td className="px-4 py-3.5">
                         {invalid ? (
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">Invalid</span>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-50 text-red-600 border border-red-100">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span> Invalid
+                          </span>
+                        ) : next ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-600 border border-blue-100">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span> {STAGE_META[file.current_stage].label}
+                          </span>
                         ) : (
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Valid</span>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-600 border border-emerald-100">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Complete
+                          </span>
                         )}
                       </td>
-                      {/* Stage Progress Dots */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          {STAGES.map((s) => {
-                            const status = getUploadStatus(s);
-                            const isCurrent = file.current_stage === s;
-                            const dotColor = invalid
-                              ? 'bg-red-300 border-red-300'
-                              : status === 'confirmed'
-                                ? 'bg-green-500 border-green-500'
-                                : status === 'pending'
-                                  ? 'bg-orange-400 border-orange-400'
-                                  : isCurrent
-                                    ? 'bg-yellow-400 border-yellow-400'
-                                    : 'bg-gray-200 border-gray-300';
-                            const label = status === 'confirmed' ? 'confirmed' : status === 'pending' ? 'pending review' : isCurrent ? 'current stage' : 'not uploaded';
-                            return (
-                              <div key={s} className="flex items-center gap-1.5">
-                                <div className="flex flex-col items-center">
-                                  <span
-                                    title={`${s}: ${label}`}
-                                    className={`w-3 h-3 rounded-full border-2 ${dotColor}`}
-                                  />
-                                  <span className="text-[10px] text-gray-400 mt-0.5">{s.slice(0, 3)}</span>
-                                </div>
-                                {s !== 'tlo' && <div className="w-3 h-0.5 bg-gray-200 mb-3"></div>}
-                              </div>
-                            );
-                          })}
-                        </div>
+                      <td className="px-4 py-3.5">
+                        <StagePipeline stages={STAGES} uploads={uploads} currentStage={file.current_stage} invalid={invalid} />
                       </td>
-                      {/* Download Links + Confirm */}
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1.5">
+                      <td className="px-4 py-3.5">
+                        <div className="flex flex-wrap gap-1">
                           {uploads.length > 0 ? uploads.map((u) => (
-                            <div key={u.stage} className="flex items-center gap-1">
-                              <a
-                                href={getDownloadUrl(file.id, u.stage)}
-                                className="text-xs bg-gray-100 hover:bg-gray-200 text-blue-600 px-2 py-0.5 rounded"
-                                title={`Download ${u.stage} file`}
-                              >
-                                {u.stage}
+                            <div key={u.stage} className="flex items-center gap-0.5">
+                              <a href={getDownloadUrl(file.id, u.stage)} className="inline-flex items-center gap-1 text-[11px] font-medium bg-gray-50 hover:bg-gray-100 text-gray-600 px-2 py-1 rounded-md border border-gray-200 transition-colors" title={`Download ${u.stage}`}>
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                {u.stage.slice(0, 3)}
                               </a>
                               {u.status === 'pending' ? (
-                                <button
-                                  onClick={() => handleConfirm(file.id, u.stage, file.file_name)}
-                                  className="text-[10px] bg-orange-100 hover:bg-orange-200 text-orange-700 px-1.5 py-0.5 rounded"
-                                  title="Confirm this upload"
-                                >
-                                  Confirm
+                                <button onClick={() => handleConfirm(file.id, u.stage, file.file_name)} className="w-5 h-5 flex items-center justify-center rounded-md bg-amber-50 hover:bg-amber-100 text-amber-600 border border-amber-200 transition-colors" title="Confirm">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
                                 </button>
                               ) : (
-                                <span className="text-[10px] text-green-600">&#10003;</span>
+                                <span className="w-5 h-5 flex items-center justify-center rounded-md bg-emerald-50 text-emerald-500">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                                </span>
                               )}
                             </div>
-                          )) : (
-                            <span className="text-xs text-gray-400">—</span>
-                          )}
+                          )) : <span className="text-xs text-gray-300">—</span>}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-gray-500">{file.updated_at || file.created_at}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          {invalid ? (
-                            <span className="text-xs text-red-500 font-medium">Stopped</span>
-                          ) : next ? (
-                            <button
-                              onClick={() => handleStageChange(file.id, next, file.file_name)}
-                              className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded-md transition-colors"
-                            >
-                              Move to {next}
-                            </button>
-                          ) : (
-                            <span className="text-xs text-green-600 font-medium">Done</span>
-                          )}
-                          <button
-                            onClick={() => setEditModal({ id: file.id, file_name: file.file_name, year: file.year || '', version: file.version || '' })}
-                            className="text-xs text-blue-500 hover:text-blue-700 hover:bg-blue-50 px-2 py-1 rounded-md transition-colors"
-                            title="Edit file"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDelete(file.id, file.file_name)}
-                            className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded-md transition-colors"
-                            title="Delete file"
-                          >
-                            Delete
-                          </button>
-                        </div>
+                      <td className="px-4 py-3.5 text-xs text-gray-400">{(file.updated_at || file.created_at || '').slice(0, 10)}</td>
+                      <td className="pr-4 py-3.5">
+                        <ActionDropdown file={file} invalid={invalid} next={next} onMove={() => handleStageChange(file.id, next, file.file_name)} onEdit={() => setEditModal({ id: file.id, file_name: file.file_name, year: file.year || '', version: file.version || '' })} onDelete={() => handleDelete(file.id, file.file_name)} onNotify={() => openNotify(file.file_name, file.current_stage)} />
                       </td>
                     </tr>
                   );
-                })
-              )}
-            </tbody>
-          </table>
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
-      {/* Add File Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-lg">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-gray-800">Add New File</h2>
-              <button
-                onClick={() => { setShowModal(false); setSelectedFile(null); }}
-                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
-              >
-                &times;
-              </button>
-            </div>
-            <form onSubmit={handleAddFile} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle</label>
-                <select
-                  value={newFile.vehicle_id}
-                  onChange={(e) => setNewFile({ ...newFile, vehicle_id: e.target.value })}
-                  required
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
-                >
-                  <option value="">Select vehicle</option>
-                  {vehicles.map((v) => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">File Name</label>
-                <input
-                  type="text"
-                  value={newFile.file_name}
-                  onChange={(e) => setNewFile({ ...newFile, file_name: e.target.value })}
-                  required
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
-                  placeholder="LandCruiser_2003_VIN_v1"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
-                  <input
-                    type="number"
-                    value={newFile.year}
-                    onChange={(e) => setNewFile({ ...newFile, year: e.target.value })}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2"
-                    placeholder="2003"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Version</label>
-                  <input
-                    type="text"
-                    value={newFile.version}
-                    onChange={(e) => setNewFile({ ...newFile, version: e.target.value })}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2"
-                    placeholder="v1"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Upload Generated File</label>
-                <input
-                  type="file"
-                  onChange={(e) => {
-                    const f = e.target.files[0] || null;
-                    setSelectedFile(f);
-                    if (f) {
-                      const nameWithoutExt = f.name.replace(/\.[^/.]+$/, '');
-                      setNewFile((prev) => ({ ...prev, file_name: prev.file_name || nameWithoutExt }));
-                    }
-                  }}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:bg-blue-50 file:text-blue-600 file:text-sm"
-                />
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => { setShowModal(false); setSelectedFile(null); }}
-                  className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {submitting ? 'Adding...' : 'Add File'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* --- Modals --- */}
 
-      {/* Edit File Modal */}
-      {editModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-lg">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-gray-800">Edit File</h2>
-              <button onClick={() => setEditModal(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
-            </div>
-            <form onSubmit={handleEdit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">File Name</label>
-                <input
-                  type="text"
-                  value={editModal.file_name}
-                  onChange={(e) => setEditModal({ ...editModal, file_name: e.target.value })}
-                  required
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
-                  <input
-                    type="number"
-                    value={editModal.year}
-                    onChange={(e) => setEditModal({ ...editModal, year: e.target.value })}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Version</label>
-                  <input
-                    type="text"
-                    value={editModal.version}
-                    onChange={(e) => setEditModal({ ...editModal, version: e.target.value })}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setEditModal(null)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50">Cancel</button>
-                <button type="submit" className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Save</button>
-              </div>
-            </form>
+      <Modal open={showModal} onClose={() => { setShowModal(false); setSelectedFile(null); }} title="Add New File">
+        <form onSubmit={handleAddFile} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Vehicle</label>
+            <select value={newFile.vehicle_id} onChange={(e) => setNewFile({ ...newFile, vehicle_id: e.target.value })} required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+              <option value="">Select vehicle</option>
+              {vehicles.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+            </select>
           </div>
-        </div>
-      )}
-
-      {/* Stage Change + Upload Modal */}
-      {stageModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-lg">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-gray-800">Move to {stageModal.stage}</h2>
-              <button
-                onClick={() => { setStageModal(null); setStageFile(null); setStageNotes(''); }}
-                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
-              >
-                &times;
-              </button>
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">File Name</label>
+            <input type="text" value={newFile.file_name} onChange={(e) => setNewFile({ ...newFile, file_name: e.target.value })} required placeholder="LandCruiser_2003_VIN_v1" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Year</label>
+              <input type="number" value={newFile.year} onChange={(e) => setNewFile({ ...newFile, year: e.target.value })} placeholder="2003" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
             </div>
-            <p className="text-sm text-gray-600 mb-4">
-              Upload the <span className="font-medium">{stageModal.stage}</span> file for "<span className="font-medium">{stageModal.fileName}</span>"
-            </p>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">File</label>
-                <input
-                  type="file"
-                  onChange={(e) => setStageFile(e.target.files[0] || null)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:bg-blue-50 file:text-blue-600 file:text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
-                <input
-                  type="text"
-                  value={stageNotes}
-                  onChange={(e) => setStageNotes(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
-                  placeholder="Any notes about this stage..."
-                />
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  onClick={() => { setStageModal(null); setStageFile(null); setStageNotes(''); }}
-                  className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleStageSubmit}
-                  disabled={uploading || !stageFile}
-                  className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {uploading ? 'Uploading...' : `Upload & Move to ${stageModal.stage}`}
-                </button>
-              </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Version</label>
+              <input type="text" value={newFile.version} onChange={(e) => setNewFile({ ...newFile, version: e.target.value })} placeholder="v1" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
             </div>
           </div>
-        </div>
-      )}
-
-      {/* WhatsApp Notify Modal */}
-      {notifyModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-lg">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-gray-800">Notify via WhatsApp</h2>
-              <button onClick={() => setNotifyModal(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Upload File</label>
+            <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 text-center hover:border-blue-300 transition-colors cursor-pointer">
+              <input type="file" onChange={(e) => { const f = e.target.files[0] || null; setSelectedFile(f); if (f) setNewFile((p) => ({ ...p, file_name: p.file_name || f.name.replace(/\.[^/.]+$/, '') })); }} className="hidden" id="add-file-input" />
+              <label htmlFor="add-file-input" className="cursor-pointer">
+                <svg className="w-8 h-8 text-gray-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                <p className="text-sm text-gray-500">{selectedFile ? selectedFile.name : 'Click to upload or drag and drop'}</p>
+              </label>
             </div>
-            <p className="text-sm text-gray-600 mb-4">
-              "<span className="font-medium">{notifyModal.fileName}</span>" is ready for <span className="font-medium">{notifyModal.nextStage}</span>. Select who to notify:
-            </p>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={() => { setShowModal(false); setSelectedFile(null); }} className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">Cancel</button>
+            <button type="submit" disabled={submitting} className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-xl disabled:opacity-50 transition-all">{submitting ? 'Adding...' : 'Add File'}</button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={!!editModal} onClose={() => setEditModal(null)} title="Edit File" width="max-w-sm">
+        {editModal && (
+          <form onSubmit={handleEdit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">File Name</label>
+              <input type="text" value={editModal.file_name} onChange={(e) => setEditModal({ ...editModal, file_name: e.target.value })} required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Year</label>
+                <input type="number" value={editModal.year} onChange={(e) => setEditModal({ ...editModal, year: e.target.value })} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Version</label>
+                <input type="text" value={editModal.version} onChange={(e) => setEditModal({ ...editModal, version: e.target.value })} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={() => setEditModal(null)} className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">Cancel</button>
+              <button type="submit" className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl shadow-lg shadow-blue-500/25 transition-all">Save</button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      <Modal open={!!stageModal} onClose={() => { setStageModal(null); setStageFile(null); setStageNotes(''); }} title={stageModal ? `Move to ${STAGE_META[stageModal.stage]?.label}` : ''}>
+        {stageModal && (
+          <div className="space-y-4">
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+              <p className="text-sm text-blue-800">Upload the <strong>{stageModal.stage}</strong> file for "<strong>{stageModal.fileName}</strong>"</p>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">File (required)</label>
+              <div className={`border-2 border-dashed rounded-xl p-4 text-center transition-colors cursor-pointer ${stageFile ? 'border-emerald-300 bg-emerald-50' : 'border-gray-200 hover:border-blue-300'}`}>
+                <input type="file" onChange={(e) => setStageFile(e.target.files[0] || null)} className="hidden" id="stage-file-input" />
+                <label htmlFor="stage-file-input" className="cursor-pointer">
+                  {stageFile ? (
+                    <p className="text-sm text-emerald-700 font-medium">{stageFile.name}</p>
+                  ) : (
+                    <p className="text-sm text-gray-500">Click to select file</p>
+                  )}
+                </label>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Notes (optional)</label>
+              <input type="text" value={stageNotes} onChange={(e) => setStageNotes(e.target.value)} placeholder="Any notes..." className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button onClick={() => { setStageModal(null); setStageFile(null); setStageNotes(''); }} className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">Cancel</button>
+              <button onClick={handleStageSubmit} disabled={uploading || !stageFile} className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl shadow-lg shadow-blue-500/25 disabled:opacity-50 transition-all">{uploading ? 'Uploading...' : `Upload & Move`}</button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={!!notifyModal} onClose={() => setNotifyModal(null)} title="Notify via WhatsApp" width="max-w-sm">
+        {notifyModal && (
+          <div>
+            <div className="bg-green-50 border border-green-100 rounded-xl p-3 mb-4">
+              <p className="text-sm text-green-800">"<strong>{notifyModal.fileName}</strong>" is ready for <strong>{notifyModal.nextStage}</strong></p>
+            </div>
             <div className="space-y-2 max-h-60 overflow-y-auto">
               {teamMembers.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-4">No team members with phone numbers</p>
-              ) : (
-                teamMembers.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => sendWhatsApp(m.phone, notifyModal.fileName, notifyModal.nextStage)}
-                    className="w-full flex items-center justify-between px-4 py-3 border border-gray-200 rounded-lg hover:bg-green-50 hover:border-green-300 transition-colors"
-                  >
+                <p className="text-sm text-gray-400 text-center py-6">No team members with phone numbers</p>
+              ) : teamMembers.map((m) => (
+                <button key={m.id} onClick={() => sendWhatsApp(m.phone, notifyModal.fileName, notifyModal.nextStage)} className="w-full flex items-center justify-between px-4 py-3 border border-gray-100 rounded-xl hover:bg-green-50 hover:border-green-200 transition-all group">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center text-white text-xs font-bold">{m.name.charAt(0)}</div>
                     <div className="text-left">
                       <p className="text-sm font-medium text-gray-800">{m.name}</p>
-                      <p className="text-xs text-gray-500">{m.role} &middot; {m.phone}</p>
+                      <p className="text-[11px] text-gray-400">{m.role} &middot; {m.phone}</p>
                     </div>
-                    <span className="text-green-600 text-lg">&#9742;</span>
-                  </button>
-                ))
-              )}
+                  </div>
+                  <svg className="w-5 h-5 text-gray-300 group-hover:text-green-500 transition-colors" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" /></svg>
+                </button>
+              ))}
             </div>
             <div className="flex justify-end mt-4">
-              <button onClick={() => setNotifyModal(null)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50">
-                Skip
-              </button>
+              <button onClick={() => setNotifyModal(null)} className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors">Skip</button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   );
 }
