@@ -7,10 +7,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'u487877829_vins_data');
-define('DB_USER', 'u487877829_vinsdata');
-define('DB_PASS', '***SCRUBBED***');
+// Auto-detect: local dev vs Hostinger production
+if ($_SERVER['SERVER_NAME'] === 'localhost' || $_SERVER['SERVER_NAME'] === '127.0.0.1') {
+    define('DB_HOST', 'srv2052.hstgr.io');
+    define('DB_NAME', 'u487877829_vins_data');
+    define('DB_USER', 'u487877829_vinsdata');
+    define('DB_PASS', '***SCRUBBED***');
+} else {
+    define('DB_HOST', 'localhost');
+    define('DB_NAME', 'u487877829_vins_data');
+    define('DB_USER', 'u487877829_vinsdata');
+    define('DB_PASS', '***SCRUBBED***');
+}
 
 function initSession(): void
 {
