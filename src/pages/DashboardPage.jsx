@@ -30,10 +30,13 @@ export default function DashboardPage() {
   const [error, setError] = useState('');
 
   // Stage change modal
-  const [stageModal, setStageModal] = useState(null); // { fileId, stage, fileName }
+  const [stageModal, setStageModal] = useState(null);
   const [stageFile, setStageFile] = useState(null);
   const [stageNotes, setStageNotes] = useState('');
   const [uploading, setUploading] = useState(false);
+
+  // Checkbox selection
+  const [selected, setSelected] = useState(new Set());
 
   const fetchFiles = useCallback(async () => {
     setLoading(true);
@@ -45,6 +48,7 @@ export default function DashboardPage() {
       if (filters.year) params.year = filters.year;
       const res = await api.get('/files', { params });
       setFiles(res.data);
+      setSelected(new Set());
     } catch {
       setError('Failed to load files');
     } finally {
@@ -65,9 +69,56 @@ export default function DashboardPage() {
   useEffect(() => { fetchFiles(); }, [fetchFiles]);
 
   const stageCounts = STAGES.reduce((acc, stage) => {
-    acc[stage] = files.filter((f) => f.current_stage === stage).length;
+    acc[stage] = files.filter((f) => f.current_stage === stage && !f.is_invalid).length;
     return acc;
   }, {});
+  const invalidCount = files.filter((f) => f.is_invalid).length;
+
+  // Checkbox handlers
+  const toggleSelect = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selected.size === files.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(files.map((f) => f.id)));
+    }
+  };
+
+  const handleBulkInvalid = async (markInvalid) => {
+    if (selected.size === 0) return;
+    const ids = Array.from(selected);
+    const action = markInvalid ? 'Mark' : 'Unmark';
+    if (!window.confirm(`${action} ${ids.length} file(s) as invalid?`)) return;
+    setError('');
+    try {
+      await api.patch('/files', { ids, is_invalid: markInvalid });
+      fetchFiles();
+    } catch {
+      setError('Failed to update files');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selected.size === 0) return;
+    if (!window.confirm(`Delete ${selected.size} file(s) and all their uploads? This cannot be undone.`)) return;
+    setError('');
+    try {
+      for (const id of selected) {
+        await api.delete('/files', { data: { id } });
+      }
+      fetchFiles();
+    } catch {
+      setError('Failed to delete files');
+    }
+  };
 
   // Open stage change modal
   const handleStageChange = (fileId, newStage, fileName) => {
@@ -165,7 +216,7 @@ export default function DashboardPage() {
       )}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         {STAGES.map((stage) => (
           <div
             key={stage}
@@ -177,6 +228,10 @@ export default function DashboardPage() {
             </p>
           </div>
         ))}
+        <div className="bg-white rounded-lg p-4 border-l-4 border-red-400 shadow-sm">
+          <p className="text-sm text-gray-500">Invalid</p>
+          <p className="text-3xl font-bold mt-1 text-red-600">{invalidCount}</p>
+        </div>
       </div>
 
       {/* Filters */}
@@ -225,6 +280,37 @@ export default function DashboardPage() {
         </button>
       </div>
 
+      {/* Bulk Actions Bar */}
+      {selected.size > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-4 flex flex-wrap items-center gap-3">
+          <span className="text-sm font-medium text-blue-800">{selected.size} selected</span>
+          <button
+            onClick={() => handleBulkInvalid(true)}
+            className="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-md transition-colors"
+          >
+            Mark Invalid
+          </button>
+          <button
+            onClick={() => handleBulkInvalid(false)}
+            className="text-xs bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1.5 rounded-md transition-colors"
+          >
+            Mark Valid
+          </button>
+          <button
+            onClick={handleBulkDelete}
+            className="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-md transition-colors"
+          >
+            Delete Selected
+          </button>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1.5"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       {/* Files Table */}
       <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
         {loading ? (
@@ -235,10 +321,19 @@ export default function DashboardPage() {
           <table className="w-full text-sm text-left">
             <thead className="bg-gray-50 text-gray-600 uppercase text-xs">
               <tr>
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={files.length > 0 && selected.size === files.length}
+                    onChange={toggleSelectAll}
+                    className="rounded border-gray-300"
+                  />
+                </th>
                 <th className="px-4 py-3">File Name</th>
                 <th className="px-4 py-3">Vehicle</th>
                 <th className="px-4 py-3">Year</th>
                 <th className="px-4 py-3">Version</th>
+                <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Stage Progress</th>
                 <th className="px-4 py-3">Downloads</th>
                 <th className="px-4 py-3">Last Updated</th>
@@ -248,7 +343,7 @@ export default function DashboardPage() {
             <tbody>
               {files.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="px-4 py-8 text-center text-gray-400">
+                  <td colSpan="10" className="px-4 py-8 text-center text-gray-400">
                     No files found.
                   </td>
                 </tr>
@@ -257,12 +352,24 @@ export default function DashboardPage() {
                   const colors = STAGE_COLORS[file.current_stage] || STAGE_COLORS.generated;
                   const next = NEXT_STAGE[file.current_stage];
                   const uploaded = file.uploaded_stages || [];
+                  const invalid = !!file.is_invalid;
                   return (
-                    <tr key={file.id} className={`hover:bg-gray-100 ${i % 2 === 1 ? 'bg-gray-50' : ''}`}>
+                    <tr
+                      key={file.id}
+                      className={`hover:bg-gray-100 ${i % 2 === 1 ? 'bg-gray-50' : ''} ${invalid ? 'opacity-60' : ''}`}
+                    >
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(file.id)}
+                          onChange={() => toggleSelect(file.id)}
+                          className="rounded border-gray-300"
+                        />
+                      </td>
                       <td className="px-4 py-3 font-medium">
                         <button
                           onClick={() => navigate(`/logs?file_id=${file.id}&name=${encodeURIComponent(file.file_name)}`)}
-                          className="text-blue-600 hover:text-blue-800 hover:underline"
+                          className={`hover:underline ${invalid ? 'text-gray-400 line-through' : 'text-blue-600 hover:text-blue-800'}`}
                         >
                           {file.file_name}
                         </button>
@@ -270,26 +377,33 @@ export default function DashboardPage() {
                       <td className="px-4 py-3">{file.vehicle_name}</td>
                       <td className="px-4 py-3">{file.year || '—'}</td>
                       <td className="px-4 py-3">{file.version || '—'}</td>
+                      {/* Status Badge */}
+                      <td className="px-4 py-3">
+                        {invalid ? (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">Invalid</span>
+                        ) : (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Valid</span>
+                        )}
+                      </td>
                       {/* Stage Progress Dots */}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
                           {STAGES.map((s) => {
                             const isUploaded = uploaded.includes(s);
                             const isCurrent = file.current_stage === s;
-                            const stageIdx = STAGES.indexOf(s);
-                            const currentIdx = STAGES.indexOf(file.current_stage);
-                            const isPast = stageIdx < currentIdx;
                             return (
                               <div key={s} className="flex items-center gap-1.5">
                                 <div className="flex flex-col items-center">
                                   <span
-                                    title={`${s}: ${isUploaded ? 'file uploaded' : isCurrent ? 'current stage' : isPast ? 'no file' : 'pending'}`}
+                                    title={`${s}: ${isUploaded ? 'file uploaded' : isCurrent ? 'current stage' : 'pending'}`}
                                     className={`w-3 h-3 rounded-full border-2 ${
-                                      isUploaded
-                                        ? 'bg-green-500 border-green-500'
-                                        : isCurrent
-                                          ? 'bg-yellow-400 border-yellow-400'
-                                          : 'bg-gray-200 border-gray-300'
+                                      invalid
+                                        ? 'bg-red-300 border-red-300'
+                                        : isUploaded
+                                          ? 'bg-green-500 border-green-500'
+                                          : isCurrent
+                                            ? 'bg-yellow-400 border-yellow-400'
+                                            : 'bg-gray-200 border-gray-300'
                                     }`}
                                   />
                                   <span className="text-[10px] text-gray-400 mt-0.5">{s.slice(0, 3)}</span>
@@ -320,7 +434,9 @@ export default function DashboardPage() {
                       <td className="px-4 py-3 text-gray-500">{file.updated_at || file.created_at}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          {next ? (
+                          {invalid ? (
+                            <span className="text-xs text-red-500 font-medium">Stopped</span>
+                          ) : next ? (
                             <button
                               onClick={() => handleStageChange(file.id, next, file.file_name)}
                               className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded-md transition-colors"

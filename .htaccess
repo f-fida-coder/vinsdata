@@ -2,7 +2,6 @@ RewriteEngine On
 Options -Indexes
 
 # Route /api/* requests to the corresponding PHP file
-RewriteCond %{REQUEST_URI} ^/vin-dashboard/api/
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteRule ^api/(.+)$ api/$1.php [L,QSA]
 

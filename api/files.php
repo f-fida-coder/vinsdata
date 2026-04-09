@@ -13,7 +13,7 @@ $db = getDBConnection();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $sql = "SELECT f.id, f.file_name, v.name AS vehicle_name, f.year, f.version,
-                   f.current_stage, u.name AS added_by_name, f.created_at, f.updated_at
+                   f.current_stage, f.is_invalid, u.name AS added_by_name, f.created_at, f.updated_at
             FROM files f
             JOIN vehicles v ON f.vehicle_id = v.id
             JOIN users u ON f.added_by = u.id
@@ -140,6 +140,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     ]);
 
     $db->commit();
+
+    echo json_encode(["success" => true]);
+
+} elseif ($_SERVER['REQUEST_METHOD'] === 'PATCH') {
+    $input = json_decode(file_get_contents("php://input"), true);
+    $ids = $input['ids'] ?? [];
+    $isInvalid = $input['is_invalid'] ?? null;
+
+    if (empty($ids) || $isInvalid === null) {
+        http_response_code(400);
+        echo json_encode(["success" => false, "message" => "ids array and is_invalid are required"]);
+        exit();
+    }
+
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $stmt = $db->prepare("UPDATE files SET is_invalid = ?, updated_at = NOW() WHERE id IN ($placeholders)");
+    $stmt->execute(array_merge([$isInvalid ? 1 : 0], $ids));
 
     echo json_encode(["success" => true]);
 
