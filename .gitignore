@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# API / PHP backend (contains DB credentials)
+api/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
