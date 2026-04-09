@@ -41,19 +41,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $stmt->execute($params);
     $files = $stmt->fetchAll();
 
-    // Attach uploaded_stages to each file
+    // Attach upload info (stage + status) to each file
     $fileIds = array_column($files, 'id');
     $uploadMap = [];
     if (!empty($fileIds)) {
         $placeholders = implode(',', array_fill(0, count($fileIds), '?'));
-        $uploadStmt = $db->prepare("SELECT file_id, stage FROM file_uploads WHERE file_id IN ($placeholders)");
+        $uploadStmt = $db->prepare("SELECT file_id, stage, status FROM file_uploads WHERE file_id IN ($placeholders)");
         $uploadStmt->execute($fileIds);
         foreach ($uploadStmt->fetchAll() as $u) {
-            $uploadMap[$u['file_id']][] = $u['stage'];
+            $uploadMap[$u['file_id']][] = ['stage' => $u['stage'], 'status' => $u['status']];
         }
     }
     foreach ($files as &$f) {
-        $f['uploaded_stages'] = $uploadMap[$f['id']] ?? [];
+        $uploads = $uploadMap[$f['id']] ?? [];
+        $f['uploaded_stages'] = array_column($uploads, 'stage');
+        $f['uploads'] = $uploads;
     }
 
     echo json_encode($files);

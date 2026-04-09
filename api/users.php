@@ -18,7 +18,7 @@ if ($_SESSION['user_role'] !== 'admin') {
 $db = getDBConnection();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    $stmt = $db->query("SELECT id, name, email, role, created_at FROM users ORDER BY created_at DESC");
+    $stmt = $db->query("SELECT id, name, email, phone, role, created_at FROM users ORDER BY created_at DESC");
     echo json_encode($stmt->fetchAll());
 
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -26,6 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     $name = $input['name'] ?? '';
     $email = $input['email'] ?? '';
+    $phone = $input['phone'] ?? null;
     $password = $input['password'] ?? '';
     $role = $input['role'] ?? '';
 
@@ -37,15 +38,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     $hash = password_hash($password, PASSWORD_BCRYPT);
 
-    $stmt = $db->prepare("INSERT INTO users (name, email, password, role) VALUES (:name, :email, :password, :role)");
+    $stmt = $db->prepare("INSERT INTO users (name, email, phone, password, role) VALUES (:name, :email, :phone, :password, :role)");
     $stmt->execute([
         ':name' => $name,
         ':email' => $email,
+        ':phone' => $phone,
         ':password' => $hash,
         ':role' => $role,
     ]);
 
     echo json_encode(["success" => true, "id" => (int) $db->lastInsertId()]);
+
+} elseif ($_SERVER['REQUEST_METHOD'] === 'PATCH') {
+    $input = json_decode(file_get_contents("php://input"), true);
+    $userId = $input['id'] ?? null;
+
+    if (empty($userId)) {
+        http_response_code(400);
+        echo json_encode(["success" => false, "message" => "User id is required"]);
+        exit();
+    }
+
+    $fields = [];
+    $params = [':id' => $userId];
+
+    if (isset($input['name'])) { $fields[] = "name = :name"; $params[':name'] = $input['name']; }
+    if (isset($input['email'])) { $fields[] = "email = :email"; $params[':email'] = $input['email']; }
+    if (array_key_exists('phone', $input)) { $fields[] = "phone = :phone"; $params[':phone'] = $input['phone']; }
+    if (isset($input['role'])) { $fields[] = "role = :role"; $params[':role'] = $input['role']; }
+
+    if (empty($fields)) {
+        http_response_code(400);
+        echo json_encode(["success" => false, "message" => "No fields to update"]);
+        exit();
+    }
+
+    $sql = "UPDATE users SET " . implode(', ', $fields) . " WHERE id = :id";
+    $stmt = $db->prepare($sql);
+    $stmt->execute($params);
+
+    echo json_encode(["success" => true]);
 
 } else {
     http_response_code(405);

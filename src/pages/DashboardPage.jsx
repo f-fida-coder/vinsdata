@@ -36,7 +36,11 @@ export default function DashboardPage() {
   const [uploading, setUploading] = useState(false);
 
   // Edit modal
-  const [editModal, setEditModal] = useState(null); // { id, file_name, year, version }
+  const [editModal, setEditModal] = useState(null);
+
+  // WhatsApp notify modal
+  const [notifyModal, setNotifyModal] = useState(null); // { fileName, stage }
+  const [teamMembers, setTeamMembers] = useState([]);
 
   // Checkbox selection
   const [selected, setSelected] = useState(new Set());
@@ -133,6 +137,10 @@ export default function DashboardPage() {
   // Submit stage change + file upload
   const handleStageSubmit = async () => {
     if (!stageModal) return;
+    if (!stageFile) {
+      setError('You must upload a file to move to the next stage');
+      return;
+    }
     setUploading(true);
     setError('');
     try {
@@ -142,9 +150,7 @@ export default function DashboardPage() {
         notes: stageNotes || '',
       });
 
-      if (stageFile) {
-        await uploadFile(stageModal.fileId, stageModal.stage, stageFile);
-      }
+      await uploadFile(stageModal.fileId, stageModal.stage, stageFile);
 
       setStageModal(null);
       setStageFile(null);
@@ -211,6 +217,32 @@ export default function DashboardPage() {
     } catch {
       setError('Failed to update file');
     }
+  };
+
+  const handleConfirm = async (fileId, stage, fileName) => {
+    setError('');
+    try {
+      await api.patch('/upload', { file_id: fileId, stage, status: 'confirmed' });
+      fetchFiles();
+      // Show notify modal
+      const nextStage = NEXT_STAGE[stage];
+      if (nextStage) {
+        try {
+          const res = await api.get('/users');
+          setTeamMembers(res.data.filter((u) => u.phone));
+        } catch { /* ignore */ }
+        setNotifyModal({ fileName, stage, nextStage });
+      }
+    } catch {
+      setError('Failed to confirm upload');
+    }
+  };
+
+  const sendWhatsApp = (phone, fileName, nextStage) => {
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    const message = `Hi! The file "*${fileName}*" has been confirmed and is ready for the *${nextStage}* stage. Please start working on it.`;
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
+    setNotifyModal(null);
   };
 
   const clearFilters = () => setFilters({ vehicle_id: '', stage: '', year: '' });
@@ -373,7 +405,12 @@ export default function DashboardPage() {
                   const colors = STAGE_COLORS[file.current_stage] || STAGE_COLORS.generated;
                   const next = NEXT_STAGE[file.current_stage];
                   const uploaded = file.uploaded_stages || [];
+                  const uploads = file.uploads || [];
                   const invalid = !!file.is_invalid;
+                  const getUploadStatus = (s) => {
+                    const u = uploads.find((x) => x.stage === s);
+                    return u ? u.status : null;
+                  };
                   return (
                     <tr
                       key={file.id}
@@ -410,22 +447,24 @@ export default function DashboardPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
                           {STAGES.map((s) => {
-                            const isUploaded = uploaded.includes(s);
+                            const status = getUploadStatus(s);
                             const isCurrent = file.current_stage === s;
+                            const dotColor = invalid
+                              ? 'bg-red-300 border-red-300'
+                              : status === 'confirmed'
+                                ? 'bg-green-500 border-green-500'
+                                : status === 'pending'
+                                  ? 'bg-orange-400 border-orange-400'
+                                  : isCurrent
+                                    ? 'bg-yellow-400 border-yellow-400'
+                                    : 'bg-gray-200 border-gray-300';
+                            const label = status === 'confirmed' ? 'confirmed' : status === 'pending' ? 'pending review' : isCurrent ? 'current stage' : 'not uploaded';
                             return (
                               <div key={s} className="flex items-center gap-1.5">
                                 <div className="flex flex-col items-center">
                                   <span
-                                    title={`${s}: ${isUploaded ? 'file uploaded' : isCurrent ? 'current stage' : 'pending'}`}
-                                    className={`w-3 h-3 rounded-full border-2 ${
-                                      invalid
-                                        ? 'bg-red-300 border-red-300'
-                                        : isUploaded
-                                          ? 'bg-green-500 border-green-500'
-                                          : isCurrent
-                                            ? 'bg-yellow-400 border-yellow-400'
-                                            : 'bg-gray-200 border-gray-300'
-                                    }`}
+                                    title={`${s}: ${label}`}
+                                    className={`w-3 h-3 rounded-full border-2 ${dotColor}`}
                                   />
                                   <span className="text-[10px] text-gray-400 mt-0.5">{s.slice(0, 3)}</span>
                                 </div>
@@ -435,18 +474,30 @@ export default function DashboardPage() {
                           })}
                         </div>
                       </td>
-                      {/* Download Links */}
+                      {/* Download Links + Confirm */}
                       <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {uploaded.length > 0 ? uploaded.map((s) => (
-                            <a
-                              key={s}
-                              href={getDownloadUrl(file.id, s)}
-                              className="text-xs bg-gray-100 hover:bg-gray-200 text-blue-600 px-2 py-0.5 rounded"
-                              title={`Download ${s} file`}
-                            >
-                              {s}
-                            </a>
+                        <div className="flex flex-wrap gap-1.5">
+                          {uploads.length > 0 ? uploads.map((u) => (
+                            <div key={u.stage} className="flex items-center gap-1">
+                              <a
+                                href={getDownloadUrl(file.id, u.stage)}
+                                className="text-xs bg-gray-100 hover:bg-gray-200 text-blue-600 px-2 py-0.5 rounded"
+                                title={`Download ${u.stage} file`}
+                              >
+                                {u.stage}
+                              </a>
+                              {u.status === 'pending' ? (
+                                <button
+                                  onClick={() => handleConfirm(file.id, u.stage, file.file_name)}
+                                  className="text-[10px] bg-orange-100 hover:bg-orange-200 text-orange-700 px-1.5 py-0.5 rounded"
+                                  title="Confirm this upload"
+                                >
+                                  Confirm
+                                </button>
+                              ) : (
+                                <span className="text-[10px] text-green-600">&#10003;</span>
+                              )}
+                            </div>
                           )) : (
                             <span className="text-xs text-gray-400">—</span>
                           )}
@@ -681,12 +732,51 @@ export default function DashboardPage() {
                 </button>
                 <button
                   onClick={handleStageSubmit}
-                  disabled={uploading}
+                  disabled={uploading || !stageFile}
                   className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
                 >
                   {uploading ? 'Uploading...' : `Upload & Move to ${stageModal.stage}`}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp Notify Modal */}
+      {notifyModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-lg">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-800">Notify via WhatsApp</h2>
+              <button onClick={() => setNotifyModal(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              "<span className="font-medium">{notifyModal.fileName}</span>" is ready for <span className="font-medium">{notifyModal.nextStage}</span>. Select who to notify:
+            </p>
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {teamMembers.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-4">No team members with phone numbers</p>
+              ) : (
+                teamMembers.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => sendWhatsApp(m.phone, notifyModal.fileName, notifyModal.nextStage)}
+                    className="w-full flex items-center justify-between px-4 py-3 border border-gray-200 rounded-lg hover:bg-green-50 hover:border-green-300 transition-colors"
+                  >
+                    <div className="text-left">
+                      <p className="text-sm font-medium text-gray-800">{m.name}</p>
+                      <p className="text-xs text-gray-500">{m.role} &middot; {m.phone}</p>
+                    </div>
+                    <span className="text-green-600 text-lg">&#9742;</span>
+                  </button>
+                ))
+              )}
+            </div>
+            <div className="flex justify-end mt-4">
+              <button onClick={() => setNotifyModal(null)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50">
+                Skip
+              </button>
             </div>
           </div>
         </div>
