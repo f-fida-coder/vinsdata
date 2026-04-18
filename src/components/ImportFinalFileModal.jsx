@@ -52,10 +52,21 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
         const sheetName = wb.SheetNames[0];
         if (!sheetName) throw new Error('Spreadsheet has no sheets');
         const sheet = wb.Sheets[sheetName];
-        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', blankrows: false, raw: false });
+
+        // Respect Excel row hiding: AutoFilter, manual hide, "Hide rows" all
+        // mark metadata on sheet['!rows'][i].hidden. xlsx's sheet_to_json
+        // ignores this flag, so we collect hidden indices and skip them.
+        const hiddenRows = new Set();
+        (sheet['!rows'] || []).forEach((m, idx) => {
+          if (m && m.hidden) hiddenRows.add(idx);
+        });
+
+        // blankrows: true so aoa indices align with original sheet row numbers
+        // (0-based: aoa[0] is the header row, aoa[i] is sheet row i+1 in Excel).
+        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', blankrows: true, raw: false });
         if (aoa.length === 0) throw new Error('Sheet is empty');
 
-        const rawHeaders = aoa[0].map((h) => (h == null ? '' : String(h).trim()));
+        const rawHeaders = (aoa[0] || []).map((h) => (h == null ? '' : String(h).trim()));
         const seen = new Map();
         const dedupedHeaders = rawHeaders.map((h, i) => {
           const base = h || `Column ${i + 1}`;
@@ -71,7 +82,9 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
 
         const parsedRows = [];
         let emptyRows = 0;
+        let hiddenSkipped = 0;
         for (let i = 1; i < aoa.length; i++) {
+          if (hiddenRows.has(i)) { hiddenSkipped++; continue; }
           const row = aoa[i] || [];
           const isEmpty = dedupedHeaders.every((_, j) => {
             const v = row[j];
@@ -85,6 +98,7 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
           });
           parsedRows.push({ row_number: i + 1, raw: obj });
         }
+        if (hiddenSkipped > 0) warn.push(`Skipped ${hiddenSkipped} row${hiddenSkipped === 1 ? '' : 's'} hidden by an Excel filter.`);
         if (emptyRows > 0) warn.push(`Skipped ${emptyRows} empty row${emptyRows === 1 ? '' : 's'}.`);
 
         const suggested = {};
