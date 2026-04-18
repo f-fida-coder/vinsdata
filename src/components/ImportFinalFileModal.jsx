@@ -49,7 +49,9 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
           api.get('/upload', { params: { artifact_id: artifact.id }, responseType: 'arraybuffer' }),
         ]);
         if (cancelled) return;
-        const wb = XLSX.read(res.data, { type: 'array' });
+        // cellStyles: true is required for xlsx to populate sheet['!rows'] with
+        // each row's hidden flag — without it, AutoFilter-hidden rows look visible.
+        const wb = XLSX.read(res.data, { type: 'array', cellStyles: true });
         const sheetName = wb.SheetNames[0];
         if (!sheetName) throw new Error('Spreadsheet has no sheets');
         const sheet = wb.Sheets[sheetName];
