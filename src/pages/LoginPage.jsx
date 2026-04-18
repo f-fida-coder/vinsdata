@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { extractApiError } from '../api';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -13,7 +14,7 @@ export default function LoginPage() {
     setError('');
     setSubmitting(true);
     try { await login(email, password); }
-    catch { setError('Invalid credentials'); }
+    catch (err) { setError(extractApiError(err, 'Sign in failed. Please try again.')); }
     finally { setSubmitting(false); }
   };
 

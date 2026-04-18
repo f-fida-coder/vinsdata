@@ -59,7 +59,7 @@ CREATE TABLE file_logs (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
--- Default admin user (password: admin123)
+-- Default admin user (password: password)
 INSERT INTO users (name, email, password, role) VALUES
 ('Admin', 'admin@vin.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin');
 ```
