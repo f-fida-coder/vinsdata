@@ -102,8 +102,22 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
         if (hiddenSkipped > 0) warn.push(`Skipped ${hiddenSkipped} row${hiddenSkipped === 1 ? '' : 's'} hidden by an Excel filter.`);
         if (emptyRows > 0) warn.push(`Skipped ${emptyRows} empty row${emptyRows === 1 ? '' : 's'}.`);
 
+        // First header that suggests a given normalized field claims it.
+        // Subsequent headers that would map to the same field fall back to
+        // identity (kept as their raw column name) so no data is lost to
+        // last-wins overwrites. Example: Phone Number 1 -> phone_primary,
+        // Phone Number 2/3/4 -> "Phone Number 2"/"3"/"4" (kept as-is).
         const suggested = {};
-        dedupedHeaders.forEach((h) => { suggested[h] = suggestOrIdentity(h); });
+        const claimed = new Set();
+        dedupedHeaders.forEach((h) => {
+          const s = suggestOrIdentity(h);
+          if (s !== h && claimed.has(s)) {
+            suggested[h] = h;
+          } else {
+            suggested[h] = s;
+            if (s !== h) claimed.add(s);
+          }
+        });
 
         setHeaders(dedupedHeaders);
         setRows(parsedRows);
