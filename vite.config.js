@@ -9,7 +9,14 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://localhost:8000',
-        rewrite: (path) => path.replace(/^\/api/, '') + '.php',
+        // path includes the query string; appending '.php' to it would break
+        // GETs like /api/upload?artifact_id=1 (→ /upload?artifact_id=1.php).
+        rewrite: (path) => {
+          const q = path.indexOf('?');
+          const base  = q >= 0 ? path.slice(0, q) : path;
+          const query = q >= 0 ? path.slice(q)    : '';
+          return base.replace(/^\/api/, '') + '.php' + query;
+        },
       },
     },
   },
