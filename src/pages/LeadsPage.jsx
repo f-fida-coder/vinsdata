@@ -83,6 +83,14 @@ function normValue(lead, key) {
   return lead?.normalized_payload?.[key] ?? '';
 }
 
+// Keys with dedicated hardcoded columns — all other keys surface as "custom" columns.
+const HARDCODED_PAYLOAD_KEYS = new Set([
+  'vin', 'first_name', 'last_name', 'full_name',
+  'phone_primary', 'phone_secondary', 'email_primary',
+  'full_address', 'city', 'state', 'zip_code',
+  'make', 'model', 'year', 'mileage',
+]);
+
 export default function LeadsPage() {
   const { user } = useAuth();
   const [filters, setFilters] = useState(EMPTY_FILTERS);
@@ -98,6 +106,13 @@ export default function LeadsPage() {
   const [summary, setSummary] = useState(null);
   const [selection, setSelection] = useState(() => new Set());
   const [bulkAction, setBulkAction] = useState(null);
+  const [hiddenColumns, setHiddenColumns] = useState(() => {
+    try {
+      const stored = localStorage.getItem('lead_hidden_columns');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch { return new Set(); }
+  });
+  const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [bulkResult, setBulkResult] = useState(null);
   const [activeViewId, setActiveViewId] = useState(null);
@@ -176,6 +191,37 @@ export default function LeadsPage() {
     setSearchInput(view.filters_json?.q || '');
     setActiveViewId(view.id);
     setPage(1);
+  };
+
+  useEffect(() => {
+    try { localStorage.setItem('lead_hidden_columns', JSON.stringify([...hiddenColumns])); } catch { /* ignore quota */ }
+  }, [hiddenColumns]);
+
+  const customColumns = useMemo(() => {
+    const order = [];
+    const seen = new Set();
+    for (const lead of data.leads) {
+      const np = lead.normalized_payload || {};
+      for (const k of Object.keys(np)) {
+        if (HARDCODED_PAYLOAD_KEYS.has(k) || seen.has(k)) continue;
+        seen.add(k);
+        order.push(k);
+      }
+    }
+    return order;
+  }, [data.leads]);
+
+  const visibleCustomColumns = useMemo(
+    () => customColumns.filter((k) => !hiddenColumns.has(k)),
+    [customColumns, hiddenColumns],
+  );
+
+  const toggleColumn = (key) => {
+    setHiddenColumns((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
   };
 
   const pageIds = useMemo(() => data.leads.map((l) => l.id), [data.leads]);
@@ -357,6 +403,15 @@ export default function LeadsPage() {
               activeViewId={activeViewId}
               onApply={applyView}
             />
+            <ColumnsMenu
+              open={columnsMenuOpen}
+              onOpenChange={setColumnsMenuOpen}
+              customColumns={customColumns}
+              hiddenColumns={hiddenColumns}
+              onToggle={toggleColumn}
+              onShowAll={() => setHiddenColumns(new Set())}
+              onHideAll={() => setHiddenColumns(new Set(customColumns))}
+            />
             <a
               href={exportCsvUrl}
               className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
@@ -474,7 +529,7 @@ export default function LeadsPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1540px]">
+            <table className="w-full" style={{ minWidth: `${1540 + visibleCustomColumns.length * 180}px` }}>
               <thead>
                 <tr className="border-b border-gray-100">
                   <th className="pl-5 pr-1 py-3 w-8">
@@ -505,12 +560,17 @@ export default function LeadsPage() {
                   <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Stage</th>
                   <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Row #</th>
                   <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Imported</th>
+                  {visibleCustomColumns.map((k) => (
+                    <th key={`h-${k}`} className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                      {k}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {data.leads.length === 0 ? (
                   <tr>
-                    <td colSpan={19} className="py-16 text-center">
+                    <td colSpan={19 + visibleCustomColumns.length} className="py-16 text-center">
                       <p className="text-sm text-gray-400">No leads match these filters.</p>
                       {activeChips.length > 0 && (
                         <button onClick={clearAll} className="text-sm text-blue-600 hover:text-blue-700 font-medium mt-2">Clear all filters</button>
@@ -597,6 +657,15 @@ export default function LeadsPage() {
                       </td>
                       <td className="px-3 py-3 text-xs text-gray-400">{lead.source_row_number}</td>
                       <td className="px-3 py-3 text-xs text-gray-400">{formatDate(lead.imported_at)}</td>
+                      {visibleCustomColumns.map((k) => {
+                        const v = np[k];
+                        const display = v === undefined || v === null || v === '' ? null : String(v);
+                        return (
+                          <td key={`c-${lead.id}-${k}`} className="px-3 py-3 text-sm text-gray-700 truncate max-w-[200px]" title={display ?? ''}>
+                            {display ?? <span className="text-gray-300">—</span>}
+                          </td>
+                        );
+                      })}
                     </tr>
                   );
                 })}
@@ -663,6 +732,62 @@ export default function LeadsPage() {
         onClose={() => setBulkResult(null)}
         onRefresh={afterBulkResult}
       />
+    </div>
+  );
+}
+
+function ColumnsMenu({ open, onOpenChange, customColumns, hiddenColumns, onToggle, onShowAll, onHideAll }) {
+  const visibleCount = customColumns.filter((k) => !hiddenColumns.has(k)).length;
+  const totalCount = customColumns.length;
+  return (
+    <div className="relative">
+      <button
+        onClick={() => onOpenChange(!open)}
+        className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+        title="Show or hide imported columns"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+        </svg>
+        Columns
+        {totalCount > 0 && (
+          <span className="ml-1 text-[10px] font-semibold bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full">
+            {visibleCount}/{totalCount}
+          </span>
+        )}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => onOpenChange(false)} />
+          <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-gray-100 z-30 max-h-[70vh] flex flex-col">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Imported columns</span>
+              <div className="flex items-center gap-2 text-[11px]">
+                <button onClick={onShowAll} className="text-blue-600 hover:text-blue-800 font-medium">Show all</button>
+                <span className="text-gray-300">·</span>
+                <button onClick={onHideAll} className="text-gray-500 hover:text-gray-700 font-medium">Hide all</button>
+              </div>
+            </div>
+            <div className="overflow-y-auto py-1">
+              {totalCount === 0 ? (
+                <p className="px-3 py-3 text-xs text-gray-500">
+                  No imported columns yet. Columns from your next import will appear here.
+                </p>
+              ) : customColumns.map((k) => (
+                <label key={k} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-gray-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!hiddenColumns.has(k)}
+                    onChange={() => onToggle(k)}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-gray-700 truncate" title={k}>{k}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
