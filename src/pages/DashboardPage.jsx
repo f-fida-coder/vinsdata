@@ -402,14 +402,14 @@ export default function DashboardPage() {
                   <th className="pl-5 pr-2 py-4 w-10">
                     <input type="checkbox" checked={files.length > 0 && selected.size === files.length} onChange={toggleSelectAll} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                   </th>
-                  <th className="px-4 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">File</th>
-                  <th className="px-4 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Vehicle</th>
-                  <th className="px-4 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Year</th>
-                  <th className="px-4 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Pipeline</th>
-                  <th className="px-4 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Downloads</th>
-                  <th className="px-4 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Updated</th>
-                  <th className="px-4 py-4 w-12"></th>
+                  <th className="px-4 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">File</th>
+                  <th className="px-4 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Vehicle</th>
+                  <th className="px-4 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Year</th>
+                  <th className="px-4 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Pipeline</th>
+                  <th className="px-4 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Downloads</th>
+                  <th className="px-4 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Updated</th>
+                  <th className="px-4 py-2.5 w-12"></th>
                 </tr>
               </thead>
               <tbody>
@@ -433,18 +433,18 @@ export default function DashboardPage() {
                   const canReupload = !invalid && status === 'active' && user?.role && STAGE_ROLES[file.current_stage]?.includes(user.role);
                   return (
                     <tr key={file.id} className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${dimmed ? 'opacity-60' : ''}`}>
-                      <td className="pl-5 pr-2 py-3.5">
+                      <td className="pl-5 pr-2 py-2.5">
                         <input type="checkbox" checked={selected.has(file.id)} onChange={() => toggleSelect(file.id)} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                       </td>
-                      <td className="px-4 py-3.5">
+                      <td className="px-4 py-2.5">
                         <button onClick={() => setDetailId(file.id)} className={`text-sm font-medium hover:underline ${invalid ? 'text-gray-400 line-through' : 'text-gray-900 hover:text-blue-600'}`}>
                           {file.display_name || file.file_name}
                         </button>
                         {file.version && <span className="ml-2 text-[10px] font-medium text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{file.version}</span>}
                       </td>
-                      <td className="px-4 py-3.5 text-sm text-gray-600">{file.vehicle?.name || file.vehicle_name}</td>
-                      <td className="px-4 py-3.5 text-sm text-gray-600">{file.year || '—'}</td>
-                      <td className="px-4 py-3.5">
+                      <td className="px-4 py-2.5 text-[13px] text-gray-600">{file.vehicle?.name || file.vehicle_name}</td>
+                      <td className="px-4 py-2.5 text-[13px] text-gray-600">{file.year || '—'}</td>
+                      <td className="px-4 py-2.5">
                         <div className="flex flex-col gap-1">
                           {status === 'invalid' && (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-50 text-red-600 border border-red-100 w-fit">
@@ -473,10 +473,10 @@ export default function DashboardPage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3.5">
+                      <td className="px-4 py-2.5">
                         <StagePipeline stages={STAGES} artifactsByStage={byStage} currentStage={file.current_stage} status={status} />
                       </td>
-                      <td className="px-4 py-3.5">
+                      <td className="px-4 py-2.5">
                         <div className="flex flex-wrap gap-1">
                           {uploads.length > 0 ? uploads.map((u) => (
                             <a key={u.stage} href={getDownloadUrl(file.id, u.stage)} className="inline-flex items-center gap-1 text-[11px] font-medium bg-gray-50 hover:bg-gray-100 text-gray-600 px-2 py-1 rounded-md border border-gray-200 transition-colors" title={`Download latest ${u.stage}`}>
@@ -486,8 +486,8 @@ export default function DashboardPage() {
                           )) : <span className="text-xs text-gray-300">—</span>}
                         </div>
                       </td>
-                      <td className="px-4 py-3.5 text-xs text-gray-400">{(file.updated_at || file.created_at || '').slice(0, 10)}</td>
-                      <td className="pr-4 py-3.5">
+                      <td className="px-4 py-2.5 text-[11px] text-gray-400">{(file.updated_at || file.created_at || '').slice(0, 10)}</td>
+                      <td className="pr-4 py-2.5">
                         <ActionDropdown
                           file={file}
                           invalid={invalid}
