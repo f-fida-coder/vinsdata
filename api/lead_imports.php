@@ -121,7 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     foreach ($rows as $r) {
         if (!is_array($r)) continue;
         $rowNumber = (int) ($r['row_number'] ?? 0);
-        $raw       = $r['raw_payload'] ?? null;
+        $raw       = $r['raw'] ?? $r['raw_payload'] ?? null;
         if ($rowNumber <= 0 || !is_array($raw)) continue;
         $hasValue = false;
         foreach ($raw as $v) {
