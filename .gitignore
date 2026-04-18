@@ -8,12 +8,10 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
 dist-ssr
 *.local
 
-# API - only ignore credentials and uploads
-api/config.php
+# API - user uploads must never be tracked (git pulls would wipe them).
 api/uploads/
 
 # Editor directories and files
