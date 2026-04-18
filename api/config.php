@@ -7,18 +7,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
-// Auto-detect: local dev vs Hostinger production
-if ($_SERVER['SERVER_NAME'] === 'localhost' || $_SERVER['SERVER_NAME'] === '127.0.0.1') {
-    define('DB_HOST', 'srv2052.hstgr.io');
-    define('DB_NAME', 'u487877829_vins_data');
-    define('DB_USER', 'u487877829_vinsdata');
-    define('DB_PASS', '***SCRUBBED***');
-} else {
-    define('DB_HOST', 'localhost');
-    define('DB_NAME', 'u487877829_vins_data');
-    define('DB_USER', 'u487877829_vinsdata');
-    define('DB_PASS', '***SCRUBBED***');
-}
+// Use the remote MySQL host for both environments so the same config works
+// from local dev and from Hostinger without depending on a localhost socket.
+define('DB_HOST', 'srv2052.hstgr.io');
+define('DB_NAME', 'u487877829_vins_data');
+define('DB_USER', 'u487877829_vinsdata');
+define('DB_PASS', '***SCRUBBED***');
 
 function initSession(): void
 {
