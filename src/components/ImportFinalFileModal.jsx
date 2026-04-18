@@ -34,6 +34,7 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
   const [newTemplateName, setNewTemplateName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
+  const [rowFilters, setRowFilters] = useState([]); // [{ column, value }]
 
   // Parse the artifact once the modal opens.
   useEffect(() => {
@@ -152,7 +153,20 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
       .map(([f]) => f);
   }, [mappedFieldCounts]);
 
-  const canImport = batchName.trim().length > 0 && rows.length > 0
+  // Apply the row filters (if any) to narrow the rows we import.
+  // An empty "value" means "must be non-empty"; a set value requires an exact match.
+  const activeRowFilters = rowFilters.filter((f) => f.column);
+  const filteredRows = useMemo(() => {
+    if (activeRowFilters.length === 0) return rows;
+    return rows.filter((r) => activeRowFilters.every((f) => {
+      const v = r.raw[f.column];
+      const s = v == null ? '' : String(v).trim();
+      if (f.value === '') return s !== '';
+      return s.toLowerCase() === String(f.value).trim().toLowerCase();
+    }));
+  }, [rows, activeRowFilters]);
+
+  const canImport = batchName.trim().length > 0 && filteredRows.length > 0
     && Object.values(mapping).some((f) => f !== '_ignore');
 
   const handleImport = async () => {
@@ -183,7 +197,7 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
         batch_name:           batchName.trim(),
         mapping_json:         mapping,
         mapping_template_id:  mappingTemplateIdFinal,
-        rows,
+        rows:                 filteredRows,
         notes:                notes || null,
       });
       setResult(res.data);
@@ -262,8 +276,64 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
 
             <section>
               <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500">Filter rows</h3>
+                <button
+                  type="button"
+                  onClick={() => setRowFilters([...rowFilters, { column: '', value: '' }])}
+                  className="text-[11px] font-medium text-blue-600 hover:text-blue-800"
+                >
+                  + Add filter
+                </button>
+              </div>
+              {rowFilters.length === 0 ? (
+                <p className="text-[11px] text-gray-400 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+                  No filters — all {rows.length} rows will be imported. Add a filter to narrow down (e.g. only rows where "1 = Interested" equals 1).
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {rowFilters.map((f, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <select
+                        value={f.column}
+                        onChange={(e) => setRowFilters(rowFilters.map((x, i) => i === idx ? { ...x, column: e.target.value } : x))}
+                        className="flex-1 bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5 text-xs"
+                      >
+                        <option value="">— choose column —</option>
+                        {headers.map((h) => <option key={h} value={h}>{h}</option>)}
+                      </select>
+                      <span className="text-[11px] text-gray-500">equals</span>
+                      <input
+                        type="text"
+                        value={f.value}
+                        onChange={(e) => setRowFilters(rowFilters.map((x, i) => i === idx ? { ...x, value: e.target.value } : x))}
+                        placeholder="value (or leave blank = non-empty)"
+                        className="flex-1 bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5 text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setRowFilters(rowFilters.filter((_, i) => i !== idx))}
+                        className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
+                        aria-label="Remove filter"
+                      >×</button>
+                    </div>
+                  ))}
+                  {activeRowFilters.length > 0 && (
+                    <p className="text-[11px] text-blue-700">
+                      {filteredRows.length} of {rows.length} rows match {activeRowFilters.length === 1 ? 'this filter' : `all ${activeRowFilters.length} filters`}.
+                    </p>
+                  )}
+                </div>
+              )}
+            </section>
+
+            <section>
+              <div className="flex items-center justify-between mb-2">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500">Column mapping</h3>
-                <span className="text-[11px] text-gray-400">{rows.length} data {rows.length === 1 ? 'row' : 'rows'}</span>
+                <span className="text-[11px] text-gray-400">
+                  {activeRowFilters.length > 0
+                    ? `${filteredRows.length} of ${rows.length} rows match filters`
+                    : `${rows.length} data ${rows.length === 1 ? 'row' : 'rows'}`}
+                </span>
               </div>
               <div className="max-h-72 overflow-y-auto rounded-xl border border-gray-100 divide-y divide-gray-100">
                 {headers.map((h) => (
@@ -297,7 +367,7 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
 
             <section>
               <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
-                Preview (first {Math.min(rows.length, PREVIEW_ROW_LIMIT)} of {rows.length})
+                Preview (first {Math.min(filteredRows.length, PREVIEW_ROW_LIMIT)} of {filteredRows.length})
               </h3>
               <div className="overflow-x-auto border border-gray-100 rounded-xl">
                 <table className="min-w-full text-xs">
@@ -317,7 +387,7 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.slice(0, PREVIEW_ROW_LIMIT).map((r) => (
+                    {filteredRows.slice(0, PREVIEW_ROW_LIMIT).map((r) => (
                       <tr key={r.row_number} className="border-t border-gray-100">
                         <td className="px-2 py-1.5 text-gray-400 sticky left-0 bg-white">{r.row_number}</td>
                         {headers.map((h) => (
@@ -374,7 +444,7 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
                 disabled={!canImport || submitting}
                 className="px-5 py-2 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-lg shadow-lg shadow-blue-500/25 disabled:opacity-50"
               >
-                {submitting ? 'Importing…' : `Import ${rows.length} ${rows.length === 1 ? 'row' : 'rows'}`}
+                {submitting ? 'Importing…' : `Import ${filteredRows.length} ${filteredRows.length === 1 ? 'row' : 'rows'}`}
               </button>
             </div>
           </>
