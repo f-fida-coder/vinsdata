@@ -23,4 +23,14 @@ export function getDownloadUrl(fileId, stage) {
   return `/api/upload?file_id=${fileId}&stage=${stage}`;
 }
 
+export function getArtifactDownloadUrl(artifactId) {
+  return `/api/upload?artifact_id=${artifactId}`;
+}
+
+export function extractApiError(err, fallback = 'Something went wrong') {
+  const data = err?.response?.data;
+  if (data?.message) return data.code ? `${data.message}` : data.message;
+  return fallback;
+}
+
 export default api;
