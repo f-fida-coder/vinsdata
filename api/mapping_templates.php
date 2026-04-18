@@ -24,8 +24,8 @@ function assertMappingShape(array $mapping): void
         if (!is_string($header) || $header === '') {
             pipelineFail(400, 'mapping keys must be non-empty strings', 'invalid_mapping');
         }
-        if (!is_string($target) || !in_array($target, NORMALIZED_FIELDS, true)) {
-            pipelineFail(400, "mapping value '$target' is not a recognised normalized field", 'invalid_mapping');
+        if (!is_string($target) || $target === '') {
+            pipelineFail(400, "mapping value for '$header' must be a non-empty string", 'invalid_mapping');
         }
     }
 }
