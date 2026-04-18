@@ -530,9 +530,9 @@ export default function LeadsPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full" style={{ minWidth: `${1540 + visibleCustomColumns.length * 180}px` }}>
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="pl-5 pr-1 py-3 w-8">
+              <thead className="bg-gray-50/70 sticky top-0 z-10">
+                <tr className="border-b border-gray-200">
+                  <th className="pl-5 pr-1 py-2 w-8">
                     <input
                       type="checkbox"
                       checked={allPageSelected}
@@ -542,26 +542,26 @@ export default function LeadsPage() {
                       aria-label="Select all on page"
                     />
                   </th>
-                  <th className="px-2 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Name</th>
-                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Priority</th>
-                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Temperature</th>
-                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Agent</th>
-                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Labels</th>
-                  <th className="hidden xl:table-cell px-3 py-3 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Wanted</th>
-                  <th className="hidden xl:table-cell px-3 py-3 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Offered</th>
-                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">VIN</th>
-                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Phone</th>
-                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Email</th>
-                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Location</th>
-                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Vehicle</th>
-                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Source file</th>
-                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Batch</th>
-                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Stage</th>
-                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Row #</th>
-                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Imported</th>
+                  <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Name</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Priority</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Temperature</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Agent</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Labels</th>
+                  <th className="hidden xl:table-cell px-3 py-2 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Wanted</th>
+                  <th className="hidden xl:table-cell px-3 py-2 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Offered</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">VIN</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Phone</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Email</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Location</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Vehicle</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Source file</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Batch</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Stage</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Row #</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Imported</th>
                   {visibleCustomColumns.map((k) => (
-                    <th key={`h-${k}`} className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                    <th key={`h-${k}`} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap truncate max-w-[200px]" title={k}>
                       {k}
                     </th>
                   ))}
@@ -594,7 +594,7 @@ export default function LeadsPage() {
                       onClick={() => setDetailId(lead.id)}
                       className={`border-b border-gray-50 transition-colors cursor-pointer ${isSelected ? 'bg-blue-50/50' : 'hover:bg-gray-50/60'}`}
                     >
-                      <td className="pl-5 pr-1 py-3 w-8" onClick={(e) => { e.stopPropagation(); toggleRow(lead.id); }}>
+                      <td className="pl-5 pr-1 py-2 w-8" onClick={(e) => { e.stopPropagation(); toggleRow(lead.id); }}>
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -604,28 +604,28 @@ export default function LeadsPage() {
                           aria-label={`Select lead ${lead.id}`}
                         />
                       </td>
-                      <td className="px-2 py-3 text-sm text-gray-900 font-medium">{name}</td>
-                      <td className="px-3 py-3">
+                      <td className="px-2 py-2 text-[13px] text-gray-900 font-medium">{name}</td>
+                      <td className="px-3 py-2">
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${statusMeta.bg} ${statusMeta.text}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dot}`} />{statusMeta.label}
                         </span>
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-2">
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${priorityMeta.bg} ${priorityMeta.text}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${priorityMeta.dot}`} />{priorityMeta.label}
                         </span>
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-2">
                         {temperatureMeta ? (
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${temperatureMeta.bg} ${temperatureMeta.text}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${temperatureMeta.dot}`} />{temperatureMeta.label}
                           </span>
                         ) : <span className="text-gray-300 text-xs">—</span>}
                       </td>
-                      <td className="px-3 py-3 text-sm text-gray-700">
+                      <td className="px-3 py-2 text-[13px] text-gray-700">
                         {crm.assigned_user_name || <span className="text-gray-400 italic">Unassigned</span>}
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-2">
                         {labels.length === 0 ? <span className="text-gray-300 text-xs">—</span> : (
                           <div className="flex flex-wrap items-center gap-1 max-w-[220px]">
                             {labels.slice(0, 3).map((l) => (
@@ -639,29 +639,29 @@ export default function LeadsPage() {
                           </div>
                         )}
                       </td>
-                      <td className="hidden xl:table-cell px-3 py-3 text-sm text-gray-700 text-right tabular-nums">
+                      <td className="hidden xl:table-cell px-3 py-2 text-[13px] text-gray-700 text-right tabular-nums">
                         {crm.price_wanted != null ? formatPrice(crm.price_wanted) : <span className="text-gray-300">—</span>}
                       </td>
-                      <td className="hidden xl:table-cell px-3 py-3 text-sm text-gray-700 text-right tabular-nums">
+                      <td className="hidden xl:table-cell px-3 py-2 text-[13px] text-gray-700 text-right tabular-nums">
                         {crm.price_offered != null ? formatPrice(crm.price_offered) : <span className="text-gray-300">—</span>}
                       </td>
-                      <td className="px-3 py-3 text-[11px] font-mono text-gray-700">{normValue(lead, 'vin') || '—'}</td>
-                      <td className="px-3 py-3 text-sm text-gray-700">{normValue(lead, 'phone_primary') || '—'}</td>
-                      <td className="px-3 py-3 text-sm text-gray-700 truncate max-w-[180px]">{normValue(lead, 'email_primary') || '—'}</td>
-                      <td className="px-3 py-3 text-sm text-gray-600">{location}</td>
-                      <td className="px-3 py-3 text-sm text-gray-700">{vehicle}</td>
-                      <td className="px-3 py-3 text-sm text-gray-600 truncate max-w-[180px]">{lead.file_display_name || lead.file_name}</td>
-                      <td className="px-3 py-3 text-sm text-gray-600 truncate max-w-[180px]">{lead.batch_name}</td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-2 text-[11px] font-mono text-gray-700">{normValue(lead, 'vin') || '—'}</td>
+                      <td className="px-3 py-2 text-[13px] text-gray-700">{normValue(lead, 'phone_primary') || '—'}</td>
+                      <td className="px-3 py-2 text-[13px] text-gray-700 truncate max-w-[180px]">{normValue(lead, 'email_primary') || '—'}</td>
+                      <td className="px-3 py-2 text-[13px] text-gray-600">{location}</td>
+                      <td className="px-3 py-2 text-[13px] text-gray-700">{vehicle}</td>
+                      <td className="px-3 py-2 text-[13px] text-gray-600 truncate max-w-[180px]">{lead.file_display_name || lead.file_name}</td>
+                      <td className="px-3 py-2 text-[13px] text-gray-600 truncate max-w-[180px]">{lead.batch_name}</td>
+                      <td className="px-3 py-2">
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">{lead.source_stage}</span>
                       </td>
-                      <td className="px-3 py-3 text-xs text-gray-400">{lead.source_row_number}</td>
-                      <td className="px-3 py-3 text-xs text-gray-400">{formatDate(lead.imported_at)}</td>
+                      <td className="px-3 py-2 text-[11px] text-gray-400">{lead.source_row_number}</td>
+                      <td className="px-3 py-2 text-[11px] text-gray-400">{formatDate(lead.imported_at)}</td>
                       {visibleCustomColumns.map((k) => {
                         const v = np[k];
                         const display = v === undefined || v === null || v === '' ? null : String(v);
                         return (
-                          <td key={`c-${lead.id}-${k}`} className="px-3 py-3 text-sm text-gray-700 truncate max-w-[200px]" title={display ?? ''}>
+                          <td key={`c-${lead.id}-${k}`} className="px-3 py-2 text-[13px] text-gray-700 truncate max-w-[200px]" title={display ?? ''}>
                             {display ?? <span className="text-gray-300">—</span>}
                           </td>
                         );
