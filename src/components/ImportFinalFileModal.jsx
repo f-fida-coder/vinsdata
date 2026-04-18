@@ -2,6 +2,13 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import api, { extractApiError } from '../api';
 import { NORMALIZED_FIELDS, suggestFieldForHeader } from '../lib/normalizedFields';
 
+// Default each header to a known normalized field if we can recognize it,
+// otherwise keep the column under its original name (identity mapping).
+function suggestOrIdentity(header) {
+  const suggested = suggestFieldForHeader(header);
+  return suggested === '_ignore' ? header : suggested;
+}
+
 const PREVIEW_ROW_LIMIT = 15;
 
 function pickLatestTloArtifact(file) {
@@ -81,7 +88,7 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
         if (emptyRows > 0) warn.push(`Skipped ${emptyRows} empty row${emptyRows === 1 ? '' : 's'}.`);
 
         const suggested = {};
-        dedupedHeaders.forEach((h) => { suggested[h] = suggestFieldForHeader(h); });
+        dedupedHeaders.forEach((h) => { suggested[h] = suggestOrIdentity(h); });
 
         setHeaders(dedupedHeaders);
         setRows(parsedRows);
@@ -252,13 +259,17 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
                       <p className="text-[11px] text-gray-400 truncate">e.g. {firstNonEmpty(rows, h)}</p>
                     </div>
                     <select
-                      value={mapping[h] ?? '_ignore'}
+                      value={mapping[h] ?? h}
                       onChange={(e) => setMapping({ ...mapping, [h]: e.target.value })}
                       className="bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                     >
-                      {NORMALIZED_FIELDS.map((f) => (
-                        <option key={f.key} value={f.key}>{f.label}</option>
-                      ))}
+                      <option value={h}>Keep as "{h}"</option>
+                      <optgroup label="Map to standard field">
+                        {NORMALIZED_FIELDS.filter((f) => f.key !== '_ignore').map((f) => (
+                          <option key={f.key} value={f.key}>{f.label}</option>
+                        ))}
+                      </optgroup>
+                      <option value="_ignore">— Ignore this column —</option>
                     </select>
                   </div>
                 ))}

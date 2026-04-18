@@ -93,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         pipelineFail(400, 'mapping_json must be a non-empty object', 'invalid_mapping');
     }
     foreach ($mapping as $h => $f) {
-        if (!is_string($h) || !is_string($f) || !in_array($f, NORMALIZED_FIELDS, true)) {
+        if (!is_string($h) || $h === '' || !is_string($f) || $f === '') {
             pipelineFail(400, 'Invalid mapping entry: ' . json_encode([$h => $f]), 'invalid_mapping');
         }
     }
