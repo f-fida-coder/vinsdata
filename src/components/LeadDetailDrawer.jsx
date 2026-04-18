@@ -484,6 +484,7 @@ function TasksSection({ leadId, currentUser, users, onChanged }) {
   };
 
   const complete = async (id) => {
+    if (!window.confirm('Mark this task as complete?')) return;
     try { await api.patch('/lead_tasks', { id, action: 'complete' }); bubble(); }
     catch (err) { setError(extractApiError(err, 'Failed to complete task')); }
   };
@@ -509,6 +510,7 @@ function TasksSection({ leadId, currentUser, users, onChanged }) {
   };
   const cancelEdit = () => setEditingId(null);
   const saveEdit = async (id) => {
+    if (!editingDraft.title.trim()) { setError('Task title is required'); return; }
     try {
       await api.patch('/lead_tasks', {
         id,

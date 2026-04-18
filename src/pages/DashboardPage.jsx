@@ -227,8 +227,10 @@ export default function DashboardPage() {
 
   const handleBulkDelete = async () => {
     if (!window.confirm(`Delete ${selected.size} file(s)? This cannot be undone.`)) return;
-    try { for (const id of selected) await api.delete('/files', { data: { id } }); fetchFiles(); }
-    catch (err) { setError(extractApiError(err, 'Failed to delete files')); }
+    try {
+      await Promise.all(Array.from(selected).map((id) => api.delete('/files', { data: { id } })));
+      fetchFiles();
+    } catch (err) { setError(extractApiError(err, 'Failed to delete files')); }
   };
 
   const handleStageChange = (fileId, stage, fileName) => {
