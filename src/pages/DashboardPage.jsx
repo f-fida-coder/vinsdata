@@ -113,22 +113,40 @@ function StagePipeline({ stages, artifactsByStage, currentStage, status }) {
 
 function ActionDropdown({ file, onMove, onReupload, onEdit, onDelete, onNotify, onView, invalid, next, canReupload }) {
   const [open, setOpen] = useState(false);
-  const [flipUp, setFlipUp] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
   const ref = useRef(null);
   const btnRef = useRef(null);
+  const menuRef = useRef(null);
 
   useEffect(() => {
-    const handleClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    if (!open) return;
+    const handleClick = (e) => {
+      if (ref.current?.contains(e.target)) return;
+      if (menuRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const closeOnScroll = () => setOpen(false);
     document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
+    window.addEventListener('scroll', closeOnScroll, true);
+    window.addEventListener('resize', closeOnScroll);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      window.removeEventListener('scroll', closeOnScroll, true);
+      window.removeEventListener('resize', closeOnScroll);
+    };
+  }, [open]);
 
   const toggle = () => {
     if (!open && btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect();
+      const DROPDOWN_H = 280;
+      const DROPDOWN_W = 208; // w-52
       const spaceBelow = window.innerHeight - rect.bottom;
-      // dropdown height ~ 250-300px depending on visible items
-      setFlipUp(spaceBelow < 280 && rect.top > 280);
+      const flipUp = spaceBelow < DROPDOWN_H && rect.top > DROPDOWN_H;
+      setPos({
+        top: flipUp ? Math.max(8, rect.top - DROPDOWN_H - 4) : rect.bottom + 4,
+        left: Math.max(8, rect.right - DROPDOWN_W),
+      });
     }
     setOpen(!open);
   };
@@ -143,7 +161,11 @@ function ActionDropdown({ file, onMove, onReupload, onEdit, onDelete, onNotify, 
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16"><circle cx="8" cy="3" r="1.5" /><circle cx="8" cy="8" r="1.5" /><circle cx="8" cy="13" r="1.5" /></svg>
       </button>
       {open && (
-        <div className={`absolute right-0 ${flipUp ? 'bottom-full mb-1' : 'top-full mt-1'} w-52 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-30`}>
+        <div
+          ref={menuRef}
+          style={{ position: 'fixed', top: pos.top, left: pos.left }}
+          className="w-52 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-50"
+        >
           <button onClick={() => { setOpen(false); onView(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
             View details
