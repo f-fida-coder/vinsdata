@@ -1,0 +1,697 @@
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import api, { extractApiError } from '../api';
+import LeadDetailDrawer from '../components/LeadDetailDrawer';
+import SavedViewsMenu from '../components/SavedViewsMenu';
+import SummaryCards from '../components/SummaryCards';
+import { BulkActionsBar, BulkActionModal, BulkResultModal } from '../components/LeadBulkActions';
+import { useAuth } from '../context/AuthContext';
+import {
+  LEAD_STATUSES, LEAD_PRIORITIES, LEAD_TEMPERATURES,
+  STATUS_BY_KEY, PRIORITY_BY_KEY, TEMPERATURE_BY_KEY,
+  formatPrice,
+} from '../lib/crm';
+
+const PER_PAGE_OPTIONS = [25, 50, 100, 200];
+
+const EMPTY_FILTERS = {
+  q: '',
+  batch_id: '',
+  file_id: '',
+  vehicle_id: '',
+  source_stage: '',
+  state: '',
+  make: '',
+  model: '',
+  year: '',
+  vin: '',
+  phone_primary: '',
+  email_primary: '',
+  first_name: '',
+  last_name: '',
+  city: '',
+  zip_code: '',
+  imported_from: '',
+  imported_to: '',
+  status: '',
+  priority: '',
+  lead_temperature: '',
+  assigned_user_id: '',
+  label_id: '',
+  has_open_tasks: '',
+  tasks_due_today: '',
+  tasks_overdue: '',
+};
+
+// Which filters show as removable "chips" above the table.
+const CHIP_LABELS = {
+  q:             'Search',
+  batch_id:      'Batch',
+  file_id:       'File',
+  vehicle_id:    'Vehicle',
+  source_stage:  'Stage',
+  state:         'State',
+  make:          'Make',
+  model:         'Model',
+  year:          'Year',
+  vin:           'VIN',
+  phone_primary: 'Phone',
+  email_primary: 'Email',
+  first_name:    'First name',
+  last_name:     'Last name',
+  city:          'City',
+  zip_code:      'ZIP',
+  imported_from: 'Imported from',
+  imported_to:   'Imported to',
+  status:           'Status',
+  priority:         'Priority',
+  lead_temperature: 'Temperature',
+  assigned_user_id: 'Agent',
+  label_id:         'Label',
+  has_open_tasks:   'Open tasks',
+  tasks_due_today:  'Due today',
+  tasks_overdue:    'Overdue tasks',
+};
+
+function formatDate(s) {
+  if (!s) return '—';
+  const d = new Date(String(s).replace(' ', 'T'));
+  if (Number.isNaN(d.getTime())) return s;
+  return d.toLocaleDateString();
+}
+
+function normValue(lead, key) {
+  return lead?.normalized_payload?.[key] ?? '';
+}
+
+export default function LeadsPage() {
+  const { user } = useAuth();
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [searchInput, setSearchInput] = useState('');
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(50);
+  const [data, setData] = useState({ leads: [], total: 0, page: 1, per_page: 50 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [options, setOptions] = useState({ batches: [], files: [], vehicles: [], stages: [], states: [], makes: [], years: [], users: [], labels: [] });
+  const [detailId, setDetailId] = useState(null);
+  const [summary, setSummary] = useState(null);
+  const [selection, setSelection] = useState(() => new Set());
+  const [bulkAction, setBulkAction] = useState(null);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const [bulkResult, setBulkResult] = useState(null);
+  const [activeViewId, setActiveViewId] = useState(null);
+  const [defaultApplied, setDefaultApplied] = useState(false);
+
+  // Debounce search input → filters.q
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (searchInput !== filters.q) {
+        setFilters((prev) => ({ ...prev, q: searchInput }));
+        setPage(1);
+        setActiveViewId(null);
+      }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput, filters.q]);
+
+  const fetchLeads = useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      const params = { page, per_page: perPage };
+      Object.entries(filters).forEach(([k, v]) => {
+        if (v !== '' && v !== null && v !== undefined) params[k] = v;
+      });
+      const res = await api.get('/leads', { params });
+      setData(res.data);
+    } catch (err) {
+      setError(extractApiError(err, 'Failed to load leads'));
+    } finally {
+      setLoading(false);
+    }
+  }, [filters, page, perPage]);
+
+  useEffect(() => { fetchLeads(); }, [fetchLeads]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/lead_filter_options')
+      .then((res) => { if (!cancelled) setOptions(res.data); })
+      .catch(() => { /* non-blocking */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Summary cards data.
+  const fetchSummary = useCallback(async () => {
+    try {
+      const res = await api.get('/reports', { params: { type: 'leads' } });
+      setSummary(res.data?.leads || null);
+    } catch { /* non-blocking; cards just won't render */ }
+  }, []);
+  useEffect(() => { fetchSummary(); }, [fetchSummary]);
+
+  // Apply default saved view on first load.
+  useEffect(() => {
+    if (defaultApplied) return;
+    let cancelled = false;
+    api.get('/saved_views', { params: { view_type: 'leads' } })
+      .then((res) => {
+        if (cancelled) return;
+        const def = (res.data || []).find((v) => v.is_default);
+        if (def) {
+          setFilters({ ...EMPTY_FILTERS, ...(def.filters_json || {}) });
+          setSearchInput(def.filters_json?.q || '');
+          setActiveViewId(def.id);
+          setPage(1);
+        }
+      })
+      .catch(() => { /* silent */ })
+      .finally(() => { if (!cancelled) setDefaultApplied(true); });
+    return () => { cancelled = true; };
+  }, [defaultApplied]);
+
+  const applyView = (view) => {
+    if (!view) { setActiveViewId(null); return; }
+    setFilters({ ...EMPTY_FILTERS, ...(view.filters_json || {}) });
+    setSearchInput(view.filters_json?.q || '');
+    setActiveViewId(view.id);
+    setPage(1);
+  };
+
+  const pageIds = useMemo(() => data.leads.map((l) => l.id), [data.leads]);
+  const pageSelectedCount = useMemo(
+    () => pageIds.reduce((n, id) => n + (selection.has(id) ? 1 : 0), 0),
+    [pageIds, selection],
+  );
+  const allPageSelected = pageIds.length > 0 && pageSelectedCount === pageIds.length;
+  const somePageSelected = pageSelectedCount > 0 && !allPageSelected;
+
+  const togglePageSelection = () => {
+    setSelection((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        pageIds.forEach((id) => next.delete(id));
+      } else {
+        pageIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const toggleRow = (id) => {
+    setSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelection(new Set());
+
+  const runBulk = async (payload) => {
+    setBulkSubmitting(true);
+    try {
+      const res = await api.post('/lead_bulk_actions', {
+        lead_ids: Array.from(selection),
+        action:   bulkAction,
+        payload,
+      });
+      setBulkResult(res.data);
+      setBulkAction(null);
+      // On any success clear selection; if all-or-some failed the user can reselect.
+      if ((res.data?.succeeded ?? 0) > 0) clearSelection();
+    } catch (err) {
+      setError(extractApiError(err, 'Bulk action failed'));
+      setBulkAction(null);
+    } finally {
+      setBulkSubmitting(false);
+    }
+  };
+
+  const afterBulkResult = () => {
+    setBulkResult(null);
+    fetchLeads();
+    fetchSummary();
+  };
+
+  const exportCsvUrl = useMemo(() => {
+    const qs = new URLSearchParams();
+    qs.set('format', 'csv');
+    Object.entries(filters).forEach(([k, v]) => { if (v !== '' && v !== null && v !== undefined) qs.set(k, String(v)); });
+    return `/api/leads?${qs.toString()}`;
+  }, [filters]);
+
+  const totalPages = Math.max(1, Math.ceil(data.total / perPage));
+  const activeChips = useMemo(() => {
+    return Object.entries(filters).filter(([k, v]) => v !== '' && k !== 'q').map(([k, v]) => ({ key: k, value: v }));
+  }, [filters]);
+
+  const clearFilter = (key) => {
+    setFilters((prev) => ({ ...prev, [key]: '' }));
+    setPage(1);
+    setActiveViewId(null);
+  };
+  const clearAll = () => { setFilters(EMPTY_FILTERS); setSearchInput(''); setPage(1); setActiveViewId(null); };
+  const updateFilter = (key, value) => { setFilters((prev) => ({ ...prev, [key]: value })); setPage(1); setActiveViewId(null); };
+
+  const batchLabel = (id) => {
+    const b = options.batches.find((x) => String(x.id) === String(id));
+    return b ? b.batch_name : id;
+  };
+  const fileLabel = (id) => {
+    const f = options.files.find((x) => String(x.id) === String(id));
+    return f ? f.display_name : id;
+  };
+  const vehicleLabel = (id) => {
+    const v = options.vehicles.find((x) => String(x.id) === String(id));
+    return v ? v.name : id;
+  };
+  const userLabel = (id) => {
+    if (id === 'unassigned') return 'Unassigned';
+    const u = options.users.find((x) => String(x.id) === String(id));
+    return u ? u.name : id;
+  };
+  const labelName = (id) => {
+    const l = options.labels.find((x) => String(x.id) === String(id));
+    return l ? l.name : id;
+  };
+
+  const renderChipValue = (k, v) => {
+    if (k === 'batch_id')         return batchLabel(v);
+    if (k === 'file_id')          return fileLabel(v);
+    if (k === 'vehicle_id')       return vehicleLabel(v);
+    if (k === 'assigned_user_id') return userLabel(v);
+    if (k === 'label_id')         return labelName(v);
+    if (k === 'status')           return STATUS_BY_KEY[v]?.label || v;
+    if (k === 'priority')         return PRIORITY_BY_KEY[v]?.label || v;
+    if (k === 'lead_temperature') return v === 'unset' ? 'Not set' : (TEMPERATURE_BY_KEY[v]?.label || v);
+    if (k === 'has_open_tasks')   return v === '1' ? 'Has open tasks' : 'No open tasks';
+    if (k === 'tasks_due_today')  return 'Yes';
+    if (k === 'tasks_overdue')    return 'Yes';
+    return String(v);
+  };
+
+  return (
+    <div className="max-w-[1600px] mx-auto">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 sm:mb-8">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">CRM Leads</h1>
+          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+            {data.total.toLocaleString()} {data.total === 1 ? 'lead' : 'leads'} imported · read-only
+          </p>
+        </div>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl mb-4 flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => setError('')} className="text-red-400 hover:text-red-600 p-1">&times;</button>
+        </div>
+      )}
+
+      {summary && (
+        <SummaryCards
+          cards={[
+            { label: 'Total leads',     value: summary.total,              color: 'blue' },
+            { label: 'Unassigned',      value: summary.unassigned,         color: 'amber' },
+            { label: 'Open tasks',      value: summary.open_tasks,         color: 'blue' },
+            { label: 'Due today',       value: summary.tasks_due_today,    color: 'amber' },
+            { label: 'Overdue',         value: summary.tasks_overdue,      color: 'red' },
+            ...(summary.confirmed_duplicate_related > 0
+              ? [{ label: 'In confirmed duplicates', value: summary.confirmed_duplicate_related, color: 'red' }]
+              : []),
+          ]}
+        />
+      )}
+
+      {/* Search + filter toggle */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-3 sm:p-4 mb-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="relative flex-1 min-w-[200px]">
+            <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search VIN, name, phone, email, city…"
+              className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            />
+          </div>
+          <button
+            onClick={() => setShowFilters((v) => !v)}
+            className={`inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${showFilters ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+            Filters
+            {activeChips.length > 0 && (
+              <span className="ml-1 text-[10px] font-semibold bg-blue-600 text-white px-1.5 py-0.5 rounded-full">{activeChips.length}</span>
+            )}
+          </button>
+          {(activeChips.length > 0 || filters.q) && (
+            <button onClick={clearAll} className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-2">Clear all</button>
+          )}
+          <div className="ml-auto flex items-center gap-2">
+            <SavedViewsMenu
+              viewType="leads"
+              currentFilters={filters}
+              activeViewId={activeViewId}
+              onApply={applyView}
+            />
+            <a
+              href={exportCsvUrl}
+              className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+              title={`Export ${data.total.toLocaleString()} matching leads as CSV`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+              Export CSV
+            </a>
+          </div>
+        </div>
+
+        {showFilters && (
+          <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+            <FilterSelect label="Batch" value={filters.batch_id} onChange={(v) => updateFilter('batch_id', v)}>
+              <option value="">All batches</option>
+              {options.batches.map((b) => <option key={b.id} value={b.id}>{b.batch_name}</option>)}
+            </FilterSelect>
+            <FilterSelect label="Source file" value={filters.file_id} onChange={(v) => updateFilter('file_id', v)}>
+              <option value="">All files</option>
+              {options.files.map((f) => <option key={f.id} value={f.id}>{f.display_name}</option>)}
+            </FilterSelect>
+            <FilterSelect label="Vehicle" value={filters.vehicle_id} onChange={(v) => updateFilter('vehicle_id', v)}>
+              <option value="">All vehicles</option>
+              {options.vehicles.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+            </FilterSelect>
+            <FilterSelect label="Source stage" value={filters.source_stage} onChange={(v) => updateFilter('source_stage', v)}>
+              <option value="">All stages</option>
+              {options.stages.map((s) => <option key={s} value={s}>{s}</option>)}
+            </FilterSelect>
+            <FilterSelect label="State" value={filters.state} onChange={(v) => updateFilter('state', v)}>
+              <option value="">All states</option>
+              {options.states.map((s) => <option key={s} value={s}>{s}</option>)}
+            </FilterSelect>
+            <FilterSelect label="Make" value={filters.make} onChange={(v) => updateFilter('make', v)}>
+              <option value="">All makes</option>
+              {options.makes.map((m) => <option key={m} value={m}>{m}</option>)}
+            </FilterSelect>
+            <FilterInput label="Model (exact)" value={filters.model} onChange={(v) => updateFilter('model', v)} />
+            <FilterSelect label="Year" value={filters.year} onChange={(v) => updateFilter('year', v)}>
+              <option value="">All years</option>
+              {options.years.map((y) => <option key={y} value={y}>{y}</option>)}
+            </FilterSelect>
+            <FilterInput label="VIN" value={filters.vin} onChange={(v) => updateFilter('vin', v)} />
+            <FilterInput label="Phone" value={filters.phone_primary} onChange={(v) => updateFilter('phone_primary', v)} />
+            <FilterInput label="Email" value={filters.email_primary} onChange={(v) => updateFilter('email_primary', v)} />
+            <FilterInput label="First name" value={filters.first_name} onChange={(v) => updateFilter('first_name', v)} />
+            <FilterInput label="Last name" value={filters.last_name} onChange={(v) => updateFilter('last_name', v)} />
+            <FilterInput label="City" value={filters.city} onChange={(v) => updateFilter('city', v)} />
+            <FilterInput label="ZIP" value={filters.zip_code} onChange={(v) => updateFilter('zip_code', v)} />
+            <FilterInput type="date" label="Imported from" value={filters.imported_from} onChange={(v) => updateFilter('imported_from', v)} />
+            <FilterInput type="date" label="Imported to"   value={filters.imported_to}   onChange={(v) => updateFilter('imported_to',   v)} />
+            <FilterSelect label="Status" value={filters.status} onChange={(v) => updateFilter('status', v)}>
+              <option value="">Any status</option>
+              {LEAD_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+            </FilterSelect>
+            <FilterSelect label="Priority" value={filters.priority} onChange={(v) => updateFilter('priority', v)}>
+              <option value="">Any priority</option>
+              {LEAD_PRIORITIES.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+            </FilterSelect>
+            <FilterSelect label="Temperature" value={filters.lead_temperature} onChange={(v) => updateFilter('lead_temperature', v)}>
+              <option value="">Any temperature</option>
+              <option value="unset">Not set</option>
+              {LEAD_TEMPERATURES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+            </FilterSelect>
+            <FilterSelect label="Agent" value={filters.assigned_user_id} onChange={(v) => updateFilter('assigned_user_id', v)}>
+              <option value="">Any assignee</option>
+              <option value="unassigned">Unassigned</option>
+              {options.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </FilterSelect>
+            <FilterSelect label="Label" value={filters.label_id} onChange={(v) => updateFilter('label_id', v)}>
+              <option value="">Any label</option>
+              {options.labels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </FilterSelect>
+            <FilterSelect label="Open tasks" value={filters.has_open_tasks} onChange={(v) => updateFilter('has_open_tasks', v)}>
+              <option value="">Any</option>
+              <option value="1">Has open tasks</option>
+              <option value="0">No open tasks</option>
+            </FilterSelect>
+            <FilterSelect label="Due today" value={filters.tasks_due_today} onChange={(v) => updateFilter('tasks_due_today', v)}>
+              <option value="">Any</option>
+              <option value="1">Has tasks due today</option>
+            </FilterSelect>
+            <FilterSelect label="Overdue" value={filters.tasks_overdue} onChange={(v) => updateFilter('tasks_overdue', v)}>
+              <option value="">Any</option>
+              <option value="1">Has overdue tasks</option>
+            </FilterSelect>
+          </div>
+        )}
+      </div>
+
+      {activeChips.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-3">
+          {activeChips.map(({ key, value }) => (
+            <span key={key} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-[11px] font-medium px-2 py-1 rounded-md border border-blue-100">
+              {CHIP_LABELS[key]}: <span className="font-semibold">{renderChipValue(key, value)}</span>
+              <button onClick={() => clearFilter(key)} className="ml-0.5 text-blue-500 hover:text-blue-800">&times;</button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Table */}
+      <BulkActionsBar
+        selection={selection}
+        onClear={clearSelection}
+        onAction={(a) => setBulkAction(a)}
+        user={user}
+      />
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-16 sm:py-20">
+            <div className="w-10 h-10 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
+            <p className="text-sm text-gray-400 mt-3">Loading leads…</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1540px]">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="pl-5 pr-1 py-3 w-8">
+                    <input
+                      type="checkbox"
+                      checked={allPageSelected}
+                      ref={(el) => { if (el) el.indeterminate = somePageSelected; }}
+                      onChange={togglePageSelection}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      aria-label="Select all on page"
+                    />
+                  </th>
+                  <th className="px-2 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Name</th>
+                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Priority</th>
+                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Temperature</th>
+                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Agent</th>
+                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Labels</th>
+                  <th className="hidden xl:table-cell px-3 py-3 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Wanted</th>
+                  <th className="hidden xl:table-cell px-3 py-3 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Offered</th>
+                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">VIN</th>
+                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Phone</th>
+                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Email</th>
+                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Location</th>
+                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Vehicle</th>
+                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Source file</th>
+                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Batch</th>
+                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Stage</th>
+                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Row #</th>
+                  <th className="px-3 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Imported</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.leads.length === 0 ? (
+                  <tr>
+                    <td colSpan={19} className="py-16 text-center">
+                      <p className="text-sm text-gray-400">No leads match these filters.</p>
+                      {activeChips.length > 0 && (
+                        <button onClick={clearAll} className="text-sm text-blue-600 hover:text-blue-700 font-medium mt-2">Clear all filters</button>
+                      )}
+                    </td>
+                  </tr>
+                ) : data.leads.map((lead) => {
+                  const np   = lead.normalized_payload || {};
+                  const name = np.full_name || [np.first_name, np.last_name].filter(Boolean).join(' ') || '—';
+                  const location = [np.city, np.state].filter(Boolean).join(', ') || '—';
+                  const vehicle  = [np.year, np.make, np.model].filter(Boolean).join(' ') || '—';
+                  const crm      = lead.crm_state || {};
+                  const labels   = lead.labels || [];
+                  const statusMeta      = STATUS_BY_KEY[crm.status] || STATUS_BY_KEY.new;
+                  const priorityMeta    = PRIORITY_BY_KEY[crm.priority] || PRIORITY_BY_KEY.medium;
+                  const temperatureMeta = TEMPERATURE_BY_KEY[crm.lead_temperature] || null;
+                  const isSelected = selection.has(lead.id);
+                  return (
+                    <tr
+                      key={lead.id}
+                      onClick={() => setDetailId(lead.id)}
+                      className={`border-b border-gray-50 transition-colors cursor-pointer ${isSelected ? 'bg-blue-50/50' : 'hover:bg-gray-50/60'}`}
+                    >
+                      <td className="pl-5 pr-1 py-3 w-8" onClick={(e) => { e.stopPropagation(); toggleRow(lead.id); }}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleRow(lead.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          aria-label={`Select lead ${lead.id}`}
+                        />
+                      </td>
+                      <td className="px-2 py-3 text-sm text-gray-900 font-medium">{name}</td>
+                      <td className="px-3 py-3">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${statusMeta.bg} ${statusMeta.text}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dot}`} />{statusMeta.label}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${priorityMeta.bg} ${priorityMeta.text}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${priorityMeta.dot}`} />{priorityMeta.label}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3">
+                        {temperatureMeta ? (
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${temperatureMeta.bg} ${temperatureMeta.text}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${temperatureMeta.dot}`} />{temperatureMeta.label}
+                          </span>
+                        ) : <span className="text-gray-300 text-xs">—</span>}
+                      </td>
+                      <td className="px-3 py-3 text-sm text-gray-700">
+                        {crm.assigned_user_name || <span className="text-gray-400 italic">Unassigned</span>}
+                      </td>
+                      <td className="px-3 py-3">
+                        {labels.length === 0 ? <span className="text-gray-300 text-xs">—</span> : (
+                          <div className="flex flex-wrap items-center gap-1 max-w-[220px]">
+                            {labels.slice(0, 3).map((l) => (
+                              <span key={l.id} className="inline-flex items-center text-[10px] font-medium text-white px-1.5 py-0.5 rounded" style={{ backgroundColor: l.color }}>
+                                {l.name}
+                              </span>
+                            ))}
+                            {labels.length > 3 && (
+                              <span className="text-[10px] text-gray-500">+{labels.length - 3}</span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="hidden xl:table-cell px-3 py-3 text-sm text-gray-700 text-right tabular-nums">
+                        {crm.price_wanted != null ? formatPrice(crm.price_wanted) : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="hidden xl:table-cell px-3 py-3 text-sm text-gray-700 text-right tabular-nums">
+                        {crm.price_offered != null ? formatPrice(crm.price_offered) : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-3 text-[11px] font-mono text-gray-700">{normValue(lead, 'vin') || '—'}</td>
+                      <td className="px-3 py-3 text-sm text-gray-700">{normValue(lead, 'phone_primary') || '—'}</td>
+                      <td className="px-3 py-3 text-sm text-gray-700 truncate max-w-[180px]">{normValue(lead, 'email_primary') || '—'}</td>
+                      <td className="px-3 py-3 text-sm text-gray-600">{location}</td>
+                      <td className="px-3 py-3 text-sm text-gray-700">{vehicle}</td>
+                      <td className="px-3 py-3 text-sm text-gray-600 truncate max-w-[180px]">{lead.file_display_name || lead.file_name}</td>
+                      <td className="px-3 py-3 text-sm text-gray-600 truncate max-w-[180px]">{lead.batch_name}</td>
+                      <td className="px-3 py-3">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">{lead.source_stage}</span>
+                      </td>
+                      <td className="px-3 py-3 text-xs text-gray-400">{lead.source_row_number}</td>
+                      <td className="px-3 py-3 text-xs text-gray-400">{formatDate(lead.imported_at)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-3 border-t border-gray-100 bg-gray-50/40">
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <span>Rows per page:</span>
+            <select
+              value={perPage}
+              onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }}
+              className="bg-white border border-gray-200 rounded-md px-2 py-1 text-xs"
+            >
+              {PER_PAGE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+            <span className="ml-2">
+              {data.total === 0 ? '0' : `${(page - 1) * perPage + 1}–${Math.min(page * perPage, data.total)}`} of {data.total.toLocaleString()}
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(1)}
+              disabled={page <= 1}
+              className="px-2 py-1 text-xs rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40"
+            >«</button>
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="px-2 py-1 text-xs rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40"
+            >‹ Prev</button>
+            <span className="text-xs text-gray-500 px-2">Page {page} / {totalPages}</span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="px-2 py-1 text-xs rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40"
+            >Next ›</button>
+            <button
+              onClick={() => setPage(totalPages)}
+              disabled={page >= totalPages}
+              className="px-2 py-1 text-xs rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40"
+            >»</button>
+          </div>
+        </div>
+      </div>
+
+      <LeadDetailDrawer leadId={detailId} onClose={() => setDetailId(null)} onChanged={() => { fetchLeads(); fetchSummary(); }} />
+
+      <BulkActionModal
+        open={!!bulkAction}
+        action={bulkAction}
+        count={selection.size}
+        options={{ users: options.users || [], labels: options.labels || [] }}
+        submitting={bulkSubmitting}
+        onClose={() => setBulkAction(null)}
+        onSubmit={runBulk}
+      />
+
+      <BulkResultModal
+        result={bulkResult}
+        onClose={() => setBulkResult(null)}
+        onRefresh={afterBulkResult}
+      />
+    </div>
+  );
+}
+
+function FilterSelect({ label, value, onChange, children }) {
+  return (
+    <label className="block">
+      <span className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+      >
+        {children}
+      </select>
+    </label>
+  );
+}
+
+function FilterInput({ label, value, onChange, type = 'text' }) {
+  return (
+    <label className="block">
+      <span className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">{label}</span>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+      />
+    </label>
+  );
+}

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import api, { uploadFile, getDownloadUrl } from '../api';
+import api, { uploadFile, getDownloadUrl, extractApiError } from '../api';
+import FileDetailDrawer from '../components/FileDetailDrawer';
+import ImportFinalFileModal from '../components/ImportFinalFileModal';
+import { useAuth } from '../context/AuthContext';
 
 const STAGES = ['generated', 'carfax', 'filter', 'tlo'];
 
@@ -12,6 +14,13 @@ const STAGE_META = {
 };
 
 const NEXT_STAGE = { generated: 'carfax', carfax: 'filter', filter: 'tlo' };
+
+const STAGE_ROLES = {
+  generated: ['admin'],
+  carfax:    ['admin', 'carfax'],
+  filter:    ['admin', 'filter'],
+  tlo:       ['admin', 'tlo'],
+};
 
 // --- Reusable UI Components ---
 
@@ -61,36 +70,39 @@ function StatCard({ label, count, color, icon }) {
   );
 }
 
-function StagePipeline({ stages, uploads, currentStage, invalid }) {
+function StagePipeline({ stages, artifactsByStage, currentStage, status }) {
+  const isInvalid = status === 'invalid';
+  const isBlocked = status === 'blocked';
   return (
     <div className="flex items-center">
       {stages.map((s, i) => {
-        const upload = uploads.find((u) => u.stage === s);
-        const status = upload?.status;
+        const count = artifactsByStage?.[s]?.length ?? 0;
+        const hasArtifact = count > 0;
         const isCurrent = currentStage === s;
-        let dotClass, ringClass;
-        if (invalid) {
-          dotClass = 'bg-red-200'; ringClass = 'ring-red-100';
-        } else if (status === 'confirmed') {
+        let dotClass, ringClass, tooltip;
+        if (isInvalid) {
+          dotClass = 'bg-red-300'; ringClass = 'ring-red-100'; tooltip = 'Invalid';
+        } else if (isBlocked && isCurrent) {
+          dotClass = 'bg-amber-400'; ringClass = 'ring-amber-100'; tooltip = 'Blocked';
+        } else if (hasArtifact) {
           dotClass = 'bg-emerald-500'; ringClass = 'ring-emerald-100';
-        } else if (status === 'pending') {
-          dotClass = 'bg-amber-400'; ringClass = 'ring-amber-100';
+          tooltip = `${count} ${count === 1 ? 'artifact' : 'artifacts'}${isCurrent ? ' · current' : ''}`;
         } else if (isCurrent) {
-          dotClass = 'bg-blue-400'; ringClass = 'ring-blue-100';
+          dotClass = 'bg-blue-400'; ringClass = 'ring-blue-100'; tooltip = 'Current · awaiting upload';
         } else {
-          dotClass = 'bg-gray-200'; ringClass = 'ring-gray-50';
+          dotClass = 'bg-gray-200'; ringClass = 'ring-gray-50'; tooltip = 'Waiting';
         }
-        const tooltip = status === 'confirmed' ? 'Confirmed' : status === 'pending' ? 'Pending Review' : isCurrent ? 'Current' : 'Waiting';
+        const connectorEmerald = artifactsByStage?.[s]?.length > 0 && !isInvalid;
         return (
           <div key={s} className="flex items-center">
             <div className="relative group">
               <div className={`w-4 h-4 rounded-full ${dotClass} ring-4 ${ringClass} transition-all`} />
-              <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] px-2 py-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+              <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] px-2 py-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
                 {STAGE_META[s].label}: {tooltip}
               </div>
             </div>
             {i < stages.length - 1 && (
-              <div className={`w-5 h-0.5 ${status === 'confirmed' && !invalid ? 'bg-emerald-300' : 'bg-gray-200'}`} />
+              <div className={`w-5 h-0.5 ${connectorEmerald ? 'bg-emerald-300' : 'bg-gray-200'}`} />
             )}
           </div>
         );
@@ -99,7 +111,7 @@ function StagePipeline({ stages, uploads, currentStage, invalid }) {
   );
 }
 
-function ActionDropdown({ file, onMove, onEdit, onDelete, onNotify, invalid, next }) {
+function ActionDropdown({ file, onMove, onReupload, onEdit, onDelete, onNotify, onView, invalid, next, canReupload }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -118,11 +130,21 @@ function ActionDropdown({ file, onMove, onEdit, onDelete, onNotify, invalid, nex
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16"><circle cx="8" cy="3" r="1.5" /><circle cx="8" cy="8" r="1.5" /><circle cx="8" cy="13" r="1.5" /></svg>
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-44 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-30">
+        <div className="absolute right-0 top-full mt-1 w-52 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-30">
+          <button onClick={() => { setOpen(false); onView(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+            View details
+          </button>
           {!invalid && next && (
             <button onClick={() => { setOpen(false); onMove(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
               Move to {next}
+            </button>
+          )}
+          {canReupload && (
+            <button onClick={() => { setOpen(false); onReupload(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+              Re-upload {file.current_stage}
             </button>
           )}
           <button onClick={() => { setOpen(false); onEdit(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
@@ -147,7 +169,7 @@ function ActionDropdown({ file, onMove, onEdit, onDelete, onNotify, invalid, nex
 // --- Main Component ---
 
 export default function DashboardPage() {
-  const navigate = useNavigate();
+  const { user } = useAuth();
   const [files, setFiles] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [filters, setFilters] = useState({ vehicle_id: '', stage: '', year: '' });
@@ -157,7 +179,7 @@ export default function DashboardPage() {
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [stageModal, setStageModal] = useState(null);
+  const [stageModal, setStageModal] = useState(null); // { fileId, stage, fileName, mode: 'advance' | 'reupload' }
   const [stageFile, setStageFile] = useState(null);
   const [stageNotes, setStageNotes] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -165,6 +187,8 @@ export default function DashboardPage() {
   const [notifyModal, setNotifyModal] = useState(null);
   const [teamMembers, setTeamMembers] = useState([]);
   const [selected, setSelected] = useState(new Set());
+  const [detailId, setDetailId] = useState(null);
+  const [importFile, setImportFile] = useState(null);
 
   const fetchFiles = useCallback(async () => {
     setLoading(true); setError('');
@@ -198,25 +222,37 @@ export default function DashboardPage() {
     if (selected.size === 0) return;
     if (!window.confirm(`${markInvalid ? 'Mark' : 'Unmark'} ${selected.size} file(s) as invalid?`)) return;
     try { await api.patch('/files', { ids: Array.from(selected), is_invalid: markInvalid }); fetchFiles(); }
-    catch { setError('Failed to update files'); }
+    catch (err) { setError(extractApiError(err, 'Failed to update files')); }
   };
 
   const handleBulkDelete = async () => {
     if (!window.confirm(`Delete ${selected.size} file(s)? This cannot be undone.`)) return;
     try { for (const id of selected) await api.delete('/files', { data: { id } }); fetchFiles(); }
-    catch { setError('Failed to delete files'); }
+    catch (err) { setError(extractApiError(err, 'Failed to delete files')); }
   };
 
-  const handleStageChange = (fileId, stage, fileName) => { setStageModal({ fileId, stage, fileName }); setStageFile(null); setStageNotes(''); };
+  const handleStageChange = (fileId, stage, fileName) => {
+    setStageModal({ fileId, stage, fileName, mode: 'advance' });
+    setStageFile(null); setStageNotes('');
+  };
+
+  const handleReupload = (file, stage) => {
+    setStageModal({ fileId: file.id, stage: stage ?? file.current_stage, fileName: file.display_name || file.file_name, mode: 'reupload' });
+    setStageFile(null); setStageNotes('');
+  };
 
   const handleStageSubmit = async () => {
-    if (!stageModal || !stageFile) { setError('You must upload a file to move to the next stage'); return; }
+    if (!stageModal || !stageFile) { setError('You must select a file to upload'); return; }
     setUploading(true); setError('');
     try {
-      await api.put('/files', { id: stageModal.fileId, stage: stageModal.stage, notes: stageNotes || '' });
       await uploadFile(stageModal.fileId, stageModal.stage, stageFile);
+      if (stageModal.mode === 'advance') {
+        await api.put('/files', { id: stageModal.fileId, stage: stageModal.stage, notes: stageNotes || '' });
+      }
       setStageModal(null); setStageFile(null); setStageNotes(''); fetchFiles();
-    } catch { setError('Failed to update stage'); }
+    } catch (err) {
+      setError(extractApiError(err, stageModal.mode === 'reupload' ? 'Re-upload failed' : 'Failed to update stage'));
+    }
     finally { setUploading(false); }
   };
 
@@ -226,38 +262,29 @@ export default function DashboardPage() {
       const res = await api.post('/files', { vehicle_id: Number(newFile.vehicle_id), file_name: newFile.file_name, year: newFile.year ? Number(newFile.year) : null, version: newFile.version || null });
       if (selectedFile && res.data.id) await uploadFile(res.data.id, 'generated', selectedFile);
       setShowModal(false); setNewFile({ vehicle_id: '', file_name: '', year: '', version: '' }); setSelectedFile(null); fetchFiles();
-    } catch { setError('Failed to add file'); }
+    } catch (err) { setError(extractApiError(err, 'Failed to add file')); }
     finally { setSubmitting(false); }
   };
 
   const handleDelete = async (fileId, fileName) => {
     if (!window.confirm(`Delete "${fileName}"?`)) return;
     try { await api.delete('/files', { data: { id: fileId } }); fetchFiles(); }
-    catch { setError('Failed to delete file'); }
+    catch (err) { setError(extractApiError(err, 'Failed to delete file')); }
   };
 
   const handleEdit = async (e) => {
     e.preventDefault();
     try { await api.patch('/files', { id: editModal.id, file_name: editModal.file_name, year: editModal.year, version: editModal.version }); setEditModal(null); fetchFiles(); }
-    catch { setError('Failed to update file'); }
-  };
-
-  const handleConfirm = async (fileId, stage, fileName) => {
-    try {
-      await api.patch('/upload', { file_id: fileId, stage, status: 'confirmed' }); fetchFiles();
-      const nextStage = NEXT_STAGE[stage];
-      if (nextStage) {
-        try { const res = await api.get('/users'); setTeamMembers(res.data.filter((u) => u.phone)); } catch {}
-        setNotifyModal({ fileName, stage, nextStage });
-      }
-    } catch { setError('Failed to confirm upload'); }
+    catch (err) { setError(extractApiError(err, 'Failed to update file')); }
   };
 
   const openNotify = async (fileName, currentStage) => {
     try {
       const res = await api.get('/users');
       setTeamMembers(res.data.filter((u) => u.phone));
-    } catch {}
+    } catch {
+      // Team fetch is non-blocking; notify modal still opens with empty list.
+    }
     const nextStage = NEXT_STAGE[currentStage] || 'next';
     setNotifyModal({ fileName, stage: currentStage, nextStage });
   };
@@ -384,62 +411,80 @@ export default function DashboardPage() {
                 ) : files.map((file) => {
                   const next = NEXT_STAGE[file.current_stage];
                   const uploads = file.uploads || [];
-                  const invalid = !!file.is_invalid;
+                  const byStage = file.artifacts_by_stage || {};
+                  const status = file.status || (file.is_invalid ? 'invalid' : 'active');
+                  const invalid = status === 'invalid';
+                  const dimmed = invalid || status === 'blocked';
+                  const canReupload = !invalid && status === 'active' && user?.role && STAGE_ROLES[file.current_stage]?.includes(user.role);
                   return (
-                    <tr key={file.id} className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${invalid ? 'opacity-50' : ''}`}>
+                    <tr key={file.id} className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${dimmed ? 'opacity-60' : ''}`}>
                       <td className="pl-5 pr-2 py-3.5">
                         <input type="checkbox" checked={selected.has(file.id)} onChange={() => toggleSelect(file.id)} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                       </td>
                       <td className="px-4 py-3.5">
-                        <button onClick={() => navigate(`/logs?file_id=${file.id}&name=${encodeURIComponent(file.file_name)}`)} className={`text-sm font-medium hover:underline ${invalid ? 'text-gray-400 line-through' : 'text-gray-900 hover:text-blue-600'}`}>
-                          {file.file_name}
+                        <button onClick={() => setDetailId(file.id)} className={`text-sm font-medium hover:underline ${invalid ? 'text-gray-400 line-through' : 'text-gray-900 hover:text-blue-600'}`}>
+                          {file.display_name || file.file_name}
                         </button>
                         {file.version && <span className="ml-2 text-[10px] font-medium text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{file.version}</span>}
                       </td>
-                      <td className="px-4 py-3.5 text-sm text-gray-600">{file.vehicle_name}</td>
+                      <td className="px-4 py-3.5 text-sm text-gray-600">{file.vehicle?.name || file.vehicle_name}</td>
                       <td className="px-4 py-3.5 text-sm text-gray-600">{file.year || '—'}</td>
                       <td className="px-4 py-3.5">
-                        {invalid ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-50 text-red-600 border border-red-100">
-                            <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span> Invalid
-                          </span>
-                        ) : next ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-600 border border-blue-100">
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span> {STAGE_META[file.current_stage].label}
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-600 border border-emerald-100">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Complete
-                          </span>
-                        )}
+                        <div className="flex flex-col gap-1">
+                          {status === 'invalid' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-50 text-red-600 border border-red-100 w-fit">
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span> Invalid
+                            </span>
+                          )}
+                          {status === 'blocked' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-100 w-fit">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Blocked
+                            </span>
+                          )}
+                          {status === 'completed' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-600 border border-emerald-100 w-fit">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Complete
+                            </span>
+                          )}
+                          {status === 'active' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-600 border border-blue-100 w-fit">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span> {STAGE_META[file.current_stage].label}
+                            </span>
+                          )}
+                          {file.next_upload_missing && next && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-100 w-fit" title={`No artifact uploaded for ${next} yet`}>
+                              Awaiting {next} upload
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3.5">
-                        <StagePipeline stages={STAGES} uploads={uploads} currentStage={file.current_stage} invalid={invalid} />
+                        <StagePipeline stages={STAGES} artifactsByStage={byStage} currentStage={file.current_stage} status={status} />
                       </td>
                       <td className="px-4 py-3.5">
                         <div className="flex flex-wrap gap-1">
                           {uploads.length > 0 ? uploads.map((u) => (
-                            <div key={u.stage} className="flex items-center gap-0.5">
-                              <a href={getDownloadUrl(file.id, u.stage)} className="inline-flex items-center gap-1 text-[11px] font-medium bg-gray-50 hover:bg-gray-100 text-gray-600 px-2 py-1 rounded-md border border-gray-200 transition-colors" title={`Download ${u.stage}`}>
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                                {u.stage.slice(0, 3)}
-                              </a>
-                              {u.status === 'pending' ? (
-                                <button onClick={() => handleConfirm(file.id, u.stage, file.file_name)} className="w-5 h-5 flex items-center justify-center rounded-md bg-amber-50 hover:bg-amber-100 text-amber-600 border border-amber-200 transition-colors" title="Confirm">
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
-                                </button>
-                              ) : (
-                                <span className="w-5 h-5 flex items-center justify-center rounded-md bg-emerald-50 text-emerald-500">
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
-                                </span>
-                              )}
-                            </div>
+                            <a key={u.stage} href={getDownloadUrl(file.id, u.stage)} className="inline-flex items-center gap-1 text-[11px] font-medium bg-gray-50 hover:bg-gray-100 text-gray-600 px-2 py-1 rounded-md border border-gray-200 transition-colors" title={`Download latest ${u.stage}`}>
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                              {u.stage.slice(0, 3)}
+                            </a>
                           )) : <span className="text-xs text-gray-300">—</span>}
                         </div>
                       </td>
                       <td className="px-4 py-3.5 text-xs text-gray-400">{(file.updated_at || file.created_at || '').slice(0, 10)}</td>
                       <td className="pr-4 py-3.5">
-                        <ActionDropdown file={file} invalid={invalid} next={next} onMove={() => handleStageChange(file.id, next, file.file_name)} onEdit={() => setEditModal({ id: file.id, file_name: file.file_name, year: file.year || '', version: file.version || '' })} onDelete={() => handleDelete(file.id, file.file_name)} onNotify={() => openNotify(file.file_name, file.current_stage)} />
+                        <ActionDropdown
+                          file={file}
+                          invalid={invalid}
+                          next={next}
+                          canReupload={canReupload}
+                          onView={() => setDetailId(file.id)}
+                          onMove={() => handleStageChange(file.id, next, file.display_name || file.file_name)}
+                          onReupload={() => handleReupload(file)}
+                          onEdit={() => setEditModal({ id: file.id, file_name: file.display_name || file.file_name, year: file.year || '', version: file.version || '' })}
+                          onDelete={() => handleDelete(file.id, file.display_name || file.file_name)}
+                          onNotify={() => openNotify(file.display_name || file.file_name, file.current_stage)}
+                        />
                       </td>
                     </tr>
                   );
@@ -517,12 +562,23 @@ export default function DashboardPage() {
         )}
       </Modal>
 
-      <Modal open={!!stageModal} onClose={() => { setStageModal(null); setStageFile(null); setStageNotes(''); }} title={stageModal ? `Move to ${STAGE_META[stageModal.stage]?.label}` : ''}>
+      <Modal open={!!stageModal} onClose={() => { setStageModal(null); setStageFile(null); setStageNotes(''); }} title={stageModal ? (stageModal.mode === 'reupload' ? `Re-upload ${STAGE_META[stageModal.stage]?.label}` : `Move to ${STAGE_META[stageModal.stage]?.label}`) : ''}>
         {stageModal && (
           <div className="space-y-4">
-            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-              <p className="text-sm text-blue-800">Upload the <strong>{stageModal.stage}</strong> file for "<strong>{stageModal.fileName}</strong>"</p>
-            </div>
+            {stageModal.mode === 'reupload' ? (
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+                <p className="text-sm text-amber-800">
+                  Re-uploading a new version of the <strong>{stageModal.stage}</strong> artifact for "<strong>{stageModal.fileName}</strong>".
+                </p>
+                <p className="text-xs text-amber-700 mt-1">
+                  Creates a new version. Previous uploads are preserved and still downloadable.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                <p className="text-sm text-blue-800">Upload the <strong>{stageModal.stage}</strong> file for "<strong>{stageModal.fileName}</strong>"</p>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">File (required)</label>
               <div className={`border-2 border-dashed rounded-xl p-4 text-center transition-colors cursor-pointer ${stageFile ? 'border-emerald-300 bg-emerald-50' : 'border-gray-200 hover:border-blue-300'}`}>
@@ -536,17 +592,36 @@ export default function DashboardPage() {
                 </label>
               </div>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Notes (optional)</label>
-              <input type="text" value={stageNotes} onChange={(e) => setStageNotes(e.target.value)} placeholder="Any notes..." className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
-            </div>
+            {stageModal.mode === 'advance' && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Notes (optional)</label>
+                <input type="text" value={stageNotes} onChange={(e) => setStageNotes(e.target.value)} placeholder="Any notes..." className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+              </div>
+            )}
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={() => { setStageModal(null); setStageFile(null); setStageNotes(''); }} className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">Cancel</button>
-              <button onClick={handleStageSubmit} disabled={uploading || !stageFile} className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl shadow-lg shadow-blue-500/25 disabled:opacity-50 transition-all">{uploading ? 'Uploading...' : `Upload & Move`}</button>
+              <button onClick={handleStageSubmit} disabled={uploading || !stageFile} className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl shadow-lg shadow-blue-500/25 disabled:opacity-50 transition-all">
+                {uploading
+                  ? 'Uploading...'
+                  : stageModal.mode === 'reupload' ? 'Upload new version' : 'Upload & Move'}
+              </button>
             </div>
           </div>
         )}
       </Modal>
+
+      <FileDetailDrawer
+        file={detailId ? files.find((f) => f.id === detailId) : null}
+        onClose={() => setDetailId(null)}
+        onReupload={handleReupload}
+        onImport={(f) => setImportFile(f)}
+      />
+
+      <ImportFinalFileModal
+        file={importFile}
+        onClose={() => setImportFile(null)}
+        onImported={() => { setImportFile(null); fetchFiles(); }}
+      />
 
       <Modal open={!!notifyModal} onClose={() => setNotifyModal(null)} title="Notify via WhatsApp" width="max-w-sm">
         {notifyModal && (

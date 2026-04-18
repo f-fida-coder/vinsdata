@@ -6,6 +6,11 @@ import DashboardPage from './pages/DashboardPage';
 import VehiclesPage from './pages/VehiclesPage';
 import UsersPage from './pages/UsersPage';
 import LogsPage from './pages/LogsPage';
+import LeadsPage from './pages/LeadsPage';
+import DuplicatesPage from './pages/DuplicatesPage';
+import TasksPage from './pages/TasksPage';
+import MergePrepPage from './pages/MergePrepPage';
+import NotificationBell from './components/NotificationBell';
 
 const NAV_ICONS = {
   dashboard: (
@@ -21,6 +26,26 @@ const NAV_ICONS = {
   users: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197" />
+    </svg>
+  ),
+  leads: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 014-4h1m4-6a4 4 0 11-8 0 4 4 0 018 0zm6 0a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  ),
+  duplicates: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+    </svg>
+  ),
+  tasks: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+    </svg>
+  ),
+  mergePrep: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 8h10M7 12h10M7 16h5m-2-8v10m4-8l4 4m0 0l-4 4m4-4H12" />
     </svg>
   ),
   logout: (
@@ -80,6 +105,7 @@ function Sidebar({ open, onClose }) {
               <p className="text-sm font-medium text-white truncate">{user.name}</p>
               <p className="text-[11px] text-gray-500 capitalize">{user.role}</p>
             </div>
+            <NotificationBell tone="dark" />
           </div>
         </div>
 
@@ -88,6 +114,10 @@ function Sidebar({ open, onClose }) {
           <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider px-4 mb-2">Menu</p>
           <NavLink to="/" end className={linkClass} onClick={onClose}>{NAV_ICONS.dashboard} Dashboard</NavLink>
           <NavLink to="/vehicles" className={linkClass} onClick={onClose}>{NAV_ICONS.vehicles} Vehicles</NavLink>
+          <NavLink to="/leads" className={linkClass} onClick={onClose}>{NAV_ICONS.leads} CRM Leads</NavLink>
+          <NavLink to="/tasks" className={linkClass} onClick={onClose}>{NAV_ICONS.tasks} Tasks</NavLink>
+          <NavLink to="/duplicates" className={linkClass} onClick={onClose}>{NAV_ICONS.duplicates} Duplicate Review</NavLink>
+          <NavLink to="/merge-prep" className={linkClass} onClick={onClose}>{NAV_ICONS.mergePrep} Merge Prep</NavLink>
           {user.role === 'admin' && (
             <NavLink to="/users" className={linkClass} onClick={onClose}>{NAV_ICONS.users} Users</NavLink>
           )}
@@ -119,6 +149,9 @@ function MobileHeader({ onMenuOpen }) {
         </div>
         <span className="text-sm font-bold text-gray-900">VIN Dashboard</span>
       </div>
+      <div className="ml-auto">
+        <NotificationBell tone="light" />
+      </div>
     </div>
   );
 }
@@ -135,6 +168,10 @@ function DashboardLayout() {
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/vehicles" element={<VehiclesPage />} />
+            <Route path="/leads" element={<LeadsPage />} />
+            <Route path="/tasks" element={<TasksPage />} />
+            <Route path="/duplicates" element={<DuplicatesPage />} />
+            <Route path="/merge-prep" element={<MergePrepPage />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/logs" element={<LogsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
