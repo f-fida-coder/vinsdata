@@ -4,6 +4,7 @@ import LeadDetailDrawer from './LeadDetailDrawer';
 import { NOTIFICATION_META, relativeFrom } from '../lib/notifications';
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const TIMESTAMP_REFRESH_MS = 60 * 1000; // refresh relative timestamps every minute
 
 export default function NotificationBell({ tone = 'dark' }) {
   const [open, setOpen] = useState(false);
@@ -11,6 +12,7 @@ export default function NotificationBell({ tone = 'dark' }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [leadDrawerId, setLeadDrawerId] = useState(null);
+  const [, setTick] = useState(0); // forces re-render to refresh relative timestamps
   const wrapperRef = useRef(null);
 
   const load = useCallback(async ({ scan = false } = {}) => {
@@ -31,6 +33,12 @@ export default function NotificationBell({ tone = 'dark' }) {
     const t = setInterval(() => load({ scan: true }), POLL_INTERVAL_MS);
     return () => clearInterval(t);
   }, [load]);
+
+  // Refresh relative timestamps every minute so "3m ago" stays accurate.
+  useEffect(() => {
+    const t = setInterval(() => setTick((v) => v + 1), TIMESTAMP_REFRESH_MS);
+    return () => clearInterval(t);
+  }, []);
 
   // Close dropdown on outside click.
   useEffect(() => {

@@ -135,6 +135,10 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
     && Object.values(mapping).some((f) => f !== '_ignore');
 
   const handleImport = async () => {
+    if (saveAsTemplate && !newTemplateName.trim()) {
+      setSubmitError('Please enter a template name or uncheck "Save as template".');
+      return;
+    }
     setSubmitting(true); setSubmitError(''); setPhase('importing');
     try {
       let mappingTemplateIdFinal = templateId ? Number(templateId) : null;

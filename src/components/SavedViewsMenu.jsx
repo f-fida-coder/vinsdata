@@ -54,6 +54,7 @@ export default function SavedViewsMenu({ viewType, currentFilters, activeViewId,
 
   const createView = async () => {
     if (!saveName.trim()) return;
+    if (saveName.trim().length > 100) { setError('View name must be 100 characters or fewer'); return; }
     setSaving(true); setError('');
     try {
       const res = await api.post('/saved_views', {

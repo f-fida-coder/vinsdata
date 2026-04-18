@@ -52,6 +52,7 @@ export default function TasksPage() {
   useEffect(() => { fetchSummary(); }, [fetchSummary]);
 
   const complete = async (id) => {
+    if (!window.confirm('Mark this task as complete?')) return;
     try {
       await api.patch('/lead_tasks', { id, action: 'complete' });
       fetchTasks(); fetchSummary();
