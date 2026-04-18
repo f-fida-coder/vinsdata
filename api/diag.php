@@ -23,6 +23,24 @@ try {
         $out['db_connect'] = 'ok';
         $row = $db->query('SELECT 1 AS ok')->fetch();
         $out['db_query'] = $row;
+
+        $uploadDir = __DIR__ . '/uploads/';
+        $out['upload_dir']         = $uploadDir;
+        $out['upload_dir_exists']  = is_dir($uploadDir);
+        $out['upload_dir_writable'] = is_writable($uploadDir);
+        $files = @scandir($uploadDir) ?: [];
+        $files = array_values(array_filter($files, fn($f) => $f !== '.' && $f !== '..' && $f !== '.htaccess'));
+        $out['upload_dir_count']   = count($files);
+        $out['upload_dir_sample']  = array_slice($files, 0, 5);
+
+        // Check whether the latest artifact's stored file is actually present.
+        $latest = $db->query('SELECT id, stored_filename FROM file_artifacts ORDER BY id DESC LIMIT 1')->fetch();
+        if ($latest) {
+            $path = $uploadDir . $latest['stored_filename'];
+            $out['latest_artifact']        = $latest;
+            $out['latest_artifact_on_disk']= file_exists($path);
+            $out['latest_artifact_path']   = $path;
+        }
     } catch (Throwable $e) {
         $out['db_connect'] = 'FAIL';
         $out['db_error'] = $e->getMessage();
