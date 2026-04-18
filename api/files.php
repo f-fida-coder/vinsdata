@@ -115,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             "INSERT INTO files (vehicle_id, base_name, display_name, file_name, year, version,
                                 current_stage, status, created_by, added_by)
              VALUES (:vehicle_id, :base_name, :display_name, :file_name, :year, :version,
-                     'generated', 'active', :created_by, :created_by)"
+                     'generated', 'active', :created_by, :added_by)"
         );
         $stmt->execute([
             ':vehicle_id'   => $vehicleId,
@@ -125,6 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ':year'         => $year ?: null,
             ':version'      => $version ?: null,
             ':created_by'   => $user['id'],
+            ':added_by'     => $user['id'],
         ]);
         $fileId = (int) $db->lastInsertId();
 
