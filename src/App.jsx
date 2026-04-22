@@ -10,6 +10,9 @@ import LeadsPage from './pages/LeadsPage';
 import DuplicatesPage from './pages/DuplicatesPage';
 import TasksPage from './pages/TasksPage';
 import MergePrepPage from './pages/MergePrepPage';
+import MarketingCampaignsPage from './pages/MarketingCampaignsPage';
+import MarketingComposerPage from './pages/MarketingComposerPage';
+import MarketingDetailPage from './pages/MarketingDetailPage';
 import NotificationBell from './components/NotificationBell';
 
 const NAV_ICONS = {
@@ -46,6 +49,11 @@ const NAV_ICONS = {
   mergePrep: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 8h10M7 12h10M7 16h5m-2-8v10m4-8l4 4m0 0l-4 4m4-4H12" />
+    </svg>
+  ),
+  marketing: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
     </svg>
   ),
   logout: (
@@ -118,6 +126,9 @@ function Sidebar({ open, onClose }) {
           <NavLink to="/tasks" className={linkClass} onClick={onClose}>{NAV_ICONS.tasks} Tasks</NavLink>
           <NavLink to="/duplicates" className={linkClass} onClick={onClose}>{NAV_ICONS.duplicates} Duplicate Review</NavLink>
           <NavLink to="/merge-prep" className={linkClass} onClick={onClose}>{NAV_ICONS.mergePrep} Merge Prep</NavLink>
+          {(user.role === 'admin' || user.role === 'marketer') && (
+            <NavLink to="/marketing" className={linkClass} onClick={onClose}>{NAV_ICONS.marketing} Marketing</NavLink>
+          )}
           {user.role === 'admin' && (
             <NavLink to="/users" className={linkClass} onClick={onClose}>{NAV_ICONS.users} Users</NavLink>
           )}
@@ -172,6 +183,9 @@ function DashboardLayout() {
             <Route path="/tasks" element={<TasksPage />} />
             <Route path="/duplicates" element={<DuplicatesPage />} />
             <Route path="/merge-prep" element={<MergePrepPage />} />
+            <Route path="/marketing" element={<MarketingCampaignsPage />} />
+            <Route path="/marketing/new" element={<MarketingComposerPage />} />
+            <Route path="/marketing/:id" element={<MarketingDetailPage />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/logs" element={<LogsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

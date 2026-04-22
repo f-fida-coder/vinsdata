@@ -5,12 +5,13 @@ import { TASK_TYPES } from '../lib/tasks';
 // ---------- Action catalog ----------
 
 const ACTIONS = [
-  { key: 'set_status',   label: 'Change status',   tone: 'blue',    adminOnly: false },
-  { key: 'set_priority', label: 'Change priority', tone: 'amber',   adminOnly: false },
-  { key: 'assign',       label: 'Assign agent',    tone: 'emerald', adminOnly: true },
-  { key: 'add_label',    label: 'Add label',       tone: 'violet',  adminOnly: false },
-  { key: 'remove_label', label: 'Remove label',    tone: 'gray',    adminOnly: false },
-  { key: 'create_task',  label: 'Create task',     tone: 'indigo',  adminOnly: false },
+  { key: 'set_status',         label: 'Change status',     tone: 'blue',    adminOnly: false },
+  { key: 'set_priority',       label: 'Change priority',   tone: 'amber',   adminOnly: false },
+  { key: 'assign',             label: 'Assign agent',      tone: 'emerald', adminOnly: true },
+  { key: 'add_label',          label: 'Add label',         tone: 'violet',  adminOnly: false },
+  { key: 'remove_label',       label: 'Remove label',      tone: 'gray',    adminOnly: false },
+  { key: 'create_task',        label: 'Create task',       tone: 'indigo',  adminOnly: false },
+  { key: 'send_to_marketing',  label: 'Send to marketing', tone: 'fuchsia', adminOnly: false },
 ];
 
 const BUTTON_TONE = {
@@ -20,6 +21,7 @@ const BUTTON_TONE = {
   violet:  'text-violet-700 bg-violet-50 hover:bg-violet-100 border-violet-100',
   indigo:  'text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border-indigo-100',
   gray:    'text-gray-700 bg-gray-50 hover:bg-gray-100 border-gray-200',
+  fuchsia: 'text-fuchsia-700 bg-fuchsia-50 hover:bg-fuchsia-100 border-fuchsia-100',
 };
 
 // ---------- Sticky selection bar ----------
@@ -95,13 +97,14 @@ function Field({ label, required, children }) {
 
 function initialPayloadFor(action) {
   switch (action) {
-    case 'set_status':   return { status: 'new' };
-    case 'set_priority': return { priority: 'medium' };
-    case 'assign':       return { assigned_user_id: '' };
+    case 'set_status':        return { status: 'new' };
+    case 'set_priority':      return { priority: 'medium' };
+    case 'assign':            return { assigned_user_id: '' };
     case 'add_label':
-    case 'remove_label': return { label_id: '' };
-    case 'create_task':  return { title: '', task_type: 'follow_up', notes: '', due_at: '', assigned_user_id: '' };
-    default:             return {};
+    case 'remove_label':      return { label_id: '' };
+    case 'create_task':       return { title: '', task_type: 'follow_up', notes: '', due_at: '', assigned_user_id: '' };
+    case 'send_to_marketing': return {};
+    default:                  return {};
   }
 }
 
@@ -110,13 +113,14 @@ function BulkActionModalInner({ action, count, onClose, onSubmit, submitting, op
 
   const title = (() => {
     switch (action) {
-      case 'set_status':   return `Change status (${count} leads)`;
-      case 'set_priority': return `Change priority (${count} leads)`;
-      case 'assign':       return `Assign agent (${count} leads)`;
-      case 'add_label':    return `Add label (${count} leads)`;
-      case 'remove_label': return `Remove label (${count} leads)`;
-      case 'create_task':  return `Create task (${count} leads)`;
-      default:             return 'Bulk action';
+      case 'set_status':        return `Change status (${count} leads)`;
+      case 'set_priority':      return `Change priority (${count} leads)`;
+      case 'assign':            return `Assign agent (${count} leads)`;
+      case 'add_label':         return `Add label (${count} leads)`;
+      case 'remove_label':      return `Remove label (${count} leads)`;
+      case 'create_task':       return `Create task (${count} leads)`;
+      case 'send_to_marketing': return `Send to marketing (${count} leads)`;
+      default:                  return 'Bulk action';
     }
   })();
 
@@ -159,6 +163,16 @@ function BulkActionModalInner({ action, count, onClose, onSubmit, submitting, op
       <div className="bg-blue-50 border border-blue-100 rounded-lg p-2.5 text-xs text-blue-800">
         This will affect <strong>{count}</strong> {count === 1 ? 'lead' : 'leads'}. Unchanged leads are skipped silently.
       </div>
+
+      {action === 'send_to_marketing' && (
+        <div className="rounded-lg bg-fuchsia-50 border border-fuchsia-100 px-3 py-3 text-sm text-fuchsia-900">
+          <p className="font-medium mb-1">Move these leads into mass marketing?</p>
+          <p className="text-xs text-fuchsia-800">
+            Their status will change to <strong>Marketing</strong>. They'll be excluded from cold-call queues
+            and become eligible for email/SMS campaigns. You can move them back anytime by changing the status.
+          </p>
+        </div>
+      )}
 
       {action === 'set_status' && (
         <Field label="New status" required>

@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api, { extractApiError } from '../api';
 import LeadDetailDrawer from '../components/LeadDetailDrawer';
 import SavedViewsMenu from '../components/SavedViewsMenu';
-import SummaryCards from '../components/SummaryCards';
 import { BulkActionsBar, BulkActionModal, BulkResultModal } from '../components/LeadBulkActions';
 import { useAuth } from '../context/AuthContext';
 import {
   LEAD_STATUSES, LEAD_PRIORITIES, LEAD_TEMPERATURES,
   STATUS_BY_KEY, PRIORITY_BY_KEY, TEMPERATURE_BY_KEY,
+  LEAD_TIERS, TIER_BY_KEY, computeLeadTier,
   formatPrice,
 } from '../lib/crm';
 
@@ -40,6 +41,10 @@ const EMPTY_FILTERS = {
   has_open_tasks: '',
   tasks_due_today: '',
   tasks_overdue: '',
+  number_of_owners_min: '',
+  number_of_owners_max: '',
+  in_campaign_id: '',
+  tier: '',
 };
 
 // Which filters show as removable "chips" above the table.
@@ -70,6 +75,10 @@ const CHIP_LABELS = {
   has_open_tasks:   'Open tasks',
   tasks_due_today:  'Due today',
   tasks_overdue:    'Overdue tasks',
+  number_of_owners_min: 'Owners ≥',
+  number_of_owners_max: 'Owners ≤',
+  in_campaign_id: 'In campaign',
+  tier: 'Tier',
 };
 
 function formatDate(s) {
@@ -93,7 +102,21 @@ const HARDCODED_PAYLOAD_KEYS = new Set([
 
 export default function LeadsPage() {
   const { user } = useAuth();
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  // Marketers see the full unscoped view (same as admins) because they need
+  // cross-portfolio visibility to build campaign segments. Only true agents
+  // (carfax/filter/tlo) get the "my leads" treatment.
+  const isAdmin = user?.role === 'admin' || user?.role === 'marketer';
+  const [searchParams] = useSearchParams();
+  const [filters, setFilters] = useState(() => {
+    // Honor query-string filters on first mount (used by the "View recipients in CRM"
+    // link from a campaign detail page).
+    const seeded = { ...EMPTY_FILTERS };
+    ['in_campaign_id', 'status'].forEach((k) => {
+      const v = searchParams.get(k);
+      if (v !== null && v !== '') seeded[k] = v;
+    });
+    return seeded;
+  });
   const [searchInput, setSearchInput] = useState('');
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(50);
@@ -331,6 +354,7 @@ export default function LeadsPage() {
     if (k === 'status')           return STATUS_BY_KEY[v]?.label || v;
     if (k === 'priority')         return PRIORITY_BY_KEY[v]?.label || v;
     if (k === 'lead_temperature') return v === 'unset' ? 'Not set' : (TEMPERATURE_BY_KEY[v]?.label || v);
+    if (k === 'tier') return TIER_BY_KEY[v]?.label || v;
     if (k === 'has_open_tasks')   return v === '1' ? 'Has open tasks' : 'No open tasks';
     if (k === 'tasks_due_today')  return 'Yes';
     if (k === 'tasks_overdue')    return 'Yes';
@@ -339,12 +363,21 @@ export default function LeadsPage() {
 
   return (
     <div className="max-w-[1600px] mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 sm:mb-8">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">CRM Leads</h1>
-          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-            {data.total.toLocaleString()} {data.total === 1 ? 'lead' : 'leads'} imported · read-only
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-5 sm:mb-6">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
+            {isAdmin ? 'CRM Leads' : 'My Leads'}
+          </h1>
+          <InlineStats
+            total={data.total}
+            summary={summary}
+            isAdmin={isAdmin}
+            activeFilters={filters}
+            onToggleFilter={(key, value) => updateFilter(
+              key,
+              filters[key] === value ? '' : value,
+            )}
+          />
         </div>
       </div>
 
@@ -355,20 +388,15 @@ export default function LeadsPage() {
         </div>
       )}
 
-      {summary && (
-        <SummaryCards
-          cards={[
-            { label: 'Total leads',     value: summary.total,              color: 'blue' },
-            { label: 'Unassigned',      value: summary.unassigned,         color: 'amber' },
-            { label: 'Open tasks',      value: summary.open_tasks,         color: 'blue' },
-            { label: 'Due today',       value: summary.tasks_due_today,    color: 'amber' },
-            { label: 'Overdue',         value: summary.tasks_overdue,      color: 'red' },
-            ...(summary.confirmed_duplicate_related > 0
-              ? [{ label: 'In confirmed duplicates', value: summary.confirmed_duplicate_related, color: 'red' }]
-              : []),
-          ]}
-        />
-      )}
+      {/* Quick-filter pills — one-click access to the things people actually filter by */}
+      <QuickFilterPills
+        tier={filters.tier}
+        temperature={filters.lead_temperature}
+        status={filters.status}
+        onTier={(v) => updateFilter('tier', v === filters.tier ? '' : v)}
+        onTemp={(v) => updateFilter('lead_temperature', v === filters.lead_temperature ? '' : v)}
+        onStatus={(v) => updateFilter('status', v === filters.status ? '' : v)}
+      />
 
       {/* Search + filter toggle */}
       <div className="bg-white rounded-2xl border border-gray-100 p-3 sm:p-4 mb-4 shadow-sm">
@@ -396,7 +424,7 @@ export default function LeadsPage() {
           {(activeChips.length > 0 || filters.q) && (
             <button onClick={clearAll} className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-2">Clear all</button>
           )}
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-1">
             <SavedViewsMenu
               viewType="leads"
               currentFilters={filters}
@@ -414,90 +442,88 @@ export default function LeadsPage() {
             />
             <a
               href={exportCsvUrl}
-              className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+              className="inline-flex items-center justify-center w-9 h-9 rounded-lg border bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-700"
               title={`Export ${data.total.toLocaleString()} matching leads as CSV`}
+              aria-label="Export CSV"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-              Export CSV
             </a>
           </div>
         </div>
 
         {showFilters && (
-          <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
-            <FilterSelect label="Batch" value={filters.batch_id} onChange={(v) => updateFilter('batch_id', v)}>
-              <option value="">All batches</option>
-              {options.batches.map((b) => <option key={b.id} value={b.id}>{b.batch_name}</option>)}
-            </FilterSelect>
-            <FilterSelect label="Source file" value={filters.file_id} onChange={(v) => updateFilter('file_id', v)}>
-              <option value="">All files</option>
-              {options.files.map((f) => <option key={f.id} value={f.id}>{f.display_name}</option>)}
-            </FilterSelect>
-            <FilterSelect label="Vehicle" value={filters.vehicle_id} onChange={(v) => updateFilter('vehicle_id', v)}>
-              <option value="">All vehicles</option>
-              {options.vehicles.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-            </FilterSelect>
-            <FilterSelect label="Source stage" value={filters.source_stage} onChange={(v) => updateFilter('source_stage', v)}>
-              <option value="">All stages</option>
-              {options.stages.map((s) => <option key={s} value={s}>{s}</option>)}
-            </FilterSelect>
-            <FilterSelect label="State" value={filters.state} onChange={(v) => updateFilter('state', v)}>
-              <option value="">All states</option>
-              {options.states.map((s) => <option key={s} value={s}>{s}</option>)}
-            </FilterSelect>
-            <FilterSelect label="Make" value={filters.make} onChange={(v) => updateFilter('make', v)}>
-              <option value="">All makes</option>
-              {options.makes.map((m) => <option key={m} value={m}>{m}</option>)}
-            </FilterSelect>
-            <FilterInput label="Model (exact)" value={filters.model} onChange={(v) => updateFilter('model', v)} />
-            <FilterSelect label="Year" value={filters.year} onChange={(v) => updateFilter('year', v)}>
-              <option value="">All years</option>
-              {options.years.map((y) => <option key={y} value={y}>{y}</option>)}
-            </FilterSelect>
-            <FilterInput label="VIN" value={filters.vin} onChange={(v) => updateFilter('vin', v)} />
-            <FilterInput label="Phone" value={filters.phone_primary} onChange={(v) => updateFilter('phone_primary', v)} />
-            <FilterInput label="Email" value={filters.email_primary} onChange={(v) => updateFilter('email_primary', v)} />
-            <FilterInput label="First name" value={filters.first_name} onChange={(v) => updateFilter('first_name', v)} />
-            <FilterInput label="Last name" value={filters.last_name} onChange={(v) => updateFilter('last_name', v)} />
-            <FilterInput label="City" value={filters.city} onChange={(v) => updateFilter('city', v)} />
-            <FilterInput label="ZIP" value={filters.zip_code} onChange={(v) => updateFilter('zip_code', v)} />
-            <FilterInput type="date" label="Imported from" value={filters.imported_from} onChange={(v) => updateFilter('imported_from', v)} />
-            <FilterInput type="date" label="Imported to"   value={filters.imported_to}   onChange={(v) => updateFilter('imported_to',   v)} />
-            <FilterSelect label="Status" value={filters.status} onChange={(v) => updateFilter('status', v)}>
-              <option value="">Any status</option>
-              {LEAD_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-            </FilterSelect>
-            <FilterSelect label="Priority" value={filters.priority} onChange={(v) => updateFilter('priority', v)}>
-              <option value="">Any priority</option>
-              {LEAD_PRIORITIES.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-            </FilterSelect>
-            <FilterSelect label="Temperature" value={filters.lead_temperature} onChange={(v) => updateFilter('lead_temperature', v)}>
-              <option value="">Any temperature</option>
-              <option value="unset">Not set</option>
-              {LEAD_TEMPERATURES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
-            </FilterSelect>
-            <FilterSelect label="Agent" value={filters.assigned_user_id} onChange={(v) => updateFilter('assigned_user_id', v)}>
-              <option value="">Any assignee</option>
-              <option value="unassigned">Unassigned</option>
-              {options.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </FilterSelect>
-            <FilterSelect label="Label" value={filters.label_id} onChange={(v) => updateFilter('label_id', v)}>
-              <option value="">Any label</option>
-              {options.labels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </FilterSelect>
-            <FilterSelect label="Open tasks" value={filters.has_open_tasks} onChange={(v) => updateFilter('has_open_tasks', v)}>
-              <option value="">Any</option>
-              <option value="1">Has open tasks</option>
-              <option value="0">No open tasks</option>
-            </FilterSelect>
-            <FilterSelect label="Due today" value={filters.tasks_due_today} onChange={(v) => updateFilter('tasks_due_today', v)}>
-              <option value="">Any</option>
-              <option value="1">Has tasks due today</option>
-            </FilterSelect>
-            <FilterSelect label="Overdue" value={filters.tasks_overdue} onChange={(v) => updateFilter('tasks_overdue', v)}>
-              <option value="">Any</option>
-              <option value="1">Has overdue tasks</option>
-            </FilterSelect>
+          <div className="mt-3 pt-3 border-t border-gray-100 space-y-4 text-sm">
+            {/* Tip: free-text fields (VIN, phone, email, name, city, state, make, model) are
+                all covered by the search box above. Keep these filters focused on the stuff
+                the search can't express. */}
+
+            <FilterGroup label="Vehicle">
+              <FilterSelect label="Make" value={filters.make} onChange={(v) => updateFilter('make', v)}>
+                <option value="">Any make</option>
+                {options.makes.map((m) => <option key={m} value={m}>{m}</option>)}
+              </FilterSelect>
+              <FilterSelect label="Year" value={filters.year} onChange={(v) => updateFilter('year', v)}>
+                <option value="">Any year</option>
+                {options.years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </FilterSelect>
+              <FilterSelect label="State" value={filters.state} onChange={(v) => updateFilter('state', v)}>
+                <option value="">Any state</option>
+                {options.states.map((s) => <option key={s} value={s}>{s}</option>)}
+              </FilterSelect>
+              <NumberOfOwnersFilter
+                min={filters.number_of_owners_min}
+                max={filters.number_of_owners_max}
+                onChangeMin={(v) => updateFilter('number_of_owners_min', v)}
+                onChangeMax={(v) => updateFilter('number_of_owners_max', v)}
+              />
+            </FilterGroup>
+
+            <FilterGroup label="CRM">
+              <FilterSelect label="Priority" value={filters.priority} onChange={(v) => updateFilter('priority', v)}>
+                <option value="">Any priority</option>
+                {LEAD_PRIORITIES.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+              </FilterSelect>
+              {isAdmin && (
+                <FilterSelect label="Agent" value={filters.assigned_user_id} onChange={(v) => updateFilter('assigned_user_id', v)}>
+                  <option value="">Any assignee</option>
+                  <option value="unassigned">Unassigned</option>
+                  {options.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </FilterSelect>
+              )}
+              <FilterSelect label="Label" value={filters.label_id} onChange={(v) => updateFilter('label_id', v)}>
+                <option value="">Any label</option>
+                {options.labels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </FilterSelect>
+            </FilterGroup>
+
+            <FilterGroup label="Tasks">
+              <FilterSelect label="Open tasks" value={filters.has_open_tasks} onChange={(v) => updateFilter('has_open_tasks', v)}>
+                <option value="">Any</option>
+                <option value="1">Has open tasks</option>
+                <option value="0">No open tasks</option>
+              </FilterSelect>
+              <FilterSelect label="Due today" value={filters.tasks_due_today} onChange={(v) => updateFilter('tasks_due_today', v)}>
+                <option value="">Any</option>
+                <option value="1">Has tasks due today</option>
+              </FilterSelect>
+              <FilterSelect label="Overdue" value={filters.tasks_overdue} onChange={(v) => updateFilter('tasks_overdue', v)}>
+                <option value="">Any</option>
+                <option value="1">Has overdue tasks</option>
+              </FilterSelect>
+            </FilterGroup>
+
+            <FilterGroup label="Source & date">
+              <FilterSelect label="Batch" value={filters.batch_id} onChange={(v) => updateFilter('batch_id', v)}>
+                <option value="">Any batch</option>
+                {options.batches.map((b) => <option key={b.id} value={b.id}>{b.batch_name}</option>)}
+              </FilterSelect>
+              <FilterSelect label="Source stage" value={filters.source_stage} onChange={(v) => updateFilter('source_stage', v)}>
+                <option value="">Any stage</option>
+                {options.stages.map((s) => <option key={s} value={s}>{s}</option>)}
+              </FilterSelect>
+              <FilterInput type="date" label="Imported from" value={filters.imported_from} onChange={(v) => updateFilter('imported_from', v)} />
+              <FilterInput type="date" label="Imported to"   value={filters.imported_to}   onChange={(v) => updateFilter('imported_to',   v)} />
+            </FilterGroup>
           </div>
         )}
       </div>
@@ -543,6 +569,7 @@ export default function LeadsPage() {
                     />
                   </th>
                   <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Name</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Tier</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Priority</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Temperature</th>
@@ -570,7 +597,7 @@ export default function LeadsPage() {
               <tbody>
                 {data.leads.length === 0 ? (
                   <tr>
-                    <td colSpan={19 + visibleCustomColumns.length} className="py-16 text-center">
+                    <td colSpan={20 + visibleCustomColumns.length} className="py-16 text-center">
                       <p className="text-sm text-gray-400">No leads match these filters.</p>
                       {activeChips.length > 0 && (
                         <button onClick={clearAll} className="text-sm text-blue-600 hover:text-blue-700 font-medium mt-2">Clear all filters</button>
@@ -587,6 +614,9 @@ export default function LeadsPage() {
                   const statusMeta      = STATUS_BY_KEY[crm.status] || STATUS_BY_KEY.new;
                   const priorityMeta    = PRIORITY_BY_KEY[crm.priority] || PRIORITY_BY_KEY.medium;
                   const temperatureMeta = TEMPERATURE_BY_KEY[crm.lead_temperature] || null;
+                  // Tier comes from the API if present; otherwise compute from normalized payload.
+                  const tierKey  = lead.tier || computeLeadTier(np);
+                  const tierMeta = TIER_BY_KEY[tierKey] || TIER_BY_KEY.tier_3;
                   const isSelected = selection.has(lead.id);
                   return (
                     <tr
@@ -605,6 +635,14 @@ export default function LeadsPage() {
                         />
                       </td>
                       <td className="px-2 py-2 text-[13px] text-gray-900 font-medium">{name}</td>
+                      <td className="px-3 py-2">
+                        <span
+                          title={tierMeta.hint}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${tierMeta.bg} ${tierMeta.text}`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${tierMeta.dot}`} />{tierMeta.short}
+                        </span>
+                      </td>
                       <td className="px-3 py-2">
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${statusMeta.bg} ${statusMeta.text}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dot}`} />{statusMeta.label}
@@ -739,22 +777,19 @@ export default function LeadsPage() {
 function ColumnsMenu({ open, onOpenChange, customColumns, hiddenColumns, onToggle, onShowAll, onHideAll }) {
   const visibleCount = customColumns.filter((k) => !hiddenColumns.has(k)).length;
   const totalCount = customColumns.length;
+  const hasHidden = totalCount > 0 && visibleCount < totalCount;
   return (
     <div className="relative">
       <button
         onClick={() => onOpenChange(!open)}
-        className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
-        title="Show or hide imported columns"
+        className="relative inline-flex items-center justify-center w-9 h-9 rounded-lg border bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-700"
+        title={totalCount > 0 ? `Columns (${visibleCount}/${totalCount} shown)` : 'Columns'}
+        aria-label="Columns"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
         </svg>
-        Columns
-        {totalCount > 0 && (
-          <span className="ml-1 text-[10px] font-semibold bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full">
-            {visibleCount}/{totalCount}
-          </span>
-        )}
+        {hasHidden && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-white" />}
       </button>
       {open && (
         <>
@@ -792,6 +827,17 @@ function ColumnsMenu({ open, onOpenChange, customColumns, hiddenColumns, onToggl
   );
 }
 
+function FilterGroup({ label, children }) {
+  return (
+    <fieldset className="rounded-xl border border-gray-100 bg-gray-50/40 px-3 py-2.5">
+      <legend className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 px-1">{label}</legend>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 mt-1">
+        {children}
+      </div>
+    </fieldset>
+  );
+}
+
 function FilterSelect({ label, value, onChange, children }) {
   return (
     <label className="block">
@@ -803,6 +849,162 @@ function FilterSelect({ label, value, onChange, children }) {
       >
         {children}
       </select>
+    </label>
+  );
+}
+
+// Handful of statuses people actually filter by day-to-day. Rest live in the
+// advanced panel.
+const QUICK_STATUS_KEYS = ['new', 'callback', 'interested', 'marketing'];
+
+/**
+ * Compact inline stats strip under the page title. Replaces the old five-card
+ * summary row. Zero-count stats are hidden so we only show what's actionable.
+ * Clicking a stat toggles the corresponding filter.
+ */
+function InlineStats({ total, summary, isAdmin, activeFilters, onToggleFilter }) {
+  const items = [];
+  // Total is informational, not a filter.
+  items.push({ key: '__total', label: total === 1 ? 'lead' : 'leads', value: total, dotColor: 'bg-blue-500', filterKey: null });
+
+  if (summary) {
+    if (isAdmin && summary.unassigned > 0) {
+      items.push({
+        key: 'unassigned', label: 'unassigned', value: summary.unassigned, dotColor: 'bg-amber-500',
+        filterKey: 'assigned_user_id', filterValue: 'unassigned',
+      });
+    }
+    if (summary.open_tasks > 0) {
+      items.push({
+        key: 'open_tasks', label: 'open tasks', value: summary.open_tasks, dotColor: 'bg-blue-500',
+        filterKey: 'has_open_tasks', filterValue: '1',
+      });
+    }
+    if (summary.tasks_due_today > 0) {
+      items.push({
+        key: 'due_today', label: 'due today', value: summary.tasks_due_today, dotColor: 'bg-amber-500',
+        filterKey: 'tasks_due_today', filterValue: '1',
+      });
+    }
+    if (summary.tasks_overdue > 0) {
+      items.push({
+        key: 'overdue', label: 'overdue', value: summary.tasks_overdue, dotColor: 'bg-red-500',
+        filterKey: 'tasks_overdue', filterValue: '1',
+      });
+    }
+    if (summary.confirmed_duplicate_related > 0) {
+      items.push({
+        key: 'dupes', label: 'in confirmed duplicates', value: summary.confirmed_duplicate_related,
+        dotColor: 'bg-red-500', filterKey: null,
+      });
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-xs sm:text-sm text-gray-500">
+      {items.map((it, i) => {
+        const isActive = it.filterKey && activeFilters[it.filterKey] === it.filterValue;
+        const clickable = !!it.filterKey;
+        const content = (
+          <span className="inline-flex items-center gap-1.5">
+            <span className={`w-1.5 h-1.5 rounded-full ${it.dotColor}`} />
+            <span className="tabular-nums font-semibold text-gray-700">{it.value.toLocaleString()}</span>
+            <span>{it.label}</span>
+          </span>
+        );
+        return (
+          <span key={it.key} className="inline-flex items-center gap-2">
+            {i > 0 && <span className="text-gray-300">·</span>}
+            {clickable ? (
+              <button
+                onClick={() => onToggleFilter(it.filterKey, it.filterValue)}
+                className={`inline-flex items-center rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors ${
+                  isActive
+                    ? 'bg-blue-100 text-blue-800 ring-1 ring-blue-300'
+                    : 'hover:bg-gray-100 hover:text-gray-700'
+                }`}
+                title={isActive ? 'Click to clear this filter' : 'Click to filter'}
+              >
+                {content}
+              </button>
+            ) : content}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function PillGroup({ label, items, active, onToggle }) {
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mr-1 shrink-0">{label}</span>
+      {items.map((item) => {
+        const isActive = active === item.key;
+        return (
+          <button
+            key={item.key}
+            onClick={() => onToggle(item.key)}
+            title={item.hint}
+            className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-full border transition-colors ${
+              isActive
+                ? `${item.bg} ${item.text} border-current`
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${item.dot}`} />
+            {item.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function QuickFilterPills({ tier, temperature, status, onTier, onTemp, onStatus }) {
+  const statusItems = QUICK_STATUS_KEYS
+    .map((k) => LEAD_STATUSES.find((s) => s.key === k))
+    .filter(Boolean);
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
+      <PillGroup label="Tier" items={LEAD_TIERS} active={tier} onToggle={onTier} />
+      <div className="h-4 w-px bg-gray-200 hidden sm:block" />
+      <PillGroup
+        label="Temperature"
+        items={LEAD_TEMPERATURES.filter((t) => t.key !== 'closed')}
+        active={temperature}
+        onToggle={onTemp}
+      />
+      <div className="h-4 w-px bg-gray-200 hidden sm:block" />
+      <PillGroup label="Status" items={statusItems} active={status} onToggle={onStatus} />
+    </div>
+  );
+}
+
+function NumberOfOwnersFilter({ min, max, onChangeMin, onChangeMax }) {
+  const opts = ['', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+  return (
+    <label className="block">
+      <span className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">Number of owners</span>
+      <div className="flex items-center gap-2">
+        <select
+          value={min}
+          onChange={(e) => onChangeMin(e.target.value)}
+          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          aria-label="Minimum number of owners"
+        >
+          {opts.map((n) => <option key={`min-${n}`} value={n}>{n === '' ? 'Min' : n}</option>)}
+        </select>
+        <span className="text-xs text-gray-400">to</span>
+        <select
+          value={max}
+          onChange={(e) => onChangeMax(e.target.value)}
+          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          aria-label="Maximum number of owners"
+        >
+          {opts.map((n) => <option key={`max-${n}`} value={n}>{n === '' ? 'Max' : n}</option>)}
+        </select>
+      </div>
     </label>
   );
 }

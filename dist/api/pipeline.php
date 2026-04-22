@@ -88,6 +88,16 @@ function assertActive(array $file): void
     }
 }
 
+const USER_ROLES = ['admin', 'carfax', 'filter', 'tlo', 'marketer'];
+
+function assertAdminOrMarketer(array $user): void
+{
+    $role = $user['role'] ?? null;
+    if ($role !== 'admin' && $role !== 'marketer') {
+        pipelineFail(403, 'Admin or marketer role required', 'marketing_forbidden');
+    }
+}
+
 function assertAdmin(array $user): void
 {
     if (($user['role'] ?? null) !== 'admin') {
@@ -177,9 +187,80 @@ const LEAD_STATUSES = [
     'new','contacted','callback','interested','not_interested',
     'wrong_number','no_answer','voicemail_left','deal_closed',
     'nurture','disqualified','do_not_call',
+    'marketing',
 ];
 const LEAD_PRIORITIES = ['low','medium','high','hot'];
 const LEAD_TEMPERATURES = ['cold','warm','hot','closed'];
+
+// -- Tier classification --------------------------------------------------
+// Tiers are auto-computed from the normalized payload (number of owners +
+// mileage). Tier 1 is the highest-quality lead. To tune the thresholds,
+// change both `LEAD_TIER_THRESHOLDS` (used in PHP) and the matching block in
+// `leadTierSqlExpression()` below.
+const LEAD_TIERS = ['tier_1','tier_2','tier_3'];
+const LEAD_TIER_THRESHOLDS = [
+    // Evaluated in order; first match wins.
+    ['key' => 'tier_1', 'max_owners' => 1, 'max_miles' => 100000],
+    ['key' => 'tier_2', 'max_owners' => 2, 'max_miles' => 150000],
+    // Everything else falls through to tier_3.
+];
+
+/**
+ * Classify a lead into Tier 1/2/3 from its normalized payload.
+ *
+ * Missing or non-numeric data → `tier_3` (worst tier). Accepts both
+ * `mileage` (post-mapping) and `LastReportedMiles` (raw CSV header).
+ */
+function computeLeadTier(array $np): string
+{
+    $rawOwners = $np['NumberOfOwners'] ?? $np['number_of_owners'] ?? null;
+    $rawMiles  = $np['mileage'] ?? $np['LastReportedMiles'] ?? null;
+    $owners = is_numeric(str_replace([',',' '], '', (string) $rawOwners)) ? (int) str_replace([',',' '], '', (string) $rawOwners) : null;
+    $miles  = is_numeric(str_replace([',',' '], '', (string) $rawMiles))  ? (int) str_replace([',',' '], '', (string) $rawMiles)  : null;
+    foreach (LEAD_TIER_THRESHOLDS as $t) {
+        if ($owners !== null && $owners <= $t['max_owners']
+            && $miles  !== null && $miles  <= $t['max_miles']) {
+            return $t['key'];
+        }
+    }
+    return 'tier_3';
+}
+
+/**
+ * SQL expression that computes the same tier for use inside `leads.php`
+ * WHERE/SELECT clauses. Keep this in sync with `computeLeadTier()`.
+ * Produces a column aliased as `tier`.
+ */
+function leadTierSqlExpression(string $alias = 'tier'): string
+{
+    $ownersExpr = "COALESCE(
+        CAST(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.NumberOfOwners')) AS UNSIGNED),
+        CAST(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.number_of_owners')) AS UNSIGNED),
+        99
+    )";
+    // Miles can arrive with commas in the source (\"154,123\"). REPLACE them
+    // before CAST. JSON_UNQUOTE on a missing key returns NULL → UNSIGNED cast
+    // of NULL is 0 — we use COALESCE to force 'unknown' → 99999999.
+    $milesExpr = "COALESCE(
+        CAST(REPLACE(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.mileage')), ',', '') AS UNSIGNED),
+        CAST(REPLACE(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.LastReportedMiles')), ',', '') AS UNSIGNED),
+        99999999
+    )";
+
+    $cases = [];
+    foreach (LEAD_TIER_THRESHOLDS as $t) {
+        $cases[] = "WHEN $ownersExpr <= {$t['max_owners']} AND $milesExpr <= {$t['max_miles']} THEN '{$t['key']}'";
+    }
+    $cases[] = "ELSE 'tier_3'";
+    return "(CASE " . implode(' ', $cases) . " END) AS $alias";
+}
+
+function assertLeadTier(string $tier): void
+{
+    if (!in_array($tier, LEAD_TIERS, true)) {
+        pipelineFail(400, "Invalid tier '$tier'", 'invalid_tier');
+    }
+}
 const LEAD_ACTIVITY_TYPES = [
     'status_changed','priority_changed','assigned','unassigned',
     'label_added','label_removed',
@@ -188,7 +269,14 @@ const LEAD_ACTIVITY_TYPES = [
     'task_created','task_updated','task_completed','task_cancelled','task_reopened',
     'contact_logged',
     'merge_prep_updated',
+    'moved_to_marketing','campaign_sent','campaign_opened','campaign_clicked',
+    'campaign_replied','campaign_bounced','opted_out',
 ];
+
+const MARKETING_CHANNELS          = ['email','sms','whatsapp'];
+const MARKETING_CAMPAIGN_STATUSES = ['draft','queued','sending','sent','partially_failed','cancelled'];
+const MARKETING_SEND_STATUSES     = ['pending','sending','sent','failed','skipped','bounced','opted_out'];
+const MARKETING_SUPPRESSION_REASONS = ['unsubscribe','bounce','complaint','manual_dnc','legal'];
 
 const MERGE_PREP_STATUSES = ['draft','prepared'];
 
@@ -257,6 +345,71 @@ function assertContactOutcome(string $outcome): void
     if (!in_array($outcome, CONTACT_OUTCOMES, true)) {
         pipelineFail(400, "Invalid outcome '$outcome'", 'invalid_outcome');
     }
+}
+
+function assertMarketingChannel(string $channel): void
+{
+    if (!in_array($channel, MARKETING_CHANNELS, true)) {
+        pipelineFail(400, "Invalid marketing channel '$channel'", 'invalid_marketing_channel');
+    }
+}
+
+function assertSuppressionReason(string $reason): void
+{
+    if (!in_array($reason, MARKETING_SUPPRESSION_REASONS, true)) {
+        pipelineFail(400, "Invalid suppression reason '$reason'", 'invalid_suppression_reason');
+    }
+}
+
+/**
+ * Normalize a contact identifier for suppression lookup.
+ * Email: lowercased, trimmed. Phone: digits only (loose E.164; leading + preserved if present).
+ */
+function normalizeContactIdentifier(string $type, string $value): string
+{
+    $value = trim($value);
+    if ($type === 'email') return strtolower($value);
+    if ($type === 'phone') {
+        $keepPlus = str_starts_with($value, '+') ? '+' : '';
+        return $keepPlus . preg_replace('/\D+/', '', $value);
+    }
+    return $value;
+}
+
+/**
+ * Read a shared secret used to sign unsubscribe tokens. Falls back to a
+ * per-install hash of the DB DSN so links work without extra config, but the
+ * user should set MARKETING_UNSUBSCRIBE_SECRET in config for rotation safety.
+ */
+function marketingTokenSecret(): string
+{
+    if (defined('MARKETING_UNSUBSCRIBE_SECRET') && MARKETING_UNSUBSCRIBE_SECRET !== '') {
+        return MARKETING_UNSUBSCRIBE_SECRET;
+    }
+    $fallback = defined('DB_NAME') ? DB_NAME : 'vin_dashboard';
+    return 'marketing:' . hash('sha256', $fallback);
+}
+
+/** Sign "<campaign_id>:<recipient_id>" so an opt-out link can't be forged. */
+function signUnsubscribeToken(int $campaignId, int $recipientId): string
+{
+    $payload = $campaignId . ':' . $recipientId;
+    $sig = hash_hmac('sha256', $payload, marketingTokenSecret());
+    // URL-safe base64 of "payload|sig" — short, readable, opaque.
+    return rtrim(strtr(base64_encode($payload . '|' . $sig), '+/', '-_'), '=');
+}
+
+/** Returns [campaignId, recipientId] or null if the token is invalid/tampered. */
+function parseUnsubscribeToken(string $token): ?array
+{
+    $decoded = base64_decode(strtr($token, '-_', '+/'), true);
+    if ($decoded === false || !str_contains($decoded, '|')) return null;
+    [$payload, $sig] = explode('|', $decoded, 2);
+    $expected = hash_hmac('sha256', $payload, marketingTokenSecret());
+    if (!hash_equals($expected, $sig)) return null;
+    $parts = explode(':', $payload);
+    if (count($parts) !== 2) return null;
+    return [(int) $parts[0], (int) $parts[1]];
 }
 
 /**

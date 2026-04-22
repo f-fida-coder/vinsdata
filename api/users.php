@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/pipeline.php';
 initSession();
 
 if (!isset($_SESSION['user_id'])) {
@@ -16,6 +17,15 @@ if ($_SESSION['user_role'] !== 'admin') {
 }
 
 $db = getDBConnection();
+
+function assertValidUserRole(string $role): void
+{
+    if (!in_array($role, USER_ROLES, true)) {
+        http_response_code(400);
+        echo json_encode(["success" => false, "message" => "Invalid role '$role'"]);
+        exit();
+    }
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $stmt = $db->query("SELECT id, name, email, phone, role, created_at FROM users ORDER BY created_at DESC");
@@ -35,6 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         echo json_encode(["success" => false, "message" => "All fields are required"]);
         exit();
     }
+    assertValidUserRole($role);
 
     $hash = password_hash($password, PASSWORD_BCRYPT);
 
@@ -65,7 +76,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     if (isset($input['name'])) { $fields[] = "name = :name"; $params[':name'] = $input['name']; }
     if (isset($input['email'])) { $fields[] = "email = :email"; $params[':email'] = $input['email']; }
     if (array_key_exists('phone', $input)) { $fields[] = "phone = :phone"; $params[':phone'] = $input['phone']; }
-    if (isset($input['role'])) { $fields[] = "role = :role"; $params[':role'] = $input['role']; }
+    if (isset($input['role'])) {
+        assertValidUserRole($input['role']);
+        $fields[] = "role = :role"; $params[':role'] = $input['role'];
+    }
 
     if (empty($fields)) {
         http_response_code(400);

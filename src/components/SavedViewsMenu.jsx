@@ -50,7 +50,6 @@ export default function SavedViewsMenu({ viewType, currentFilters, activeViewId,
   }, []);
 
   const activeView = views.find((v) => v.id === activeViewId);
-  const defaultView = views.find((v) => v.is_default);
 
   const createView = async () => {
     if (!saveName.trim()) return;
@@ -120,21 +119,20 @@ export default function SavedViewsMenu({ viewType, currentFilters, activeViewId,
     }
   };
 
-  const label = activeView?.name || (defaultView && !activeViewId ? defaultView.name : 'Custom view');
-
   return (
     <div className="relative" ref={wrapperRef}>
       <button
         onClick={() => { setOpen((v) => !v); setSaveMode(false); }}
-        className={`inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${
+        title={activeView ? `View: ${activeView.name}` : 'Saved views'}
+        aria-label={activeView ? `Saved view: ${activeView.name}` : 'Saved views'}
+        className={`relative inline-flex items-center justify-center w-9 h-9 rounded-lg border transition-colors ${
           activeView
             ? 'bg-blue-50 text-blue-700 border-blue-200'
-            : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+            : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-700'
         }`}
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>
-        {label}
-        <svg className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+        {activeView && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-blue-500 ring-2 ring-white" />}
       </button>
 
       {open && (
