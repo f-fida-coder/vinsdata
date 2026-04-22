@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+const backendPort = process.env.BACKEND_PORT || '8001';
+const backendTarget = process.env.VITE_API_TARGET || `http://localhost:${backendPort}`;
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
@@ -8,7 +11,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: backendTarget,
         // path includes the query string; appending '.php' to it would break
         // GETs like /api/upload?artifact_id=1 (→ /upload?artifact_id=1.php).
         rewrite: (path) => {

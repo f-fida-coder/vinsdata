@@ -224,6 +224,17 @@ export default function DashboardPage() {
   const [selected, setSelected] = useState(new Set());
   const [detailId, setDetailId] = useState(null);
   const [importFile, setImportFile] = useState(null);
+  const [marketingStats, setMarketingStats] = useState(null);
+  const canSeeMarketingStats = user?.role === 'admin' || user?.role === 'marketer';
+
+  useEffect(() => {
+    if (!canSeeMarketingStats) return;
+    let cancelled = false;
+    api.get('/reports', { params: { type: 'marketing' } })
+      .then((r) => { if (!cancelled) setMarketingStats(r.data?.marketing || null); })
+      .catch(() => { /* non-blocking */ });
+    return () => { cancelled = true; };
+  }, [canSeeMarketingStats]);
 
   const fetchFiles = useCallback(async () => {
     setLoading(true); setError('');
@@ -369,6 +380,29 @@ export default function DashboardPage() {
         ))}
         <StatCard label="Invalid" count={invalidCount} color="red" icon="!" />
       </div>
+
+      {/* Marketing strip (admins + marketers) */}
+      {canSeeMarketingStats && marketingStats && (
+        <div className="mb-6 sm:mb-8 rounded-2xl bg-gradient-to-br from-fuchsia-50 to-pink-50 border border-fuchsia-100 p-4 sm:p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-fuchsia-500 to-pink-500 flex items-center justify-center">
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" /></svg>
+              </div>
+              <h3 className="text-sm font-semibold text-fuchsia-900">Marketing · last 30 days</h3>
+            </div>
+            <a href="/marketing" className="text-xs text-fuchsia-700 hover:text-fuchsia-900 font-medium">All campaigns &rarr;</a>
+          </div>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+            <MiniStat label="Active" value={marketingStats.active_campaigns} />
+            <MiniStat label="Sent 7d" value={marketingStats.sent_7d} />
+            <MiniStat label="Sent 30d" value={marketingStats.sent_30d} />
+            <MiniStat label="Open rate" value={`${marketingStats.open_rate_30d}%`} />
+            <MiniStat label="Click rate" value={`${marketingStats.click_rate_30d}%`} />
+            <MiniStat label="Opted out" value={marketingStats.suppressed_total} />
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white rounded-2xl border border-gray-100 p-3 sm:p-4 mb-4 sm:mb-6 shadow-sm">
@@ -688,6 +722,15 @@ export default function DashboardPage() {
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }) {
+  return (
+    <div className="text-center">
+      <div className="text-2xl font-bold text-fuchsia-900 tabular-nums">{value ?? '—'}</div>
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-fuchsia-700/70 mt-0.5">{label}</div>
     </div>
   );
 }

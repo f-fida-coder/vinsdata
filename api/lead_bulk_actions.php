@@ -16,6 +16,7 @@ const BULK_MAX_LEADS = 500;
 const BULK_ACTIONS = [
     'set_status', 'set_priority', 'assign',
     'add_label', 'remove_label', 'create_task',
+    'send_to_marketing',
 ];
 
 $input = json_decode(file_get_contents('php://input'), true) ?? [];
@@ -86,6 +87,10 @@ switch ($action) {
         if (!$label) pipelineFail(404, 'Label not found', 'label_not_found');
         $prepared['label_id']   = $labelId;
         $prepared['label_name'] = $label['name'];
+        break;
+    }
+    case 'send_to_marketing': {
+        // No payload required. Sets status → 'marketing' and logs a timeline event.
         break;
     }
     case 'create_task': {
@@ -190,6 +195,39 @@ foreach ($leadIds as $leadId) {
                         logLeadActivity($db, $leadId, $actorId, $type, $old, $new);
                         $activityCount++;
                     }
+                    $db->commit();
+                } catch (Throwable $e) {
+                    $db->rollBack();
+                    throw $e;
+                }
+                break;
+            }
+
+            case 'send_to_marketing': {
+                $curStmt = $db->prepare(
+                    'SELECT status, priority, assigned_user_id FROM lead_states WHERE imported_lead_id = :lid'
+                );
+                $curStmt->execute([':lid' => $leadId]);
+                $cur = $curStmt->fetch() ?: DEFAULT_LEAD_STATE;
+                if (($cur['status'] ?? 'new') === 'marketing') {
+                    $skipped = true;
+                    break;
+                }
+                $db->beginTransaction();
+                try {
+                    $stmt = $db->prepare(
+                        'INSERT INTO lead_states (imported_lead_id, status, priority, assigned_user_id)
+                         VALUES (:lid, "marketing", :priority, :assignee)
+                         ON DUPLICATE KEY UPDATE status = VALUES(status)'
+                    );
+                    $stmt->execute([
+                        ':lid'      => $leadId,
+                        ':priority' => $cur['priority']         ?? 'medium',
+                        ':assignee' => $cur['assigned_user_id'] ?? null,
+                    ]);
+                    logLeadActivity($db, $leadId, $actorId, 'status_changed', $cur['status'] ?? 'new', 'marketing');
+                    logLeadActivity($db, $leadId, $actorId, 'moved_to_marketing');
+                    $activityCount = 2;
                     $db->commit();
                 } catch (Throwable $e) {
                     $db->rollBack();

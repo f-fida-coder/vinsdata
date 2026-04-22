@@ -6,6 +6,8 @@ import {
   LEAD_STATUSES, LEAD_PRIORITIES, LEAD_TEMPERATURES,
   STATUS_BY_KEY, PRIORITY_BY_KEY, TEMPERATURE_BY_KEY,
   DEFAULT_LEAD_STATE, ACTIVITY_META, describeActivity, formatPrice,
+  CAMPAIGN_STATUS_META, RECIPIENT_STATUS_META, MARKETING_CHANNELS,
+  TIER_BY_KEY, computeLeadTier,
 } from '../lib/crm';
 import {
   TASK_TYPES, TASK_TYPE_BY_KEY,
@@ -87,6 +89,19 @@ function TemperaturePill({ temperatureKey }) {
   if (!t) return null;
   return (
     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold ${t.bg} ${t.text}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${t.dot}`} />{t.label}
+    </span>
+  );
+}
+
+function TierPill({ tierKey }) {
+  const t = TIER_BY_KEY[tierKey];
+  if (!t) return null;
+  return (
+    <span
+      title={t.hint}
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold ${t.bg} ${t.text}`}
+    >
       <span className={`w-1.5 h-1.5 rounded-full ${t.dot}`} />{t.label}
     </span>
   );
@@ -930,6 +945,104 @@ function NotesSection({ leadId, currentUser, onNotesLoaded }) {
   );
 }
 
+// ---------- Marketing ----------
+
+function MarketingSection({ leadId, currentStatus, onChanged }) {
+  const [sends, setSends] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [moving, setMoving] = useState(false);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    try {
+      // We don't have a dedicated "sends for lead" endpoint — pull from activities and filter.
+      const res = await api.get('/lead_activities', { params: { lead_id: leadId, limit: 100 } });
+      const marketingEvents = (res.data || []).filter((e) =>
+        ['campaign_sent','campaign_opened','campaign_clicked','campaign_replied','campaign_bounced','opted_out','moved_to_marketing'].includes(e.activity_type)
+      );
+      setSends(marketingEvents);
+      setError('');
+    } catch (err) {
+      setError(extractApiError(err, 'Failed to load marketing history'));
+    } finally {
+      setLoading(false);
+    }
+  }, [leadId]);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  const moveToMarketing = async () => {
+    if (!window.confirm('Move this lead into mass marketing? It will be removed from the cold-call queue.')) return;
+    setMoving(true); setError('');
+    try {
+      await api.post('/lead_bulk_actions', {
+        action:   'send_to_marketing',
+        lead_ids: [leadId],
+      });
+      reload();
+      onChanged?.();
+    } catch (err) {
+      setError(extractApiError(err, 'Failed to move to marketing'));
+    } finally {
+      setMoving(false);
+    }
+  };
+
+  const isInMarketing = currentStatus === 'marketing';
+
+  return (
+    <CollapsibleSection title="Marketing" count={sends.length} defaultOpen={isInMarketing || sends.length > 0}>
+      {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+
+      {!isInMarketing ? (
+        <button
+          onClick={moveToMarketing}
+          disabled={moving}
+          className="w-full text-sm font-medium bg-gradient-to-r from-fuchsia-600 to-pink-500 text-white rounded-lg px-3 py-2 shadow-md shadow-fuchsia-500/20 hover:shadow-lg disabled:opacity-50 transition-all"
+        >
+          {moving ? 'Moving…' : 'Move to Mass Marketing'}
+        </button>
+      ) : (
+        <div className="rounded-lg bg-fuchsia-50 border border-fuchsia-100 px-3 py-2 text-xs text-fuchsia-800 mb-2">
+          ✓ In mass marketing — this lead is excluded from the cold-call queue.
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-xs text-gray-400 mt-2">Loading history…</p>
+      ) : sends.length === 0 ? (
+        <p className="text-xs text-gray-400 italic mt-2">No campaign touches yet.</p>
+      ) : (
+        <ul className="space-y-1.5 mt-2">
+          {sends.map((e) => {
+            const meta = ACTIVITY_META[e.activity_type] || { label: e.activity_type, dot: 'bg-gray-400' };
+            return (
+              <li key={e.id} className="flex items-start gap-2 text-xs rounded-md border border-gray-100 bg-gray-50/50 px-2 py-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full mt-1.5 ${meta.dot}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-gray-800 font-medium">{meta.label}</div>
+                  {e.new_value?.campaign_name && (
+                    <div className="text-gray-600 truncate">
+                      {e.new_value.campaign_id ? (
+                        <a href={`/marketing/${e.new_value.campaign_id}`} className="text-fuchsia-600 hover:underline">
+                          {e.new_value.campaign_name}
+                        </a>
+                      ) : e.new_value.campaign_name}
+                      {e.new_value.channel && <span className="text-gray-400"> · {e.new_value.channel}</span>}
+                    </div>
+                  )}
+                </div>
+                <span className="text-[10px] text-gray-400 shrink-0">{formatDate(e.created_at)}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </CollapsibleSection>
+  );
+}
+
 // ---------- Activity log ----------
 
 function ActivityInner({ leadId }) {
@@ -1053,6 +1166,7 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
           {detail && (
             <>
               <div className="flex items-center gap-2 mt-3 flex-wrap">
+                <TierPill tierKey={detail.tier || computeLeadTier(detail.normalized_payload || {})} />
                 <StatusPill statusKey={crmState.status} />
                 <PriorityPill priorityKey={crmState.priority} />
                 <TemperaturePill temperatureKey={crmState.lead_temperature} />
@@ -1129,6 +1243,12 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
 
               <ContactLogSection
                 leadId={detail.id}
+                onChanged={handleChildChanged}
+              />
+
+              <MarketingSection
+                leadId={detail.id}
+                currentStatus={crmState?.status}
                 onChanged={handleChildChanged}
               />
 

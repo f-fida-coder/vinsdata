@@ -108,6 +108,15 @@ if (isset($_GET['id'])) {
     attachCrmToLeads($db, $detailWrapper);
     $row = $detailWrapper[0];
 
+    // Agents may only view leads assigned to them. Admins and marketers see all.
+    $r = $user['role'] ?? null;
+    if ($r !== 'admin' && $r !== 'marketer') {
+        $assignee = $row['crm_state']['assigned_user_id'] ?? null;
+        if ((int) $assignee !== (int) $user['id']) {
+            pipelineFail(403, 'Lead not assigned to you', 'lead_forbidden');
+        }
+    }
+
     echo json_encode($row);
     exit();
 }
@@ -172,7 +181,16 @@ if (isset($_GET['lead_temperature']) && $_GET['lead_temperature'] !== '') {
     }
     $needsStateJoin = true;
 }
-if (isset($_GET['assigned_user_id']) && $_GET['assigned_user_id'] !== '') {
+$userRole    = $user['role'] ?? null;
+$isAdmin     = $userRole === 'admin';
+$isMarketer  = $userRole === 'marketer';
+$isAgentOnly = !$isAdmin && !$isMarketer;
+if ($isAgentOnly) {
+    // Agents only ever see leads assigned to them — request params are ignored here.
+    $where[] = 's.assigned_user_id = :me';
+    $params[':me'] = (int) $user['id'];
+    $needsStateJoin = true;
+} elseif (isset($_GET['assigned_user_id']) && $_GET['assigned_user_id'] !== '') {
     if ($_GET['assigned_user_id'] === 'unassigned') {
         $where[] = '(s.assigned_user_id IS NULL)';
         $needsStateJoin = true;
@@ -234,6 +252,48 @@ foreach ($exactCols as $q => $col) {
     }
 }
 
+// Filter by tier (auto-computed from normalized payload). Accept single value or CSV.
+if (isset($_GET['tier']) && $_GET['tier'] !== '') {
+    $rawTiers = is_array($_GET['tier']) ? $_GET['tier'] : explode(',', (string) $_GET['tier']);
+    $tiers = [];
+    foreach ($rawTiers as $t) {
+        $t = trim($t);
+        if ($t === '') continue;
+        assertLeadTier($t);
+        $tiers[] = $t;
+    }
+    if (!empty($tiers)) {
+        // Build the predicate directly using the same SQL expression used in SELECT.
+        // We can't reference the aliased column in WHERE, so inline the CASE.
+        $expr = leadTierSqlExpression('__tier');
+        // Strip the "AS __tier" alias for use in WHERE.
+        $expr = preg_replace('/\s+AS\s+__tier$/', '', $expr);
+        $ph = [];
+        foreach ($tiers as $i => $t) {
+            $ph[] = ":tier_$i";
+            $params[":tier_$i"] = $t;
+        }
+        $where[] = "$expr IN (" . implode(',', $ph) . ")";
+    }
+}
+
+// Filter by campaign membership.
+if (!empty($_GET['in_campaign_id'])) {
+    $where[] = 'EXISTS (SELECT 1 FROM marketing_campaign_recipients mcr WHERE mcr.imported_lead_id = r.id AND mcr.campaign_id = :in_campaign_id)';
+    $params[':in_campaign_id'] = (int) $_GET['in_campaign_id'];
+}
+
+// NumberOfOwners numeric range — stored as a JSON string in normalized_payload.
+$numOwnersExpr = "CAST(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.NumberOfOwners')) AS UNSIGNED)";
+if (isset($_GET['number_of_owners_min']) && $_GET['number_of_owners_min'] !== '') {
+    $where[] = "$numOwnersExpr >= :noo_min";
+    $params[':noo_min'] = (int) $_GET['number_of_owners_min'];
+}
+if (isset($_GET['number_of_owners_max']) && $_GET['number_of_owners_max'] !== '') {
+    $where[] = "$numOwnersExpr <= :noo_max";
+    $params[':noo_max'] = (int) $_GET['number_of_owners_max'];
+}
+
 // Partial normalized fields (LIKE) — inline JSON_UNQUOTE because they aren't indexed.
 $likeCols = [
     'first_name'  => "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.first_name'))",
@@ -292,13 +352,44 @@ $stmt = $db->prepare($countSql);
 $stmt->execute($params);
 $total = (int) $stmt->fetchColumn();
 
-// Page rows
+// Preview-count mode: used by the marketing composer to show a live recipient
+// estimate without paying to fetch full rows. Also returns quick per-channel
+// reachability counts so the UI can surface "X leads have an email".
+if (!empty($_GET['preview_count'])) {
+    $reachWhere  = $where;
+    $reachWhere[] = "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.email_primary')) IS NOT NULL
+                     AND JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.email_primary')) <> ''";
+    $sqlE = "SELECT COUNT(*) $baseFrom WHERE " . implode(' AND ', $reachWhere);
+    $st = $db->prepare($sqlE);
+    $st->execute($params);
+    $withEmail = (int) $st->fetchColumn();
+
+    $reachWhereP  = $where;
+    $reachWhereP[] = "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.phone_primary')) IS NOT NULL
+                      AND JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.phone_primary')) <> ''";
+    $sqlP = "SELECT COUNT(*) $baseFrom WHERE " . implode(' AND ', $reachWhereP);
+    $st = $db->prepare($sqlP);
+    $st->execute($params);
+    $withPhone = (int) $st->fetchColumn();
+
+    echo json_encode([
+        'total'              => $total,
+        'reachable_by_email' => $withEmail,
+        'reachable_by_phone' => $withPhone,
+    ]);
+    exit();
+}
+
+// Page rows. Include the computed `tier` column so frontends don't need to
+// re-derive it from the normalized payload.
+$tierExpr = leadTierSqlExpression('tier');
 $dataSql = "SELECT r.id, r.batch_id, r.source_row_number, r.normalized_payload_json, r.created_at,
                    b.batch_name, b.source_stage, b.imported_at,
                    f.id AS file_id, f.display_name AS file_display_name, f.file_name,
                    a.id AS artifact_id, a.original_filename AS artifact_name,
                    v.id AS vehicle_id, v.name AS vehicle_name,
-                   u.name AS imported_by_name
+                   u.name AS imported_by_name,
+                   $tierExpr
             $baseFrom
             WHERE $whereSql
             ORDER BY b.imported_at DESC, r.source_row_number ASC

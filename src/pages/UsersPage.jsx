@@ -3,13 +3,14 @@ import api from '../api';
 import { useAuth } from '../context/AuthContext';
 
 const ROLE_COLORS = {
-  admin: 'bg-purple-50 text-purple-700 border-purple-100',
-  carfax: 'bg-amber-50 text-amber-700 border-amber-100',
-  filter: 'bg-orange-50 text-orange-700 border-orange-100',
-  tlo: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+  admin:    'bg-purple-50 text-purple-700 border-purple-100',
+  carfax:   'bg-amber-50 text-amber-700 border-amber-100',
+  filter:   'bg-orange-50 text-orange-700 border-orange-100',
+  tlo:      'bg-emerald-50 text-emerald-700 border-emerald-100',
+  marketer: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100',
 };
 
-const ROLES = ['admin', 'carfax', 'filter', 'tlo'];
+const ROLES = ['admin', 'carfax', 'filter', 'tlo', 'marketer'];
 
 function UserModal({ title, open, onClose, children }) {
   if (!open) return null;
