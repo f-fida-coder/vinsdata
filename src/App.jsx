@@ -67,11 +67,16 @@ function Sidebar({ open, onClose }) {
   const { user, logout } = useAuth();
 
   const linkClass = ({ isActive }) =>
-    `flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+    `flex items-center gap-2.5 px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors ${
       isActive
-        ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/25'
-        : 'text-gray-400 hover:text-white hover:bg-white/5'
+        ? 'text-white'
+        : 'hover:bg-[var(--vv-bg-sidebar-hover)]'
     }`;
+
+  const linkStyle = ({ isActive }) => ({
+    backgroundColor: isActive ? 'var(--vv-bg-sidebar-active)' : 'transparent',
+    color: isActive ? 'var(--vv-text-sidebar)' : 'var(--vv-text-sidebar-muted)',
+  });
 
   return (
     <>
@@ -80,65 +85,87 @@ function Sidebar({ open, onClose }) {
         <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={onClose} />
       )}
 
-      <aside className={`
-        fixed lg:sticky top-0 left-0 z-50 h-screen
-        w-[260px] bg-gradient-to-b from-gray-900 to-gray-800 flex flex-col border-r border-white/5
-        transition-transform duration-300 ease-in-out
-        ${open ? 'translate-x-0' : '-translate-x-full'}
-        lg:translate-x-0
-      `}>
-        {/* Logo + close btn on mobile */}
-        <div className="px-6 py-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
-              <span className="text-white font-bold text-sm">V</span>
+      <aside
+        className={`
+          fixed lg:sticky top-0 left-0 z-50 h-screen
+          w-[232px] flex flex-col
+          transition-transform duration-200 ease-out
+          ${open ? 'translate-x-0' : '-translate-x-full'}
+          lg:translate-x-0
+        `}
+        style={{
+          backgroundColor: 'var(--vv-bg-sidebar)',
+          borderRight: '1px solid var(--vv-border-sidebar)',
+        }}
+      >
+        {/* Brand */}
+        <div className="px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div
+              className="w-7 h-7 rounded-md flex items-center justify-center"
+              style={{ backgroundColor: 'var(--vv-accent)' }}
+            >
+              <span className="text-white font-semibold text-[13px]">V</span>
             </div>
-            <div>
-              <h2 className="text-base font-bold text-white tracking-tight">VIN Dashboard</h2>
-              <p className="text-[11px] text-gray-500 font-medium">File Management System</p>
+            <div className="leading-tight">
+              <div className="text-[13px] font-semibold tracking-tight" style={{ color: 'var(--vv-text-sidebar)' }}>Vin Vault</div>
+              <div className="text-[10px]" style={{ color: 'var(--vv-text-sidebar-dim)' }}>CRM</div>
             </div>
           </div>
-          <button onClick={onClose} className="lg:hidden w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-white/10">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          <button
+            onClick={onClose}
+            className="lg:hidden w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--vv-bg-sidebar-hover)]"
+            style={{ color: 'var(--vv-text-sidebar-muted)' }}
+            aria-label="Close menu"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
 
         {/* User card */}
-        <div className="mx-4 mb-6 p-3 rounded-xl bg-white/5 border border-white/5">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
-              {user.name.charAt(0)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">{user.name}</p>
-              <p className="text-[11px] text-gray-500 capitalize">{user.role}</p>
-            </div>
-            <NotificationBell tone="dark" />
+        <div
+          className="mx-3 mb-3 px-2.5 py-2 rounded-md flex items-center gap-2.5"
+          style={{
+            backgroundColor: 'var(--vv-bg-sidebar-hover)',
+            border: '1px solid var(--vv-border-sidebar)',
+          }}
+        >
+          <div
+            className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-semibold shrink-0 uppercase"
+            style={{ backgroundColor: 'var(--vv-bg-sidebar-active)', color: 'var(--vv-text-sidebar)' }}
+          >
+            {user.name.charAt(0)}
           </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[12px] font-medium truncate" style={{ color: 'var(--vv-text-sidebar)' }}>{user.name}</div>
+            <div className="text-[10px] capitalize" style={{ color: 'var(--vv-text-sidebar-dim)' }}>{user.role}</div>
+          </div>
+          <NotificationBell tone="dark" />
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-4 space-y-1">
-          <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider px-4 mb-2">Menu</p>
-          <NavLink to="/" end className={linkClass} onClick={onClose}>{NAV_ICONS.dashboard} Dashboard</NavLink>
-          <NavLink to="/vehicles" className={linkClass} onClick={onClose}>{NAV_ICONS.vehicles} Vehicles</NavLink>
-          <NavLink to="/leads" className={linkClass} onClick={onClose}>{NAV_ICONS.leads} CRM Leads</NavLink>
-          <NavLink to="/tasks" className={linkClass} onClick={onClose}>{NAV_ICONS.tasks} Tasks</NavLink>
-          <NavLink to="/duplicates" className={linkClass} onClick={onClose}>{NAV_ICONS.duplicates} Duplicate Review</NavLink>
-          <NavLink to="/merge-prep" className={linkClass} onClick={onClose}>{NAV_ICONS.mergePrep} Merge Prep</NavLink>
+        <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
+          <p className="text-[10px] font-semibold uppercase tracking-wider px-3 mb-1.5 mt-1" style={{ color: 'var(--vv-text-sidebar-dim)' }}>Menu</p>
+          <NavLink to="/" end className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.dashboard} Dashboard</NavLink>
+          <NavLink to="/vehicles" className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.vehicles} Vehicles</NavLink>
+          <NavLink to="/leads" className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.leads} Leads</NavLink>
+          <NavLink to="/tasks" className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.tasks} Tasks</NavLink>
+          <NavLink to="/duplicates" className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.duplicates} Duplicate Review</NavLink>
+          <NavLink to="/merge-prep" className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.mergePrep} Merge Prep</NavLink>
           {(user.role === 'admin' || user.role === 'marketer') && (
-            <NavLink to="/marketing" className={linkClass} onClick={onClose}>{NAV_ICONS.marketing} Marketing</NavLink>
+            <NavLink to="/marketing" className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.marketing} Marketing</NavLink>
           )}
           {user.role === 'admin' && (
-            <NavLink to="/users" className={linkClass} onClick={onClose}>{NAV_ICONS.users} Users</NavLink>
+            <NavLink to="/users" className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.users} Users</NavLink>
           )}
         </nav>
 
         {/* Logout */}
-        <div className="p-4">
+        <div className="p-3">
           <button
             onClick={() => { onClose(); logout(); }}
-            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-400 hover:text-red-400 hover:bg-red-500/5 rounded-xl transition-all duration-200"
+            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[13px] font-medium rounded-md hover:bg-[var(--vv-bg-sidebar-hover)] transition-colors"
+            style={{ color: 'var(--vv-text-sidebar-muted)' }}
           >
             {NAV_ICONS.logout} Sign Out
           </button>
@@ -150,15 +177,29 @@ function Sidebar({ open, onClose }) {
 
 function MobileHeader({ onMenuOpen }) {
   return (
-    <div className="lg:hidden sticky top-0 z-30 bg-white border-b border-gray-100 px-4 py-3 flex items-center gap-3">
-      <button onClick={onMenuOpen} className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 transition-colors">
+    <div
+      className="lg:hidden sticky top-0 z-30 px-4 py-2.5 flex items-center gap-3"
+      style={{
+        backgroundColor: 'var(--vv-bg-surface)',
+        borderBottom: '1px solid var(--vv-border)',
+      }}
+    >
+      <button
+        onClick={onMenuOpen}
+        className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-[var(--vv-bg-surface-muted)] transition-colors"
+        style={{ color: 'var(--vv-text-muted)' }}
+        aria-label="Open menu"
+      >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
       </button>
       <div className="flex items-center gap-2">
-        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-          <span className="text-white font-bold text-xs">V</span>
+        <div
+          className="w-6 h-6 rounded-md flex items-center justify-center"
+          style={{ backgroundColor: 'var(--vv-accent)' }}
+        >
+          <span className="text-white font-semibold text-[11px]">V</span>
         </div>
-        <span className="text-sm font-bold text-gray-900">VIN Dashboard</span>
+        <span className="text-[13px] font-semibold" style={{ color: 'var(--vv-text)' }}>Vin Vault</span>
       </div>
       <div className="ml-auto">
         <NotificationBell tone="light" />
@@ -175,7 +216,10 @@ function DashboardLayout() {
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex-1 flex flex-col min-w-0">
         <MobileHeader onMenuOpen={() => setSidebarOpen(true)} />
-        <main className="flex-1 bg-[#f8f9fc] p-4 sm:p-6 lg:p-8 overflow-auto">
+        <main
+          className="flex-1 p-4 sm:p-6 lg:p-8 overflow-auto"
+          style={{ backgroundColor: 'var(--vv-bg-app)' }}
+        >
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/vehicles" element={<VehiclesPage />} />
@@ -201,10 +245,16 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f8f9fc]">
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: 'var(--vv-bg-app)' }}
+      >
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
-          <p className="text-sm text-gray-400">Loading...</p>
+          <div
+            className="w-8 h-8 border-2 rounded-full animate-spin"
+            style={{ borderColor: 'var(--vv-border-strong)', borderTopColor: 'var(--vv-accent)' }}
+          />
+          <p className="text-[13px]" style={{ color: 'var(--vv-text-muted)' }}>Loading…</p>
         </div>
       </div>
     );

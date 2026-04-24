@@ -1,6 +1,15 @@
+@import './design/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+body {
+  background-color: var(--vv-bg-app);
+  color: var(--vv-text);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
 
 @keyframes fadeIn {
   from { opacity: 0; transform: scale(0.95) translateY(4px); }

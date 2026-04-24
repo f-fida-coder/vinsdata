@@ -1,0 +1,55 @@
+/*
+ * Vin Vault design tokens.
+ *
+ * Change a value here to ripple it across the app. Components read these via
+ * `var(--vv-*)`. We intentionally keep a small set: one surface scale, one
+ * border scale, one text scale, one accent, one set of radii.
+ */
+
+:root {
+  /* Surfaces (light, for the main app area) */
+  --vv-bg-app: #FAFAFA;
+  --vv-bg-surface: #FFFFFF;
+  --vv-bg-surface-muted: #F4F4F5;
+  --vv-bg-row-hover: #F4F4F5;
+  --vv-bg-row-selected: #EFF6FF;
+
+  /* Surfaces (sidebar — dark, flat, no gradients) */
+  --vv-bg-sidebar: #09090B;
+  --vv-bg-sidebar-hover: rgba(255, 255, 255, 0.05);
+  --vv-bg-sidebar-active: #1F1F23;
+
+  /* Borders */
+  --vv-border: #E4E4E7;
+  --vv-border-strong: #D4D4D8;
+  --vv-border-sidebar: rgba(255, 255, 255, 0.08);
+
+  /* Text */
+  --vv-text: #09090B;
+  --vv-text-muted: #52525B;
+  --vv-text-subtle: #A1A1AA;
+  --vv-text-sidebar: #F4F4F5;
+  --vv-text-sidebar-muted: #A1A1AA;
+  --vv-text-sidebar-dim: #71717A;
+
+  /* Accent — one color, no gradients. Kept blue for brand continuity. */
+  --vv-accent: #2563EB;
+  --vv-accent-hover: #1D4ED8;
+  --vv-accent-muted: #DBEAFE;
+  --vv-accent-text: #1E40AF;
+
+  /* Status colors (muted, Linear-like) */
+  --vv-status-success: #16A34A;
+  --vv-status-warning: #D97706;
+  --vv-status-danger: #DC2626;
+
+  /* Radii — tighter than the previous 2xl (16px) default */
+  --vv-radius-sm: 4px;
+  --vv-radius-md: 6px;
+  --vv-radius-lg: 8px;
+
+  /* Shadow — subtle, no glow */
+  --vv-shadow-sm: 0 1px 2px rgba(9, 9, 11, 0.04);
+  --vv-shadow-md: 0 2px 4px rgba(9, 9, 11, 0.06);
+  --vv-shadow-drawer: -8px 0 24px rgba(9, 9, 11, 0.08);
+}
