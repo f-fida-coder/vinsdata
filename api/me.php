@@ -21,5 +21,6 @@ echo json_encode([
         "id" => $_SESSION['user_id'],
         "name" => $_SESSION['user_name'],
         "role" => $_SESSION['user_role'],
-    ]
+    ],
+    "csrf_token" => $_SESSION['csrf_token'] ?? null,
 ]);

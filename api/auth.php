@@ -9,6 +9,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit();
 }
 
+requireCsrfToken();
+
 $input = json_decode(file_get_contents("php://input"), true);
 
 $email = $input['email'] ?? '';
@@ -36,11 +38,16 @@ $_SESSION['user_id'] = $user['id'];
 $_SESSION['user_name'] = $user['name'];
 $_SESSION['user_role'] = $user['role'];
 
+// Rotate CSRF token on login so the token bound to the pre-auth session is
+// replaced with one bound to the authenticated session.
+rotateCsrfToken();
+
 echo json_encode([
     "success" => true,
     "user" => [
         "id" => $user['id'],
         "name" => $user['name'],
         "role" => $user['role'],
-    ]
+    ],
+    "csrf_token" => $_SESSION['csrf_token'],
 ]);

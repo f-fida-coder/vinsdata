@@ -48,6 +48,7 @@ function requireAuth(): array
     if (!isset($_SESSION['user_id'])) {
         pipelineFail(401, 'Not authenticated', 'unauthenticated');
     }
+    requireCsrfToken();
     return [
         'id'   => (int) $_SESSION['user_id'],
         'role' => $_SESSION['user_role'] ?? null,

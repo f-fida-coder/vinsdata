@@ -1,6 +1,25 @@
 RewriteEngine On
 Options -Indexes
 
+# -----------------------------------------------------------------------------
+# Security headers applied to all SPA / static responses.
+# The PHP API adds its own headers in api/config.php (sendSecurityHeaders()).
+# mod_headers must be enabled on the host (Hostinger enables it by default).
+# -----------------------------------------------------------------------------
+<IfModule mod_headers.c>
+    # HSTS: only emitted over HTTPS; Apache sends it regardless so the
+    # front-end edge (Hostinger) is responsible for HTTPS redirect.
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+
+    # CSP: SPA bundle is self-hosted; styles allow inline because React uses
+    # the style attribute; connect-src is self because the API is same-origin.
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+</IfModule>
+
 # Route /api/* requests to the corresponding PHP file
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteRule ^api/(.+)$ api/$1.php [L,QSA]
