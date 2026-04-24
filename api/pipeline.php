@@ -191,7 +191,7 @@ const LEAD_STATUSES = [
     'marketing',
 ];
 const LEAD_PRIORITIES = ['low','medium','high','hot'];
-const LEAD_TEMPERATURES = ['cold','warm','hot','closed'];
+const LEAD_TEMPERATURES = ['no_answer','cold','warm','hot','closed'];
 
 // -- Tier classification --------------------------------------------------
 // Tiers are auto-computed from the normalized payload (number of owners +

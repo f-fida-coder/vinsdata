@@ -382,7 +382,7 @@ export default function LeadsPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl mb-4 flex items-center justify-between">
+        <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-lg mb-4 flex items-center justify-between">
           <span>{error}</span>
           <button onClick={() => setError('')} className="text-red-400 hover:text-red-600 p-1">&times;</button>
         </div>
@@ -399,7 +399,15 @@ export default function LeadsPage() {
       />
 
       {/* Search + filter toggle */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-3 sm:p-4 mb-4 shadow-sm">
+      <div
+        className="p-3 sm:p-4 mb-4"
+        style={{
+          backgroundColor: 'var(--vv-bg-surface)',
+          border: '1px solid var(--vv-border)',
+          borderRadius: 'var(--vv-radius-lg)',
+          boxShadow: 'var(--vv-shadow-sm)',
+        }}
+      >
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="relative flex-1 min-w-[200px]">
             <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
@@ -547,7 +555,15 @@ export default function LeadsPage() {
         user={user}
       />
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div
+        className="overflow-hidden"
+        style={{
+          backgroundColor: 'var(--vv-bg-surface)',
+          border: '1px solid var(--vv-border)',
+          borderRadius: 'var(--vv-radius-lg)',
+          boxShadow: 'var(--vv-shadow-sm)',
+        }}
+      >
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16 sm:py-20">
             <div className="w-10 h-10 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>

@@ -52,11 +52,15 @@ export const LEAD_PRIORITIES = [
 
 export const PRIORITY_BY_KEY = Object.fromEntries(LEAD_PRIORITIES.map((p) => [p.key, p]));
 
+// State machine from the product spec:
+//   no_answer → cold → warm → hot → closed
+// Keep this array ordered; pipeline.php's LEAD_TEMPERATURES mirrors it.
 export const LEAD_TEMPERATURES = [
-  { key: 'cold',   label: 'Cold',   bg: 'bg-sky-50',     text: 'text-sky-700',     dot: 'bg-sky-500' },
-  { key: 'warm',   label: 'Warm',   bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500' },
-  { key: 'hot',    label: 'Hot',    bg: 'bg-red-50',     text: 'text-red-700',     dot: 'bg-red-500' },
-  { key: 'closed', label: 'Closed', bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+  { key: 'no_answer', label: 'No answer', bg: 'bg-slate-50',   text: 'text-slate-700',   dot: 'bg-slate-400' },
+  { key: 'cold',      label: 'Cold',      bg: 'bg-sky-50',     text: 'text-sky-700',     dot: 'bg-sky-500' },
+  { key: 'warm',      label: 'Warm',      bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500' },
+  { key: 'hot',       label: 'Hot',       bg: 'bg-red-50',     text: 'text-red-700',     dot: 'bg-red-500' },
+  { key: 'closed',    label: 'Closed',    bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
 ];
 
 export const TEMPERATURE_BY_KEY = Object.fromEntries(LEAD_TEMPERATURES.map((t) => [t.key, t]));
