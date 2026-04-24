@@ -7,12 +7,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
-// Use the remote MySQL host for both environments so the same config works
-// from local dev and from Hostinger without depending on a localhost socket.
-define('DB_HOST', 'srv2052.hstgr.io');
-define('DB_NAME', 'u487877829_vins_data');
-define('DB_USER', 'u487877829_vinsdata');
-define('DB_PASS', '***SCRUBBED***');
+// Credentials live in api/config.local.php (gitignored).
+// Copy api/config.local.php.example to api/config.local.php and fill in real values
+// on every environment (local dev and production).
+$localConfigPath = __DIR__ . '/config.local.php';
+if (!file_exists($localConfigPath)) {
+    http_response_code(500);
+    echo json_encode([
+        'error' => 'Server not configured',
+        'detail' => 'api/config.local.php is missing. Copy api/config.local.php.example and fill in credentials.',
+    ]);
+    exit();
+}
+require_once $localConfigPath;
+
+foreach (['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASS'] as $requiredConstant) {
+    if (!defined($requiredConstant)) {
+        http_response_code(500);
+        echo json_encode([
+            'error' => 'Server not configured',
+            'detail' => "$requiredConstant not defined in api/config.local.php.",
+        ]);
+        exit();
+    }
+}
 
 function initSession(): void
 {

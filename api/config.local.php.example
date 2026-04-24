@@ -1,0 +1,10 @@
+<?php
+
+// Copy this file to api/config.local.php and fill in real values.
+// api/config.local.php is gitignored and MUST exist in every environment
+// (local dev and production). It is required by api/config.php.
+
+define('DB_HOST', 'your-mysql-host.example.com');
+define('DB_NAME', 'your_db_name');
+define('DB_USER', 'your_db_user');
+define('DB_PASS', 'your_db_password');

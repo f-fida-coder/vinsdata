@@ -14,6 +14,9 @@ dist-ssr
 # API - user uploads must never be tracked (git pulls would wipe them).
 api/uploads/
 
+# API - local credentials. Never commit. See api/config.local.php.example.
+api/config.local.php
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
