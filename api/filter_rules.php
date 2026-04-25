@@ -7,60 +7,11 @@
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/pipeline.php';
+require_once __DIR__ . '/filter_rule_helpers.php';
 initSession();
 
 $user = requireAuth();
 $db   = getDBConnection();
-
-// Supported predicate fields. Limits operators to the well-known normalized
-// columns on imported_leads_raw plus a few payload shortcuts. This is
-// intentionally narrow — no arbitrary SQL or free-form payload keys — so the
-// UI can present a guided rule builder.
-const FILTER_RULE_FIELDS = [
-    'vin'              => ['type' => 'string',  'source' => 'norm'],
-    'phone_primary'    => ['type' => 'string',  'source' => 'norm'],
-    'email_primary'    => ['type' => 'string',  'source' => 'norm'],
-    'state'            => ['type' => 'string',  'source' => 'norm'],
-    'make'             => ['type' => 'string',  'source' => 'norm'],
-    'model'            => ['type' => 'string',  'source' => 'norm'],
-    'year'             => ['type' => 'number',  'source' => 'norm'],
-    'mileage'          => ['type' => 'number',  'source' => 'payload'],
-    'number_of_owners' => ['type' => 'number',  'source' => 'payload'],
-    'title_brand'      => ['type' => 'string',  'source' => 'payload'],
-    'city'             => ['type' => 'string',  'source' => 'payload'],
-    'zip_code'         => ['type' => 'string',  'source' => 'payload'],
-];
-
-const FILTER_RULE_OPS = [
-    'eq', 'neq', 'lt', 'gt', 'lte', 'gte',
-    'in', 'not_in',
-    'contains', 'starts_with',
-    'is_null', 'is_not_null',
-];
-
-function assertValidPredicate(array $p): void
-{
-    $field = $p['field'] ?? null;
-    $op    = $p['op'] ?? null;
-
-    if (!is_string($field) || !array_key_exists($field, FILTER_RULE_FIELDS)) {
-        pipelineFail(400, "Unknown predicate field '$field'", 'invalid_predicate');
-    }
-    if (!is_string($op) || !in_array($op, FILTER_RULE_OPS, true)) {
-        pipelineFail(400, "Unknown predicate op '$op'", 'invalid_predicate');
-    }
-
-    // is_null / is_not_null don't need a value.
-    $needsValue = !in_array($op, ['is_null', 'is_not_null'], true);
-    if ($needsValue && !array_key_exists('value', $p)) {
-        pipelineFail(400, "Predicate op '$op' requires a value", 'invalid_predicate');
-    }
-
-    // in / not_in require an array.
-    if (in_array($op, ['in', 'not_in'], true) && !is_array($p['value'] ?? null)) {
-        pipelineFail(400, "Predicate op '$op' requires an array value", 'invalid_predicate');
-    }
-}
 
 function formatRule(array $r): array
 {

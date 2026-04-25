@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/pipeline.php';
+require_once __DIR__ . '/filter_rule_helpers.php';
 
 // Allow direct call or include from files.php PUT
 if (!isset($_SESSION) || session_status() !== PHP_SESSION_ACTIVE) {
@@ -82,10 +83,26 @@ try {
     pipelineFail(500, 'Advance failed: ' . $e->getMessage(), 'db_error');
 }
 
+// If the file just moved into the 'filter' stage, run VIN filter rules
+// against every lead imported from this file's carfax-stage batches. Auto-
+// rejects + flags land in filter_rule_results; flagged leads show up in
+// the manual-review queue.
+$filterSummary = null;
+if ($next === 'filter') {
+    try {
+        $filterSummary = evaluateFilterRulesForFile($db, $fileId);
+    } catch (Throwable $e) {
+        // Don't fail the advance on evaluator errors; surface a warning in the
+        // response so admins can re-run manually.
+        $filterSummary = ['error' => 'Filter evaluation failed: ' . $e->getMessage()];
+    }
+}
+
 echo json_encode([
-    'success'       => true,
-    'from_stage'    => $current,
-    'to_stage'      => $next,
-    'status'        => $newStatus,
-    'artifact_id'   => (int) $artifact['id'],
+    'success'        => true,
+    'from_stage'     => $current,
+    'to_stage'       => $next,
+    'status'         => $newStatus,
+    'artifact_id'    => (int) $artifact['id'],
+    'filter_summary' => $filterSummary,
 ]);
