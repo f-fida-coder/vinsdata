@@ -33,9 +33,11 @@ cpSync(apiSrc, apiDest, {
     if (!rel) return true;
 
     // config.local.php is the per-environment credentials file (gitignored).
-    // Never deploy it — the server has its own copy. Skip uploads/ runtime dir.
+    // Never deploy it — the server has its own copy. Skip uploads/ runtime dir
+    // entirely (including the dir itself) so a full-folder upload to the
+    // server can't wipe real uploaded files.
     if (rel === 'config.local.php') return false;
-    if (rel.startsWith('uploads/')) return false;
+    if (rel === 'uploads' || rel.startsWith('uploads/')) return false;
 
     return true;
   },
