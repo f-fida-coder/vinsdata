@@ -7,8 +7,27 @@
 body {
   background-color: var(--vv-bg-app);
   color: var(--vv-text);
+  font-family: var(--vv-font-sans);
   -webkit-font-smoothing: antialiased;
-  font-feature-settings: "cv11", "ss01";
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: var(--vv-tracking-tight);
+}
+
+code, pre, .font-mono, .tabular-nums {
+  font-family: var(--vv-font-mono);
+}
+
+/*
+ * Utility class for the small uppercase labels that appear throughout the
+ * vinvault.us language (section headers, column heads, form field labels).
+ * Existing components can opt in without an explicit import.
+ */
+.vv-label {
+  text-transform: uppercase;
+  letter-spacing: var(--vv-tracking-label);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--vv-text-subtle);
 }
 
 @keyframes fadeIn {

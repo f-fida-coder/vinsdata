@@ -110,13 +110,32 @@ function Sidebar({ open, onClose }) {
           <div className="flex items-center gap-2.5">
             <div
               className="w-7 h-7 rounded-md flex items-center justify-center"
-              style={{ backgroundColor: 'var(--vv-accent)' }}
+              style={{
+                backgroundColor: '#ffffff',
+                color: 'var(--vv-bg-dark)',
+              }}
             >
-              <span className="text-white font-semibold text-[13px]">V</span>
+              <span className="font-semibold text-[13px]">V</span>
             </div>
             <div className="leading-tight">
-              <div className="text-[13px] font-semibold tracking-tight" style={{ color: 'var(--vv-text-sidebar)' }}>Vin Vault</div>
-              <div className="text-[10px]" style={{ color: 'var(--vv-text-sidebar-dim)' }}>CRM</div>
+              <div
+                className="text-[13px] font-semibold"
+                style={{
+                  color: 'var(--vv-text-sidebar)',
+                  letterSpacing: 'var(--vv-tracking-tight)',
+                }}
+              >
+                Vin Vault
+              </div>
+              <div
+                className="text-[9px] uppercase"
+                style={{
+                  color: 'var(--vv-text-sidebar-dim)',
+                  letterSpacing: 'var(--vv-tracking-label)',
+                }}
+              >
+                CRM
+              </div>
             </div>
           </div>
           <button
@@ -152,7 +171,15 @@ function Sidebar({ open, onClose }) {
 
         {/* Nav */}
         <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
-          <p className="text-[10px] font-semibold uppercase tracking-wider px-3 mb-1.5 mt-1" style={{ color: 'var(--vv-text-sidebar-dim)' }}>Menu</p>
+          <p
+            className="text-[10px] font-semibold uppercase px-3 mb-1.5 mt-1"
+            style={{
+              color: 'var(--vv-text-sidebar-dim)',
+              letterSpacing: 'var(--vv-tracking-label)',
+            }}
+          >
+            Menu
+          </p>
           <NavLink to="/" end className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.dashboard} Dashboard</NavLink>
           <NavLink to="/vehicles" className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.vehicles} Vehicles</NavLink>
           <NavLink to="/leads" className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.leads} Leads</NavLink>
@@ -206,9 +233,12 @@ function MobileHeader({ onMenuOpen }) {
       <div className="flex items-center gap-2">
         <div
           className="w-6 h-6 rounded-md flex items-center justify-center"
-          style={{ backgroundColor: 'var(--vv-accent)' }}
+          style={{
+            backgroundColor: 'var(--vv-bg-dark)',
+            color: '#ffffff',
+          }}
         >
-          <span className="text-white font-semibold text-[11px]">V</span>
+          <span className="font-semibold text-[11px]">V</span>
         </div>
         <span className="text-[13px] font-semibold" style={{ color: 'var(--vv-text)' }}>Vin Vault</span>
       </div>

@@ -68,9 +68,9 @@ export default function FilterReviewPage() {
               onClick={() => setStatus(t.key)}
               className="px-3 py-1.5 rounded-md transition-colors"
               style={{
-                backgroundColor: active ? 'var(--vv-accent-muted)' : 'transparent',
-                color: active ? 'var(--vv-accent-text)' : 'var(--vv-text-muted)',
-                border: `1px solid ${active ? 'var(--vv-accent)' : 'transparent'}`,
+                backgroundColor: active ? 'var(--vv-bg-dark)' : 'transparent',
+                color: active ? '#ffffff' : 'var(--vv-text-muted)',
+                border: `1px solid ${active ? 'var(--vv-bg-dark)' : 'var(--vv-border)'}`,
                 fontWeight: active ? 600 : 500,
               }}
             >

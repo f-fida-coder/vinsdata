@@ -1,55 +1,90 @@
 /*
- * Vin Vault design tokens.
+ * Vin Vault design tokens — matched to the vinvault.us marketing site.
  *
- * Change a value here to ripple it across the app. Components read these via
- * `var(--vv-*)`. We intentionally keep a small set: one surface scale, one
- * border scale, one text scale, one accent, one set of radii.
+ * Source of truth: the compiled Tailwind CSS on vinvault.us. Matching those
+ * values here keeps the CRM visually continuous with the public brand.
+ *
+ * Typography: Manrope throughout, Geist Mono for code-like values.
+ * Palette: pure zinc scale. No blue accent — contrast (zinc-950 on zinc-50)
+ *   is the accent. This is the luxury-brand convention vinvault.us uses.
+ * Radii: softer than Linear-style — 12px / 16px / 24px dominate on surfaces.
+ * Labels: small uppercase labels get letter-spacing: 0.11em.
  */
 
 :root {
-  /* Surfaces (light, for the main app area) */
-  --vv-bg-app: #FAFAFA;
-  --vv-bg-surface: #FFFFFF;
-  --vv-bg-surface-muted: #F4F4F5;
-  --vv-bg-row-hover: #F4F4F5;
-  --vv-bg-row-selected: #EFF6FF;
+  /* Fonts */
+  --vv-font-sans: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+  --vv-font-mono: "Geist Mono", "Consolas", monospace;
+  --vv-tracking-label: 0.11em;
+  --vv-tracking-tight: -0.025em;
+  --vv-tracking-wide: 0.025em;
 
-  /* Surfaces (sidebar — dark, flat, no gradients) */
-  --vv-bg-sidebar: #09090B;
-  --vv-bg-sidebar-hover: rgba(255, 255, 255, 0.05);
-  --vv-bg-sidebar-active: #1F1F23;
+  /* Zinc palette — exact values from vinvault.us */
+  --vv-zinc-50:  #fafafa;
+  --vv-zinc-100: #f4f4f5;
+  --vv-zinc-200: #e4e4e7;
+  --vv-zinc-300: #d4d4d8;
+  --vv-zinc-500: #71717b;
+  --vv-zinc-700: #3f3f46;
+  --vv-zinc-950: #09090b;
+
+  /* Light surfaces (main app area) */
+  --vv-bg-app: var(--vv-zinc-50);
+  --vv-bg-surface: #ffffff;
+  --vv-bg-surface-muted: var(--vv-zinc-100);
+  --vv-bg-row-hover: var(--vv-zinc-100);
+  --vv-bg-row-selected: var(--vv-zinc-100);
+
+  /* Dark surfaces (sidebar, dark sections) */
+  --vv-bg-dark: var(--vv-zinc-950);
+  --vv-bg-dark-hover: rgba(255, 255, 255, 0.10);
+  --vv-bg-dark-active: rgba(255, 255, 255, 0.08);
+
+  /* Aliases retained from the earlier pilot so components that reference
+     --vv-bg-sidebar-* still compile. Point them at the dark tokens. */
+  --vv-bg-sidebar: var(--vv-bg-dark);
+  --vv-bg-sidebar-hover: var(--vv-bg-dark-hover);
+  --vv-bg-sidebar-active: var(--vv-bg-dark-active);
 
   /* Borders */
-  --vv-border: #E4E4E7;
-  --vv-border-strong: #D4D4D8;
-  --vv-border-sidebar: rgba(255, 255, 255, 0.08);
+  --vv-border:          var(--vv-zinc-200);
+  --vv-border-strong:   var(--vv-zinc-300);
+  --vv-border-dark:     rgba(255, 255, 255, 0.20);
+  --vv-border-sidebar:  rgba(255, 255, 255, 0.12);
 
-  /* Text */
-  --vv-text: #09090B;
-  --vv-text-muted: #52525B;
-  --vv-text-subtle: #A1A1AA;
-  --vv-text-sidebar: #F4F4F5;
-  --vv-text-sidebar-muted: #A1A1AA;
-  --vv-text-sidebar-dim: #71717A;
+  /* Text (on light) */
+  --vv-text:         var(--vv-zinc-950);
+  --vv-text-muted:   var(--vv-zinc-700);
+  --vv-text-subtle:  var(--vv-zinc-500);
 
-  /* Accent — one color, no gradients. Kept blue for brand continuity. */
-  --vv-accent: #2563EB;
-  --vv-accent-hover: #1D4ED8;
-  --vv-accent-muted: #DBEAFE;
-  --vv-accent-text: #1E40AF;
+  /* Text (on dark) */
+  --vv-text-sidebar:       rgba(255, 255, 255, 0.92);
+  --vv-text-sidebar-muted: rgba(255, 255, 255, 0.72);
+  --vv-text-sidebar-dim:   rgba(255, 255, 255, 0.50);
 
-  /* Status colors (muted, Linear-like) */
-  --vv-status-success: #16A34A;
-  --vv-status-warning: #D97706;
-  --vv-status-danger: #DC2626;
+  /* Accent — the vinvault.us convention is zinc-950 on light, white on dark.
+     No blue. We keep the token names for compatibility but point them at
+     high-contrast neutrals. */
+  --vv-accent:       var(--vv-zinc-950);
+  --vv-accent-hover: #000000;
+  --vv-accent-muted: var(--vv-zinc-100);
+  --vv-accent-text:  var(--vv-zinc-950);
 
-  /* Radii — tighter than the previous 2xl (16px) default */
-  --vv-radius-sm: 4px;
-  --vv-radius-md: 6px;
-  --vv-radius-lg: 8px;
+  /* Status colors (muted, kept for semantic use in pills/alerts) */
+  --vv-status-success: #16a34a;
+  --vv-status-warning: #b45309;
+  --vv-status-danger:  #b91c1c;
 
-  /* Shadow — subtle, no glow */
-  --vv-shadow-sm: 0 1px 2px rgba(9, 9, 11, 0.04);
-  --vv-shadow-md: 0 2px 4px rgba(9, 9, 11, 0.06);
-  --vv-shadow-drawer: -8px 0 24px rgba(9, 9, 11, 0.08);
+  /* Radii — match vinvault.us scale */
+  --vv-radius-sm: 6px;
+  --vv-radius-md: 10px;
+  --vv-radius-lg: 12px;
+  --vv-radius-xl: 16px;
+  --vv-radius-2xl: 24px;
+
+  /* Shadows — atmospheric on light, deeper on dark */
+  --vv-shadow-sm:       0 1px 2px rgba(9, 9, 11, 0.04);
+  --vv-shadow-card:     0 18px 50px rgba(0, 0, 0, 0.06);
+  --vv-shadow-dark:     0 24px 80px rgba(0, 0, 0, 0.45);
+  --vv-shadow-drawer:   -8px 0 40px rgba(9, 9, 11, 0.12);
 }

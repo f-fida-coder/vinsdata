@@ -146,24 +146,38 @@ function RuleForm({ initial, fields, ops, onCancel, onSubmit, submitting }) {
       <div>
         <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--vv-text-muted)' }}>Action</label>
         <div className="flex gap-2">
-          {ACTION_OPTIONS.map((a) => (
-            <label
-              key={a.key}
-              className="flex-1 cursor-pointer px-3 py-2 flex items-center gap-2"
-              style={{
-                backgroundColor: action === a.key ? 'var(--vv-accent-muted)' : 'var(--vv-bg-surface-muted)',
-                border: `1px solid ${action === a.key ? 'var(--vv-accent)' : 'var(--vv-border)'}`,
-                borderRadius: 'var(--vv-radius-md)',
-                color: action === a.key ? 'var(--vv-accent-text)' : 'var(--vv-text)',
-              }}
-            >
-              <input type="radio" name="action" checked={action === a.key} onChange={() => setAction(a.key)} className="accent-[var(--vv-accent)]" />
-              <div className="flex-1">
-                <div className="font-medium">{a.label}</div>
-                <div className="text-[11px]" style={{ color: 'var(--vv-text-muted)' }}>{a.hint}</div>
-              </div>
-            </label>
-          ))}
+          {ACTION_OPTIONS.map((a) => {
+            const selected = action === a.key;
+            return (
+              <label
+                key={a.key}
+                className="flex-1 cursor-pointer px-3 py-2 flex items-center gap-2"
+                style={{
+                  backgroundColor: selected ? 'var(--vv-bg-dark)' : 'var(--vv-bg-surface)',
+                  border: `1px solid ${selected ? 'var(--vv-bg-dark)' : 'var(--vv-border)'}`,
+                  borderRadius: 'var(--vv-radius-md)',
+                  color: selected ? '#ffffff' : 'var(--vv-text)',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="action"
+                  checked={selected}
+                  onChange={() => setAction(a.key)}
+                  className="accent-white"
+                />
+                <div className="flex-1">
+                  <div className="font-medium">{a.label}</div>
+                  <div
+                    className="text-[11px]"
+                    style={{ color: selected ? 'rgba(255,255,255,0.72)' : 'var(--vv-text-muted)' }}
+                  >
+                    {a.hint}
+                  </div>
+                </div>
+              </label>
+            );
+          })}
         </div>
       </div>
 

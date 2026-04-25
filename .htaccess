@@ -17,7 +17,8 @@ Options -Indexes
 
     # CSP: SPA bundle is self-hosted; styles allow inline because React uses
     # the style attribute; connect-src is self because the API is same-origin.
-    Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    # Google Fonts is allow-listed on style-src + font-src to load Manrope.
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 </IfModule>
 
 # Route /api/* requests to the corresponding PHP file
