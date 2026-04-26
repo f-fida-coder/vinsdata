@@ -32,18 +32,17 @@ cpSync(apiSrc, apiDest, {
     const rel = path.relative(apiSrc, src).replaceAll('\\', '/');
     if (!rel) return true;
 
-    // config.local.php is the per-environment credentials file (gitignored).
-    // Never deploy it — the server has its own copy. Skip uploads/ runtime dir
-    // entirely (including the dir itself) so a full-folder upload to the
-    // server can't wipe real uploaded files.
-    if (rel === 'config.local.php') return false;
+    // Skip uploads/ runtime dir entirely (including the dir itself) so a
+    // full-folder upload to the server can't wipe real uploaded files.
+    // config.local.php IS deployed (it's committed to the repo per the
+    // .gitignore note explaining why).
     if (rel === 'uploads' || rel.startsWith('uploads/')) return false;
 
     return true;
   },
 });
 
-console.log('copy-api-to-dist: copied api -> dist/api (excluding config.local.php and uploads/)');
+console.log('copy-api-to-dist: copied api -> dist/api (excluding uploads/)');
 
 if (existsSync(htaccessSrc)) {
   copyFileSync(htaccessSrc, htaccessDest);
