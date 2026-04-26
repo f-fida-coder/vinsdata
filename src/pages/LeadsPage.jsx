@@ -584,7 +584,7 @@ export default function LeadsPage() {
                       aria-label="Select all on page"
                     />
                   </th>
-                  <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Name</th>
+                  <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider min-w-[260px]">Lead</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Tier</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Priority</th>
@@ -593,11 +593,8 @@ export default function LeadsPage() {
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Labels</th>
                   <th className="hidden xl:table-cell px-3 py-2 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Wanted</th>
                   <th className="hidden xl:table-cell px-3 py-2 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Offered</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">VIN</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Phone</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Email</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Location</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Vehicle</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Source file</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Batch</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Stage</th>
@@ -613,7 +610,7 @@ export default function LeadsPage() {
               <tbody>
                 {data.leads.length === 0 ? (
                   <tr>
-                    <td colSpan={20 + visibleCustomColumns.length} className="py-16 text-center">
+                    <td colSpan={17 + visibleCustomColumns.length} className="py-16 text-center">
                       <p className="text-sm text-gray-400">No leads match these filters.</p>
                       {activeChips.length > 0 && (
                         <button onClick={clearAll} className="text-sm text-[var(--vv-text)] hover:underline font-medium mt-2">Clear all filters</button>
@@ -650,7 +647,21 @@ export default function LeadsPage() {
                           aria-label={`Select lead ${lead.id}`}
                         />
                       </td>
-                      <td className="px-2 py-2 text-[13px] text-gray-900 font-medium">{name}</td>
+                      <td className="px-2 py-2 align-top">
+                        <div className="text-[13px] font-medium text-gray-900">{name}</div>
+                        {(vehicle !== '—' || normValue(lead, 'phone_primary')) && (
+                          <div className="text-[11px] text-gray-500 mt-0.5">
+                            {vehicle !== '—' && <span>{vehicle}</span>}
+                            {vehicle !== '—' && normValue(lead, 'phone_primary') && <span className="mx-1.5 text-gray-300">·</span>}
+                            {normValue(lead, 'phone_primary') && <span className="tabular-nums">{normValue(lead, 'phone_primary')}</span>}
+                          </div>
+                        )}
+                        {normValue(lead, 'vin') && (
+                          <div className="text-[10px] font-mono text-gray-400 mt-0.5 tracking-wide">
+                            {normValue(lead, 'vin')}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-3 py-2">
                         <span
                           title={tierMeta.hint}
@@ -699,11 +710,8 @@ export default function LeadsPage() {
                       <td className="hidden xl:table-cell px-3 py-2 text-[13px] text-gray-700 text-right tabular-nums">
                         {crm.price_offered != null ? formatPrice(crm.price_offered) : <span className="text-gray-300">—</span>}
                       </td>
-                      <td className="px-3 py-2 text-[11px] font-mono text-gray-700">{normValue(lead, 'vin') || '—'}</td>
-                      <td className="px-3 py-2 text-[13px] text-gray-700">{normValue(lead, 'phone_primary') || '—'}</td>
                       <td className="px-3 py-2 text-[13px] text-gray-700 truncate max-w-[180px]">{normValue(lead, 'email_primary') || '—'}</td>
                       <td className="px-3 py-2 text-[13px] text-gray-600">{location}</td>
-                      <td className="px-3 py-2 text-[13px] text-gray-700">{vehicle}</td>
                       <td className="px-3 py-2 text-[13px] text-gray-600 truncate max-w-[180px]">{lead.file_display_name || lead.file_name}</td>
                       <td className="px-3 py-2 text-[13px] text-gray-600 truncate max-w-[180px]">{lead.batch_name}</td>
                       <td className="px-3 py-2">
