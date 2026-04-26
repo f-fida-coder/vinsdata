@@ -4,20 +4,16 @@ import LeadDetailDrawer from '../components/LeadDetailDrawer';
 import PhonesDropdown from '../components/PhonesDropdown';
 import { useAuth } from '../context/AuthContext';
 import {
-  LEAD_TEMPERATURES, TEMPERATURE_BY_KEY,
+  LEAD_TEMPERATURES,
   STATUS_BY_KEY, PRIORITY_BY_KEY,
   formatPrice,
 } from '../lib/crm';
 
-// Column definitions: 'unset' is the implicit Untriaged bucket for leads
-// that have no temperature set yet. Renders to the left so operators see
-// what hasn't been triaged at a glance.
-const COLUMNS = [
-  { key: 'unset',     label: 'Untriaged', dot: 'bg-zinc-300',   bg: 'bg-zinc-50',    text: 'text-zinc-600',   hint: 'No temperature set' },
-  ...LEAD_TEMPERATURES.map((t) => ({ ...t, hint: undefined })),
-];
+// Five temperature columns: No Answer | Cold | Warm | Hot | Closed.
+// (The 'Untriaged' column for leads with no temperature was removed.)
+const COLUMNS = LEAD_TEMPERATURES.map((t) => ({ ...t, hint: undefined }));
 
-const PER_COLUMN = 100;
+const PER_COLUMN = 25;
 
 function relTime(iso) {
   if (!iso) return null;
@@ -100,10 +96,13 @@ function LeadCard({ lead, onClick }) {
   );
 }
 
-function Column({ col, leads, total, loading, onCardClick }) {
+function Column({ col, leads, total, page, loading, onCardClick, onPage }) {
+  const totalPages = total != null ? Math.max(1, Math.ceil(total / PER_COLUMN)) : 1;
+  const showPager  = total != null && total > PER_COLUMN;
+
   return (
     <div
-      className="flex flex-col w-[280px] shrink-0"
+      className="flex flex-col w-[260px] shrink-0 max-h-[calc(100vh-220px)]"
       style={{
         backgroundColor: 'var(--vv-bg-surface-muted)',
         border: '1px solid var(--vv-border)',
@@ -111,7 +110,7 @@ function Column({ col, leads, total, loading, onCardClick }) {
       }}
     >
       <div
-        className="px-3 py-2.5 flex items-center justify-between sticky top-0 z-10"
+        className="px-3 py-2 flex items-center justify-between"
         style={{
           backgroundColor: 'var(--vv-bg-surface-muted)',
           borderBottom: '1px solid var(--vv-border)',
@@ -127,7 +126,6 @@ function Column({ col, leads, total, loading, onCardClick }) {
               color: 'var(--vv-text)',
               letterSpacing: 'var(--vv-tracking-label)',
             }}
-            title={col.hint}
           >
             {col.label}
           </span>
@@ -137,7 +135,7 @@ function Column({ col, leads, total, loading, onCardClick }) {
         </span>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-2 min-h-[120px]">
+      <div className="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-[120px]">
         {loading ? (
           <div className="py-8 text-center text-[11px]" style={{ color: 'var(--vv-text-subtle)' }}>Loading…</div>
         ) : leads.length === 0 ? (
@@ -147,12 +145,40 @@ function Column({ col, leads, total, loading, onCardClick }) {
             <LeadCard key={lead.id} lead={lead} onClick={() => onCardClick(lead.id)} />
           ))
         )}
-        {!loading && total !== null && total > leads.length && (
-          <div className="py-2 text-center text-[10px]" style={{ color: 'var(--vv-text-subtle)' }}>
-            +{(total - leads.length).toLocaleString()} more · open Leads to filter
-          </div>
-        )}
       </div>
+
+      {showPager && (
+        <div
+          className="px-2 py-1.5 flex items-center justify-between text-[10px]"
+          style={{
+            backgroundColor: 'var(--vv-bg-surface-muted)',
+            borderTop: '1px solid var(--vv-border)',
+            borderBottomLeftRadius: 'var(--vv-radius-lg)',
+            borderBottomRightRadius: 'var(--vv-radius-lg)',
+            color: 'var(--vv-text-muted)',
+          }}
+        >
+          <button
+            onClick={() => onPage(Math.max(1, page - 1))}
+            disabled={page <= 1 || loading}
+            className="px-1.5 py-0.5 rounded disabled:opacity-30"
+            style={{ border: '1px solid var(--vv-border)', backgroundColor: 'var(--vv-bg-surface)' }}
+          >
+            ‹
+          </button>
+          <span className="tabular-nums">
+            {page} / {totalPages.toLocaleString()}
+          </span>
+          <button
+            onClick={() => onPage(Math.min(totalPages, page + 1))}
+            disabled={page >= totalPages || loading}
+            className="px-1.5 py-0.5 rounded disabled:opacity-30"
+            style={{ border: '1px solid var(--vv-border)', backgroundColor: 'var(--vv-bg-surface)' }}
+          >
+            ›
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -161,21 +187,22 @@ export default function PipelinePage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'marketer';
 
-  // One entry per column key with its own page payload.
+  // One entry per column key with its own page state. Each column paginates
+  // independently; flipping a page in 'Hot' doesn't reload the others.
   const [columns, setColumns] = useState(() =>
-    Object.fromEntries(COLUMNS.map((c) => [c.key, { leads: [], total: null, loading: true }]))
+    Object.fromEntries(COLUMNS.map((c) => [c.key, { leads: [], total: null, loading: true, page: 1 }]))
   );
   const [error, setError] = useState('');
   const [detailId, setDetailId] = useState(null);
-  const [scope, setScope] = useState('all'); // 'all' | 'mine' (operators see only their assigned leads by default)
+  const [scope, setScope] = useState('all'); // 'all' | 'mine'
 
   useEffect(() => {
     if (!isAdmin) setScope('mine');
   }, [isAdmin]);
 
-  const fetchColumn = useCallback(async (col) => {
-    const params = { per_page: PER_COLUMN, page: 1 };
-    params.lead_temperature = col.key; // 'unset' is honored by the leads endpoint
+  const fetchColumn = useCallback(async (col, page = 1) => {
+    setColumns((prev) => ({ ...prev, [col.key]: { ...(prev[col.key] || {}), loading: true, page } }));
+    const params = { per_page: PER_COLUMN, page, lead_temperature: col.key };
     if (scope === 'mine') params.assigned_user_id = user?.id;
     try {
       const res = await api.get('/leads', { params });
@@ -185,17 +212,23 @@ export default function PipelinePage() {
           leads: res.data.leads || [],
           total: res.data.total ?? (res.data.leads?.length ?? 0),
           loading: false,
+          page,
         },
       }));
     } catch (err) {
       setError(extractApiError(err, `Failed to load ${col.label}`));
-      setColumns((prev) => ({ ...prev, [col.key]: { leads: [], total: null, loading: false } }));
+      setColumns((prev) => ({ ...prev, [col.key]: { leads: [], total: null, loading: false, page } }));
     }
   }, [scope, user?.id]);
 
+  const setColumnPage = useCallback((colKey, page) => {
+    const col = COLUMNS.find((c) => c.key === colKey);
+    if (col) fetchColumn(col, page);
+  }, [fetchColumn]);
+
   const reloadAll = useCallback(() => {
-    setColumns(Object.fromEntries(COLUMNS.map((c) => [c.key, { leads: [], total: null, loading: true }])));
-    COLUMNS.forEach((col) => fetchColumn(col));
+    setColumns(Object.fromEntries(COLUMNS.map((c) => [c.key, { leads: [], total: null, loading: true, page: 1 }])));
+    COLUMNS.forEach((col) => fetchColumn(col, 1));
   }, [fetchColumn]);
 
   useEffect(() => { reloadAll(); }, [reloadAll]);
@@ -259,8 +292,8 @@ export default function PipelinePage() {
 
       <div className="overflow-x-auto pb-3">
         <div
-          className="flex gap-3 min-h-[60vh]"
-          style={{ minWidth: `${COLUMNS.length * 290 + 12}px` }}
+          className="flex gap-3"
+          style={{ minWidth: `${COLUMNS.length * 270 + 12}px` }}
         >
           {COLUMNS.map((col) => (
             <Column
@@ -268,8 +301,10 @@ export default function PipelinePage() {
               col={col}
               leads={columns[col.key]?.leads ?? []}
               total={columns[col.key]?.total ?? null}
+              page={columns[col.key]?.page ?? 1}
               loading={columns[col.key]?.loading ?? false}
               onCardClick={setDetailId}
+              onPage={(p) => setColumnPage(col.key, p)}
             />
           ))}
         </div>
