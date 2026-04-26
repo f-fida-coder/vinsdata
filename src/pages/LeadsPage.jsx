@@ -572,7 +572,13 @@ export default function LeadsPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full" style={{ minWidth: `${1540 + visibleCustomColumns.length * 180}px` }}>
+            {/*
+              On mobile most columns are hidden via 'hidden md/lg/xl:table-cell'
+              so the natural table width is small. On lg+ the wide columns
+              come back and the parent's overflow-x-auto handles overflow.
+              No fixed min-width — let the table size to its visible columns.
+            */}
+            <table className="w-full">
               <thead className="bg-gray-50/70 sticky top-0 z-10">
                 <tr className="border-b border-gray-200">
                   <th className="pl-5 pr-1 py-2 w-8">
@@ -585,21 +591,21 @@ export default function LeadsPage() {
                       aria-label="Select all on page"
                     />
                   </th>
-                  <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider min-w-[260px]">Lead</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Tier</th>
+                  <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider min-w-[200px] sm:min-w-[260px]">Lead</th>
+                  <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Tier</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Priority</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Temperature</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Agent</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Labels</th>
+                  <th className="hidden lg:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Priority</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Temp</th>
+                  <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Agent</th>
+                  <th className="hidden lg:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Labels</th>
                   <th className="hidden xl:table-cell px-3 py-2 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Wanted</th>
                   <th className="hidden xl:table-cell px-3 py-2 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Offered</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Email</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Location</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Source file</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Batch</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Stage</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Imported</th>
+                  <th className="hidden xl:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Email</th>
+                  <th className="hidden lg:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Location</th>
+                  <th className="hidden xl:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Source file</th>
+                  <th className="hidden xl:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Batch</th>
+                  <th className="hidden lg:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Stage</th>
+                  <th className="hidden xl:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Imported</th>
                   {visibleCustomColumns.map((k) => (
                     <th key={`h-${k}`} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap truncate max-w-[200px]" title={k}>
                       {k}
@@ -661,7 +667,7 @@ export default function LeadsPage() {
                           </div>
                         )}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="hidden md:table-cell px-3 py-2">
                         <span
                           title={tierMeta.hint}
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${tierMeta.bg} ${tierMeta.text}`}
@@ -674,7 +680,7 @@ export default function LeadsPage() {
                           <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dot}`} />{statusMeta.label}
                         </span>
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="hidden lg:table-cell px-3 py-2">
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${priorityMeta.bg} ${priorityMeta.text}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${priorityMeta.dot}`} />{priorityMeta.label}
                         </span>
@@ -686,10 +692,10 @@ export default function LeadsPage() {
                           </span>
                         ) : <span className="text-gray-300 text-xs">—</span>}
                       </td>
-                      <td className="px-3 py-2 text-[13px] text-gray-700">
+                      <td className="hidden md:table-cell px-3 py-2 text-[13px] text-gray-700">
                         {crm.assigned_user_name || <span className="text-gray-400 italic">Unassigned</span>}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="hidden lg:table-cell px-3 py-2">
                         {labels.length === 0 ? <span className="text-gray-300 text-xs">—</span> : (
                           <div className="flex flex-wrap items-center gap-1 max-w-[220px]">
                             {labels.slice(0, 3).map((l) => (
@@ -709,14 +715,14 @@ export default function LeadsPage() {
                       <td className="hidden xl:table-cell px-3 py-2 text-[13px] text-gray-700 text-right tabular-nums">
                         {crm.price_offered != null ? formatPrice(crm.price_offered) : <span className="text-gray-300">—</span>}
                       </td>
-                      <td className="px-3 py-2 text-[13px] text-gray-700 truncate max-w-[180px]">{normValue(lead, 'email_primary') || '—'}</td>
-                      <td className="px-3 py-2 text-[13px] text-gray-600">{location}</td>
-                      <td className="px-3 py-2 text-[13px] text-gray-600 truncate max-w-[180px]">{lead.file_display_name || lead.file_name}</td>
-                      <td className="px-3 py-2 text-[13px] text-gray-600 truncate max-w-[180px]">{lead.batch_name}</td>
-                      <td className="px-3 py-2">
+                      <td className="hidden xl:table-cell px-3 py-2 text-[13px] text-gray-700 truncate max-w-[180px]">{normValue(lead, 'email_primary') || '—'}</td>
+                      <td className="hidden lg:table-cell px-3 py-2 text-[13px] text-gray-600">{location}</td>
+                      <td className="hidden xl:table-cell px-3 py-2 text-[13px] text-gray-600 truncate max-w-[180px]">{lead.file_display_name || lead.file_name}</td>
+                      <td className="hidden xl:table-cell px-3 py-2 text-[13px] text-gray-600 truncate max-w-[180px]">{lead.batch_name}</td>
+                      <td className="hidden lg:table-cell px-3 py-2">
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">{lead.source_stage}</span>
                       </td>
-                      <td className="px-3 py-2 text-[11px] text-gray-400">{formatDate(lead.imported_at)}</td>
+                      <td className="hidden xl:table-cell px-3 py-2 text-[11px] text-gray-400">{formatDate(lead.imported_at)}</td>
                       {visibleCustomColumns.map((k) => {
                         const v = np[k];
                         const display = v === undefined || v === null || v === '' ? null : String(v);
