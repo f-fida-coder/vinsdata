@@ -18,7 +18,7 @@ const STATUS_STYLES = {
   active:    { bg: 'bg-zinc-50',    text: 'text-[var(--vv-text)]',    dot: 'bg-[var(--vv-bg-dark)]',    label: 'Active' },
   completed: { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Completed' },
   blocked:   { bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500',   label: 'Blocked' },
-  invalid:   { bg: 'bg-red-50',     text: 'text-red-700',     dot: 'bg-red-500',     label: 'Invalid' },
+  flagged:   { bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500',   label: 'Flagged' },
 };
 
 const ACTION_META = {
@@ -27,7 +27,10 @@ const ACTION_META = {
   advance:    { label: 'Advanced',    dot: 'bg-emerald-500' },
   complete:   { label: 'Completed',   dot: 'bg-emerald-600' },
   block:      { label: 'Blocked',     dot: 'bg-amber-500' },
-  invalidate: { label: 'Invalidated', dot: 'bg-red-500' },
+  flag:       { label: 'Flagged',     dot: 'bg-amber-500' },
+  unflag:     { label: 'Unflagged',   dot: 'bg-zinc-400' },
+  // Legacy action types kept so historical rows still render with a label.
+  invalidate: { label: 'Flagged',     dot: 'bg-amber-500' },
   reactivate: { label: 'Reactivated', dot: 'bg-zinc-400' },
 };
 

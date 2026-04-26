@@ -20,7 +20,7 @@ const STAGE_ROLES = [
     'tlo'       => ['admin', 'tlo'],
 ];
 
-const STATUSES = ['active', 'completed', 'blocked', 'invalid'];
+const STATUSES = ['active', 'completed', 'blocked', 'flagged'];
 
 const ALLOWED_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg', 'xlsx', 'xls', 'csv'];
 const SPREADSHEET_EXTENSIONS = ['xlsx', 'xls', 'csv'];

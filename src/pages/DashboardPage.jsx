@@ -106,7 +106,7 @@ function StatCard({ label, count, color, icon }) {
 }
 
 function StagePipeline({ stages, artifactsByStage, currentStage, status }) {
-  const isInvalid = status === 'invalid';
+  const isFlagged = status === 'flagged';
   const isBlocked = status === 'blocked';
   return (
     <div className="flex items-center">
@@ -115,8 +115,8 @@ function StagePipeline({ stages, artifactsByStage, currentStage, status }) {
         const hasArtifact = count > 0;
         const isCurrent = currentStage === s;
         let dotClass, ringClass, tooltip;
-        if (isInvalid) {
-          dotClass = 'bg-red-300'; ringClass = 'ring-red-100'; tooltip = 'Invalid';
+        if (isFlagged) {
+          dotClass = 'bg-amber-400'; ringClass = 'ring-amber-100'; tooltip = 'Flagged for review';
         } else if (isBlocked && isCurrent) {
           dotClass = 'bg-amber-400'; ringClass = 'ring-amber-100'; tooltip = 'Blocked';
         } else if (hasArtifact) {
@@ -127,7 +127,7 @@ function StagePipeline({ stages, artifactsByStage, currentStage, status }) {
         } else {
           dotClass = 'bg-gray-200'; ringClass = 'ring-gray-50'; tooltip = 'Waiting';
         }
-        const connectorEmerald = artifactsByStage?.[s]?.length > 0 && !isInvalid;
+        const connectorEmerald = artifactsByStage?.[s]?.length > 0 && !isFlagged;
         return (
           <div key={s} className="flex items-center">
             <div className="relative group">
@@ -146,7 +146,7 @@ function StagePipeline({ stages, artifactsByStage, currentStage, status }) {
   );
 }
 
-function ActionDropdown({ file, onMove, onReupload, onEdit, onDelete, onNotify, onView, invalid, next, canReupload }) {
+function ActionDropdown({ file, onMove, onReupload, onEdit, onDelete, onNotify, onView, flagged, next, canReupload }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const ref = useRef(null);
@@ -205,7 +205,7 @@ function ActionDropdown({ file, onMove, onReupload, onEdit, onDelete, onNotify, 
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
             View details
           </button>
-          {!invalid && next && (
+          {!flagged && next && (
             <button onClick={() => { setOpen(false); onMove(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-zinc-100 hover:underline transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
               Move to {next}
@@ -292,18 +292,25 @@ export default function DashboardPage() {
   useEffect(() => { fetchVehicles(); }, []);
   useEffect(() => { fetchFiles(); }, [fetchFiles]);
 
-  const stageCounts = STAGES.reduce((acc, s) => { acc[s] = files.filter((f) => f.current_stage === s && !f.is_invalid).length; return acc; }, {});
-  const invalidCount = files.filter((f) => f.is_invalid).length;
+  const stageCounts = STAGES.reduce((acc, s) => {
+    acc[s] = files.filter((f) => f.current_stage === s && f.status !== 'flagged').length;
+    return acc;
+  }, {});
+  const flaggedCount = files.filter((f) => f.status === 'flagged').length;
   const totalFiles = files.length;
 
   const toggleSelect = (id) => setSelected((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleSelectAll = () => setSelected(selected.size === files.length ? new Set() : new Set(files.map((f) => f.id)));
 
-  const handleBulkInvalid = async (markInvalid) => {
+  const handleBulkFlag = async (markFlagged) => {
     if (selected.size === 0) return;
-    if (!window.confirm(`${markInvalid ? 'Mark' : 'Unmark'} ${selected.size} file(s) as invalid?`)) return;
-    try { await api.patch('/files', { ids: Array.from(selected), is_invalid: markInvalid }); fetchFiles(); }
-    catch (err) { setError(extractApiError(err, 'Failed to update files')); }
+    if (!window.confirm(`${markFlagged ? 'Flag' : 'Unflag'} ${selected.size} file(s)?`)) return;
+    try {
+      await api.patch('/files', { ids: Array.from(selected), is_flagged: markFlagged });
+      fetchFiles();
+    } catch (err) {
+      setError(extractApiError(err, 'Failed to update files'));
+    }
   };
 
   const handleBulkDelete = async () => {
@@ -413,7 +420,7 @@ export default function DashboardPage() {
         {STAGES.map((s) => (
           <StatCard key={s} label={STAGE_META[s].label} count={stageCounts[s]} color={STAGE_META[s].color === 'amber' ? 'amber' : STAGE_META[s].color === 'orange' ? 'orange' : STAGE_META[s].color === 'emerald' ? 'emerald' : 'blue'} icon={STAGE_META[s].icon} />
         ))}
-        <StatCard label="Invalid" count={invalidCount} color="red" icon="!" />
+        <StatCard label="Flagged" count={flaggedCount} color="amber" icon="!" />
       </div>
 
       {/* Marketing strip (admins + marketers) */}
@@ -471,8 +478,8 @@ export default function DashboardPage() {
             <span className="text-sm font-medium text-[var(--vv-text)]">selected</span>
           </div>
           <div className="h-5 w-px bg-zinc-200" />
-          <button onClick={() => handleBulkInvalid(true)} className="inline-flex items-center gap-1.5 text-xs font-medium bg-white border border-red-200 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors">Mark Invalid</button>
-          <button onClick={() => handleBulkInvalid(false)} className="inline-flex items-center gap-1.5 text-xs font-medium bg-white border border-emerald-200 text-emerald-600 px-3 py-1.5 rounded-lg hover:bg-emerald-50 transition-colors">Mark Valid</button>
+          <button onClick={() => handleBulkFlag(true)} className="inline-flex items-center gap-1.5 text-xs font-medium bg-white border border-amber-200 text-amber-700 px-3 py-1.5 rounded-lg hover:bg-amber-50 transition-colors">Flag</button>
+          <button onClick={() => handleBulkFlag(false)} className="inline-flex items-center gap-1.5 text-xs font-medium bg-white border border-emerald-200 text-emerald-600 px-3 py-1.5 rounded-lg hover:bg-emerald-50 transition-colors">Unflag</button>
           <button onClick={handleBulkDelete} className="inline-flex items-center gap-1.5 text-xs font-medium bg-white border border-red-200 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors">Delete</button>
           <button onClick={() => setSelected(new Set())} className="text-xs text-[var(--vv-text-muted)] hover:underline ml-auto">Deselect all</button>
         </div>
@@ -518,17 +525,19 @@ export default function DashboardPage() {
                   const next = NEXT_STAGE[file.current_stage];
                   const uploads = file.uploads || [];
                   const byStage = file.artifacts_by_stage || {};
-                  const status = file.status || (file.is_invalid ? 'invalid' : 'active');
-                  const invalid = status === 'invalid';
-                  const dimmed = invalid || status === 'blocked';
-                  const canReupload = !invalid && status === 'active' && user?.role && STAGE_ROLES[file.current_stage]?.includes(user.role);
+                  // Server may still send is_invalid for one transition; normalize.
+                  const status = file.status
+                    || (file.is_invalid ? 'flagged' : 'active');
+                  const flagged = status === 'flagged';
+                  const dimmed = flagged || status === 'blocked';
+                  const canReupload = !flagged && status === 'active' && user?.role && STAGE_ROLES[file.current_stage]?.includes(user.role);
                   return (
                     <tr key={file.id} className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${dimmed ? 'opacity-60' : ''}`}>
                       <td className="pl-5 pr-2 py-2.5">
                         <input type="checkbox" checked={selected.has(file.id)} onChange={() => toggleSelect(file.id)} className="rounded border-gray-300 text-[var(--vv-text)] focus:ring-[var(--vv-bg-dark)]" />
                       </td>
                       <td className="px-4 py-2.5">
-                        <button onClick={() => setDetailId(file.id)} className={`text-sm font-medium hover:underline ${invalid ? 'text-gray-400 line-through' : 'text-gray-900 hover:text-[var(--vv-text)]'}`}>
+                        <button onClick={() => setDetailId(file.id)} className={`text-sm font-medium hover:underline ${flagged ? 'text-gray-500' : 'text-gray-900 hover:text-[var(--vv-text)]'}`}>
                           {file.display_name || file.file_name}
                         </button>
                         {file.version && <span className="ml-2 text-[10px] font-medium text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{file.version}</span>}
@@ -537,9 +546,9 @@ export default function DashboardPage() {
                       <td className="px-4 py-2.5 text-[13px] text-gray-600">{file.year || '—'}</td>
                       <td className="px-4 py-2.5">
                         <div className="flex flex-col gap-1">
-                          {status === 'invalid' && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-50 text-red-600 border border-red-100 w-fit">
-                              <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span> Invalid
+                          {status === 'flagged' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-100 w-fit">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Flagged
                             </span>
                           )}
                           {status === 'blocked' && (
@@ -581,7 +590,7 @@ export default function DashboardPage() {
                       <td className="pr-4 py-2.5">
                         <ActionDropdown
                           file={file}
-                          invalid={invalid}
+                          flagged={flagged}
                           next={next}
                           canReupload={canReupload}
                           onView={() => setDetailId(file.id)}

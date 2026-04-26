@@ -162,17 +162,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'PATCH') {
         }
         $file = loadFileOrFail($db, (int) $input['id']);
         $action = match ($newStatus) {
-            'invalid'   => 'invalidate',
+            'flagged'   => 'flag',
             'blocked'   => 'block',
             'completed' => 'complete',
             'active'    => 'reactivate',
         };
         try {
             $db->beginTransaction();
-            $stmt = $db->prepare('UPDATE files SET status = :status, is_invalid = :is_invalid, updated_at = NOW() WHERE id = :id');
+            // is_invalid kept in sync for one transition cycle so any prior
+            // code release reading it during a deploy still gets sane data.
+            // Drop the column in a follow-up migration.
+            $stmt = $db->prepare('UPDATE files SET status = :status, is_invalid = :is_flagged, updated_at = NOW() WHERE id = :id');
             $stmt->execute([
                 ':status'     => $newStatus,
-                ':is_invalid' => $newStatus === 'invalid' ? 1 : 0,
+                ':is_flagged' => $newStatus === 'flagged' ? 1 : 0,
                 ':id'         => $file['id'],
             ]);
             recordHistory($db, (int) $file['id'], $file['current_stage'], $file['current_stage'], $action, null, $user['id'], $input['remarks'] ?? null);
@@ -185,15 +188,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'PATCH') {
         exit();
     }
 
-    // Legacy bulk invalid toggle (admin only)
-    if (isset($input['ids']) && array_key_exists('is_invalid', $input)) {
+    // Bulk flag toggle (admin only). Accepts either { is_flagged } (new) or
+    // { is_invalid } (legacy alias) for one deploy-cycle compatibility.
+    if (isset($input['ids']) && (array_key_exists('is_flagged', $input) || array_key_exists('is_invalid', $input))) {
         assertAdmin($user);
         $ids = array_values(array_filter(array_map('intval', $input['ids'])));
         if (empty($ids)) {
             pipelineFail(400, 'ids array is required', 'missing_fields');
         }
-        $flag   = $input['is_invalid'] ? 1 : 0;
-        $status = $flag ? 'invalid' : 'active';
+        $flag   = !empty($input['is_flagged'] ?? $input['is_invalid']) ? 1 : 0;
+        $status = $flag ? 'flagged' : 'active';
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $stmt = $db->prepare("UPDATE files SET is_invalid = ?, status = ?, updated_at = NOW() WHERE id IN ($placeholders)");
         $stmt->execute(array_merge([$flag, $status], $ids));
