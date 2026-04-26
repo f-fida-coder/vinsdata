@@ -6,7 +6,7 @@ import {
   MATCH_TYPE_BY_KEY, REVIEW_STATUS_BY_KEY, REVIEW_STATUSES,
   confidenceLabel, confidenceStyle, formatMatchKey,
 } from '../lib/duplicates';
-import { STATUS_BY_KEY, PRIORITY_BY_KEY } from '../lib/crm';
+import { STATUS_BY_KEY, PRIORITY_BY_KEY, formatPhone } from '../lib/crm';
 
 function formatDate(s) {
   if (!s) return '—';
@@ -77,7 +77,7 @@ function MemberCard({ m, onOpen }) {
       </div>
 
       <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-        <Field label="Phone">{np.phone_primary}</Field>
+        <Field label="Phone">{formatPhone(np.phone_primary)}</Field>
         <Field label="Email">{np.email_primary}</Field>
         <Field label="Address">{np.full_address}</Field>
         <Field label="City / State">{[np.city, np.state].filter(Boolean).join(', ')}</Field>

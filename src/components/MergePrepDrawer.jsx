@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import api, { extractApiError } from '../api';
 import LeadDetailDrawer from './LeadDetailDrawer';
-import { STATUS_BY_KEY, PRIORITY_BY_KEY, TEMPERATURE_BY_KEY, formatPrice } from '../lib/crm';
+import { STATUS_BY_KEY, PRIORITY_BY_KEY, TEMPERATURE_BY_KEY, formatPrice, formatPhone } from '../lib/crm';
 import { MATCH_TYPE_BY_KEY, confidenceLabel, confidenceStyle, formatMatchKey } from '../lib/duplicates';
 
 const PREP_STATUS_META = {
@@ -113,9 +113,9 @@ function MemberCard({ m, isPrimary, onSetPrimary, choice, onChoiceChange, onOpen
       </div>
 
       <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-        <ValueRow label="Phone">{np.phone_primary}</ValueRow>
+        <ValueRow label="Phone">{formatPhone(np.phone_primary)}</ValueRow>
         <ValueRow label="Email">{np.email_primary}</ValueRow>
-        <ValueRow label="Phone 2">{np.phone_secondary}</ValueRow>
+        <ValueRow label="Phone 2">{formatPhone(np.phone_secondary)}</ValueRow>
         <ValueRow label="Address">{np.full_address}</ValueRow>
         <ValueRow label="City/St">{[np.city, np.state].filter(Boolean).join(', ')}</ValueRow>
         <ValueRow label="ZIP">{np.zip_code}</ValueRow>

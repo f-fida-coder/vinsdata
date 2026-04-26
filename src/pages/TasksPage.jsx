@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import LeadDetailDrawer from '../components/LeadDetailDrawer';
 import SummaryCards from '../components/SummaryCards';
 import { TASK_TYPE_BY_KEY, relativeDue, isOverdue } from '../lib/tasks';
+import { formatPhone } from '../lib/crm';
 
 const QUEUES = [
   { key: 'mine_open',  label: 'My open tasks' },
@@ -190,7 +191,7 @@ export default function TasksPage() {
                           <p className="text-[11px] text-gray-400 truncate max-w-[260px]">{t.lead.batch_name}</p>
                         )}
                         {t.lead?.phone && (
-                          <p className="text-[11px] text-gray-500">{t.lead.phone}</p>
+                          <p className="text-[11px] text-gray-500 tabular-nums">{formatPhone(t.lead.phone)}</p>
                         )}
                       </td>
                       <td className="px-3 py-3">
