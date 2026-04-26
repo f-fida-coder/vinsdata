@@ -15,6 +15,7 @@ import MarketingComposerPage from './pages/MarketingComposerPage';
 import MarketingDetailPage from './pages/MarketingDetailPage';
 import FilterRulesPage from './pages/FilterRulesPage';
 import FilterReviewPage from './pages/FilterReviewPage';
+import SlaRulesPage from './pages/SlaRulesPage';
 import NotificationBell from './components/NotificationBell';
 import BrandMark from './components/BrandMark';
 
@@ -187,6 +188,7 @@ function Sidebar({ open, onClose }) {
           {user.role === 'admin' && (
             <>
               <NavLink to="/filter-rules" className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.filter} Filter Rules</NavLink>
+              <NavLink to="/sla-rules" className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.tasks} SLA Rules</NavLink>
               <NavLink to="/users" className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.users} Users</NavLink>
             </>
           )}
@@ -259,6 +261,7 @@ function DashboardLayout() {
             <Route path="/marketing/:id" element={<MarketingDetailPage />} />
             <Route path="/filter-rules" element={<FilterRulesPage />} />
             <Route path="/filter-review" element={<FilterReviewPage />} />
+            <Route path="/sla-rules" element={<SlaRulesPage />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/logs" element={<LogsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
