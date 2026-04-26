@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import api, { extractApiError } from '../api';
 import LeadDetailDrawer from '../components/LeadDetailDrawer';
+import PhonesDropdown from '../components/PhonesDropdown';
 import { useAuth } from '../context/AuthContext';
 import {
   LEAD_TEMPERATURES, TEMPERATURE_BY_KEY,
   STATUS_BY_KEY, PRIORITY_BY_KEY,
-  formatPhone, formatPrice,
+  formatPrice,
 } from '../lib/crm';
 
 // Column definitions: 'unset' is the implicit Untriaged bucket for leads
@@ -41,7 +42,6 @@ function LeadCard({ lead, onClick }) {
   const crm = lead.crm_state || {};
   const name = np.full_name || [np.first_name, np.last_name].filter(Boolean).join(' ') || '— No name —';
   const vehicle = [np.year, np.make, np.model].filter(Boolean).join(' ');
-  const phone = np.phone_primary;
   const statusMeta = crm.status ? STATUS_BY_KEY[crm.status] : null;
   const priorityMeta = crm.priority ? PRIORITY_BY_KEY[crm.priority] : null;
   return (
@@ -62,11 +62,9 @@ function LeadCard({ lead, onClick }) {
               {vehicle}
             </div>
           )}
-          {phone && (
-            <div className="text-[11px] tabular-nums mt-0.5" style={{ color: 'var(--vv-text-muted)' }}>
-              {formatPhone(phone)}
-            </div>
-          )}
+          <div className="text-[11px] mt-0.5" style={{ color: 'var(--vv-text-muted)' }}>
+            <PhonesDropdown payload={np} size="xs" />
+          </div>
         </div>
         {priorityMeta && (
           <span

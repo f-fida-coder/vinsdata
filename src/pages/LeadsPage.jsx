@@ -3,13 +3,14 @@ import { useSearchParams } from 'react-router-dom';
 import api, { extractApiError } from '../api';
 import LeadDetailDrawer from '../components/LeadDetailDrawer';
 import SavedViewsMenu from '../components/SavedViewsMenu';
+import PhonesDropdown from '../components/PhonesDropdown';
 import { BulkActionsBar, BulkActionModal, BulkResultModal } from '../components/LeadBulkActions';
 import { useAuth } from '../context/AuthContext';
 import {
   LEAD_STATUSES, LEAD_PRIORITIES, LEAD_TEMPERATURES,
   STATUS_BY_KEY, PRIORITY_BY_KEY, TEMPERATURE_BY_KEY,
   LEAD_TIERS, TIER_BY_KEY, computeLeadTier,
-  formatPrice, formatPhone,
+  formatPrice,
 } from '../lib/crm';
 
 const PER_PAGE_OPTIONS = [25, 50, 100, 200];
@@ -648,15 +649,12 @@ export default function LeadsPage() {
                       </td>
                       <td className="px-2 py-2 align-top">
                         <div className="text-[13px] font-medium text-gray-900">{name}</div>
-                        {(vehicle !== '—' || normValue(lead, 'phone_primary')) && (
-                          <div className="text-[11px] text-gray-500 mt-0.5">
-                            {vehicle !== '—' && <span>{vehicle}</span>}
-                            {vehicle !== '—' && normValue(lead, 'phone_primary') && <span className="mx-1.5 text-gray-300">·</span>}
-                            {normValue(lead, 'phone_primary') && (
-                              <span className="tabular-nums">{formatPhone(normValue(lead, 'phone_primary'))}</span>
-                            )}
-                          </div>
+                        {vehicle !== '—' && (
+                          <div className="text-[11px] text-gray-500 mt-0.5">{vehicle}</div>
                         )}
+                        <div className="text-[11px] text-gray-500 mt-0.5 flex items-center">
+                          <PhonesDropdown payload={np} />
+                        </div>
                         {normValue(lead, 'vin') && (
                           <div className="text-[10px] font-mono text-gray-400 mt-0.5 tracking-wide">
                             {normValue(lead, 'vin')}

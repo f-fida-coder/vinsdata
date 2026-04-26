@@ -5,8 +5,10 @@ export const NORMALIZED_FIELDS = [
   { key: 'first_name',       label: 'First name' },
   { key: 'last_name',        label: 'Last name' },
   { key: 'full_name',        label: 'Full name' },
-  { key: 'phone_primary',    label: 'Phone (primary)' },
-  { key: 'phone_secondary',  label: 'Phone (secondary)' },
+  { key: 'phone_primary',    label: 'Phone 1 (primary)' },
+  { key: 'phone_secondary',  label: 'Phone 2' },
+  { key: 'phone_3',          label: 'Phone 3' },
+  { key: 'phone_4',          label: 'Phone 4' },
   { key: 'email_primary',    label: 'Email' },
   { key: 'full_address',     label: 'Full address' },
   { key: 'city',             label: 'City' },
@@ -19,6 +21,9 @@ export const NORMALIZED_FIELDS = [
   { key: '_ignore',          label: '— Ignore this column —' },
 ];
 
+// Convenience: keys for the four phone slots in their fallback order.
+export const PHONE_FIELD_KEYS = ['phone_primary', 'phone_secondary', 'phone_3', 'phone_4'];
+
 export const NORMALIZED_FIELD_KEYS = NORMALIZED_FIELDS.map((f) => f.key);
 
 // Heuristic for auto-suggesting a mapping when no template is selected.
@@ -30,6 +35,8 @@ const ALIASES = {
   full_name:        ['fullname', 'name', 'customername', 'ownername'],
   phone_primary:    ['phone', 'phone1', 'primaryphone', 'mobile', 'cell', 'cellphone', 'phonenumber'],
   phone_secondary:  ['phone2', 'secondaryphone', 'altphone', 'alternatephone', 'homephone'],
+  phone_3:          ['phone3', 'tertiaryphone', 'workphone', 'phonethree'],
+  phone_4:          ['phone4', 'quaternaryphone', 'phonefour', 'otherphone'],
   email_primary:    ['email', 'emailaddress', 'email1', 'primaryemail'],
   full_address:     ['address', 'fulladdress', 'streetaddress', 'mailingaddress'],
   city:             ['city', 'town'],

@@ -317,7 +317,13 @@ if (isset($_GET['q']) && $_GET['q'] !== '') {
         "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.first_name'))",
         "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.last_name'))",
         "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.full_name'))",
+        // All 4 phone slots are searchable. norm_phone_primary is indexed;
+        // the others live in the JSON payload, so a LIKE %digit% scan via
+        // JSON_EXTRACT is the path until they get promoted to columns.
         'r.norm_phone_primary',
+        "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.phone_secondary'))",
+        "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.phone_3'))",
+        "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.phone_4'))",
         'r.norm_email_primary',
         "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.full_address'))",
         "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.city'))",

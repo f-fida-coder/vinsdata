@@ -29,7 +29,8 @@ const SPREADSHEET_EXTENSIONS = ['xlsx', 'xls', 'csv'];
 // `_ignore` is a sentinel that tells the importer to drop a column entirely.
 const NORMALIZED_FIELDS = [
     'vin', 'first_name', 'last_name', 'full_name',
-    'phone_primary', 'phone_secondary', 'email_primary',
+    'phone_primary', 'phone_secondary', 'phone_3', 'phone_4',
+    'email_primary',
     'full_address', 'city', 'state', 'zip_code',
     'make', 'model', 'year', 'mileage',
     '_ignore',
