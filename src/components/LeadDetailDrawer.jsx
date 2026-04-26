@@ -5,10 +5,12 @@ import { useAuth } from '../context/AuthContext';
 import {
   LEAD_STATUSES, LEAD_PRIORITIES, LEAD_TEMPERATURES,
   STATUS_BY_KEY, PRIORITY_BY_KEY, TEMPERATURE_BY_KEY,
-  DEFAULT_LEAD_STATE, ACTIVITY_META, describeActivity, formatPrice,
+  DEFAULT_LEAD_STATE, ACTIVITY_META, describeActivity, formatPrice, formatPhone,
   CAMPAIGN_STATUS_META, RECIPIENT_STATUS_META, MARKETING_CHANNELS,
   TIER_BY_KEY, computeLeadTier,
 } from '../lib/crm';
+
+const PHONE_FIELDS = new Set(['phone_primary', 'phone_secondary']);
 import {
   TASK_TYPES, TASK_TYPE_BY_KEY,
   CONTACT_CHANNELS, CONTACT_OUTCOMES, CHANNEL_BY_KEY, OUTCOME_BY_KEY,
@@ -1184,9 +1186,6 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
                   Batch: {detail.batch_name}
                 </span>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-zinc-100 text-zinc-700 border border-zinc-200">
-                  Row #{detail.source_row_number}
-                </span>
               </div>
               {(crmState.price_wanted !== null || crmState.price_offered !== null) && (
                 <div className="flex items-center gap-3 mt-2 text-[11px] text-gray-600">
@@ -1239,7 +1238,10 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
                 <KeyValueTable
                   rows={FIELD_ORDER
                     .filter((k) => detail.normalized_payload && detail.normalized_payload[k] !== undefined && detail.normalized_payload[k] !== '')
-                    .map((k) => [FIELD_LABELS[k] || k, detail.normalized_payload[k]])}
+                    .map((k) => [
+                      FIELD_LABELS[k] || k,
+                      PHONE_FIELDS.has(k) ? formatPhone(detail.normalized_payload[k]) : detail.normalized_payload[k],
+                    ])}
                 />
                 {Object.keys(detail.normalized_payload || {}).filter((k) => !FIELD_ORDER.includes(k)).length > 0 && (
                   <div className="mt-2">
@@ -1247,7 +1249,10 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
                     <KeyValueTable
                       rows={Object.entries(detail.normalized_payload)
                         .filter(([k]) => !FIELD_ORDER.includes(k))
-                        .map(([k, v]) => [FIELD_LABELS[k] || k, v])}
+                        .map(([k, v]) => [
+                          FIELD_LABELS[k] || k,
+                          PHONE_FIELDS.has(k) ? formatPhone(v) : v,
+                        ])}
                     />
                   </div>
                 )}
@@ -1286,7 +1291,6 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
                 <KeyValueTable rows={[
                   ['Batch',            detail.batch_name],
                   ['Source stage',     detail.source_stage],
-                  ['Source row #',     detail.source_row_number],
                   ['File',             detail.file_display_name || detail.file_name],
                   ['Vehicle',          detail.vehicle_name],
                   ['Artifact',         (

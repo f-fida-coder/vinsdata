@@ -9,7 +9,7 @@ import {
   LEAD_STATUSES, LEAD_PRIORITIES, LEAD_TEMPERATURES,
   STATUS_BY_KEY, PRIORITY_BY_KEY, TEMPERATURE_BY_KEY,
   LEAD_TIERS, TIER_BY_KEY, computeLeadTier,
-  formatPrice,
+  formatPrice, formatPhone,
 } from '../lib/crm';
 
 const PER_PAGE_OPTIONS = [25, 50, 100, 200];
@@ -598,7 +598,6 @@ export default function LeadsPage() {
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Source file</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Batch</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Stage</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Row #</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Imported</th>
                   {visibleCustomColumns.map((k) => (
                     <th key={`h-${k}`} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap truncate max-w-[200px]" title={k}>
@@ -610,7 +609,7 @@ export default function LeadsPage() {
               <tbody>
                 {data.leads.length === 0 ? (
                   <tr>
-                    <td colSpan={17 + visibleCustomColumns.length} className="py-16 text-center">
+                    <td colSpan={16 + visibleCustomColumns.length} className="py-16 text-center">
                       <p className="text-sm text-gray-400">No leads match these filters.</p>
                       {activeChips.length > 0 && (
                         <button onClick={clearAll} className="text-sm text-[var(--vv-text)] hover:underline font-medium mt-2">Clear all filters</button>
@@ -653,7 +652,9 @@ export default function LeadsPage() {
                           <div className="text-[11px] text-gray-500 mt-0.5">
                             {vehicle !== '—' && <span>{vehicle}</span>}
                             {vehicle !== '—' && normValue(lead, 'phone_primary') && <span className="mx-1.5 text-gray-300">·</span>}
-                            {normValue(lead, 'phone_primary') && <span className="tabular-nums">{normValue(lead, 'phone_primary')}</span>}
+                            {normValue(lead, 'phone_primary') && (
+                              <span className="tabular-nums">{formatPhone(normValue(lead, 'phone_primary'))}</span>
+                            )}
                           </div>
                         )}
                         {normValue(lead, 'vin') && (
@@ -717,7 +718,6 @@ export default function LeadsPage() {
                       <td className="px-3 py-2">
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">{lead.source_stage}</span>
                       </td>
-                      <td className="px-3 py-2 text-[11px] text-gray-400">{lead.source_row_number}</td>
                       <td className="px-3 py-2 text-[11px] text-gray-400">{formatDate(lead.imported_at)}</td>
                       {visibleCustomColumns.map((k) => {
                         const v = np[k];

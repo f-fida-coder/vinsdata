@@ -110,6 +110,26 @@ export function formatPrice(value) {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
+/**
+ * Format a US phone number like (555) 123-4567. Strips leading +1 / 1.
+ * If the input doesn't look like 10 digits, returns the trimmed original
+ * so we don't silently mangle international numbers.
+ */
+export function formatPhone(value) {
+  if (value === null || value === undefined) return '';
+  const trimmed = String(value).trim();
+  if (trimmed === '') return '';
+  const digits = trimmed.replace(/\D/g, '');
+  let core = digits;
+  if (core.length === 11 && core.startsWith('1')) {
+    core = core.slice(1);
+  }
+  if (core.length === 10) {
+    return `(${core.slice(0, 3)}) ${core.slice(3, 6)}-${core.slice(6)}`;
+  }
+  return trimmed;
+}
+
 export const ACTIVITY_META = {
   status_changed:         { label: 'Status changed',     dot: 'bg-blue-500' },
   priority_changed:       { label: 'Priority changed',   dot: 'bg-amber-500' },
