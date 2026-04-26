@@ -1,0 +1,8 @@
+<svg width="560" height="140" viewBox="0 0 560 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="560" height="140" rx="22" fill="#0A0A0A"/>
+  <rect x="18" y="18" width="104" height="104" rx="14" stroke="#F4F4F5" stroke-width="2"/>
+  <path d="M44 84L70 44H80L56 84H44Z" fill="#F4F4F5"/>
+  <path d="M66 84L92 44H102L78 84H66Z" fill="#F4F4F5"/>
+  <text x="146" y="74" fill="#F4F4F5" font-family="'Avenir Next', 'Segoe UI', sans-serif" font-size="42" font-weight="600" letter-spacing="1">VINVAULT</text>
+  <text x="146" y="100" fill="#A1A1AA" font-family="'Avenir Next', 'Segoe UI', sans-serif" font-size="14" letter-spacing="2">CURATED COLLECTOR CARS</text>
+</svg>

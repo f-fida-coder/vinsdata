@@ -16,6 +16,7 @@ import MarketingDetailPage from './pages/MarketingDetailPage';
 import FilterRulesPage from './pages/FilterRulesPage';
 import FilterReviewPage from './pages/FilterReviewPage';
 import NotificationBell from './components/NotificationBell';
+import BrandMark from './components/BrandMark';
 
 const NAV_ICONS = {
   dashboard: (
@@ -108,15 +109,8 @@ function Sidebar({ open, onClose }) {
         {/* Brand */}
         <div className="px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div
-              className="w-7 h-7 rounded-md flex items-center justify-center"
-              style={{
-                backgroundColor: '#ffffff',
-                color: 'var(--vv-bg-dark)',
-              }}
-            >
-              <span className="font-semibold text-[13px]">V</span>
-            </div>
+            {/* Light variant so the mark stays legible against the dark sidebar */}
+            <BrandMark size={28} variant="light" />
             <div className="leading-tight">
               <div
                 className="text-[13px] font-semibold"
@@ -125,7 +119,7 @@ function Sidebar({ open, onClose }) {
                   letterSpacing: 'var(--vv-tracking-tight)',
                 }}
               >
-                Vin Vault
+                VINVAULT
               </div>
               <div
                 className="text-[9px] uppercase"
@@ -134,7 +128,7 @@ function Sidebar({ open, onClose }) {
                   letterSpacing: 'var(--vv-tracking-label)',
                 }}
               >
-                CRM
+                Internal CRM
               </div>
             </div>
           </div>
@@ -231,16 +225,8 @@ function MobileHeader({ onMenuOpen }) {
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
       </button>
       <div className="flex items-center gap-2">
-        <div
-          className="w-6 h-6 rounded-md flex items-center justify-center"
-          style={{
-            backgroundColor: 'var(--vv-bg-dark)',
-            color: '#ffffff',
-          }}
-        >
-          <span className="font-semibold text-[11px]">V</span>
-        </div>
-        <span className="text-[13px] font-semibold" style={{ color: 'var(--vv-text)' }}>Vin Vault</span>
+        <BrandMark size={24} variant="dark" />
+        <span className="text-[13px] font-semibold" style={{ color: 'var(--vv-text)' }}>VINVAULT</span>
       </div>
       <div className="ml-auto">
         <NotificationBell tone="light" />
