@@ -16,12 +16,15 @@ import {
 } from '../lib/tasks';
 
 const FIELD_LABELS = Object.fromEntries(NORMALIZED_FIELDS.map((f) => [f.key, f.label]));
+// Order matches the operator's mental model: vehicle identity first
+// (VIN, year, make, model, mileage), then owner, then contact, then
+// address. Renders top-to-bottom in the Lead-data section.
 const FIELD_ORDER = [
-  'full_name', 'first_name', 'last_name',
   'vin',
+  'year', 'make', 'model', 'mileage',
+  'full_name', 'first_name', 'last_name',
   'phone_primary', 'phone_secondary', 'email_primary',
   'full_address', 'city', 'state', 'zip_code',
-  'make', 'model', 'year', 'mileage',
 ];
 
 function formatDate(s) {
@@ -1219,6 +1222,11 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
 
           {detail && (
             <>
+              {/*
+               * Top-of-drawer block: identifying data + CRM state side-by-side.
+               * Per product feedback, these are the two things an operator needs
+               * at a glance — keep them open and adjacent, not buried lower.
+               */}
               <CrmStateSection
                 leadId={detail.id}
                 initialState={crmState}
@@ -1226,6 +1234,24 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
                 isAdmin={user?.role === 'admin'}
                 onChanged={handleChildChanged}
               />
+
+              <CollapsibleSection title="Lead data" defaultOpen>
+                <KeyValueTable
+                  rows={FIELD_ORDER
+                    .filter((k) => detail.normalized_payload && detail.normalized_payload[k] !== undefined && detail.normalized_payload[k] !== '')
+                    .map((k) => [FIELD_LABELS[k] || k, detail.normalized_payload[k]])}
+                />
+                {Object.keys(detail.normalized_payload || {}).filter((k) => !FIELD_ORDER.includes(k)).length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-[11px] text-gray-400 mb-1">Other normalized fields:</p>
+                    <KeyValueTable
+                      rows={Object.entries(detail.normalized_payload)
+                        .filter(([k]) => !FIELD_ORDER.includes(k))
+                        .map(([k, v]) => [FIELD_LABELS[k] || k, v])}
+                    />
+                  </div>
+                )}
+              </CollapsibleSection>
 
               <LabelsSection
                 leadId={detail.id}
@@ -1255,24 +1281,6 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
               <NotesSection leadId={detail.id} currentUser={user} onNotesLoaded={setNotesSummary} />
 
               <ActivitySection leadId={detail.id} reloadKey={activityReloadKey} />
-
-              <CollapsibleSection title="Lead data" defaultOpen>
-                <KeyValueTable
-                  rows={FIELD_ORDER
-                    .filter((k) => detail.normalized_payload && detail.normalized_payload[k] !== undefined && detail.normalized_payload[k] !== '')
-                    .map((k) => [FIELD_LABELS[k] || k, detail.normalized_payload[k]])}
-                />
-                {Object.keys(detail.normalized_payload || {}).filter((k) => !FIELD_ORDER.includes(k)).length > 0 && (
-                  <div className="mt-2">
-                    <p className="text-[11px] text-gray-400 mb-1">Other normalized fields:</p>
-                    <KeyValueTable
-                      rows={Object.entries(detail.normalized_payload)
-                        .filter(([k]) => !FIELD_ORDER.includes(k))
-                        .map(([k, v]) => [FIELD_LABELS[k] || k, v])}
-                    />
-                  </div>
-                )}
-              </CollapsibleSection>
 
               <CollapsibleSection title="Source">
                 <KeyValueTable rows={[
