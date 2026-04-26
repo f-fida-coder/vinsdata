@@ -106,6 +106,51 @@ function assertAdmin(array $user): void
     }
 }
 
+/**
+ * Sliding-window rate limit. Counts how many times this (scope, user) pair
+ * has been recorded inside the last $windowSeconds; if at or over $maxRequests,
+ * exits with 429. Otherwise inserts a new event row and returns.
+ *
+ * Cleanup is opportunistic: 1% of calls also delete events older than 1 day
+ * to keep the table small without needing a cron.
+ */
+function enforceRateLimit(PDO $db, string $scope, int $userId, int $maxRequests, int $windowSeconds): void
+{
+    $cutoff = date('Y-m-d H:i:s', time() - $windowSeconds);
+    $count = $db->prepare(
+        'SELECT COUNT(*) FROM rate_limit_events
+          WHERE scope = :s AND user_id = :u AND created_at >= :c'
+    );
+    $count->execute([':s' => $scope, ':u' => $userId, ':c' => $cutoff]);
+    $hits = (int) $count->fetchColumn();
+
+    if ($hits >= $maxRequests) {
+        $retryAfter = $windowSeconds; // Conservative; client can retry after the full window
+        header("Retry-After: $retryAfter");
+        http_response_code(429);
+        echo json_encode([
+            'success' => false,
+            'code'    => 'rate_limited',
+            'message' => "Too many '$scope' requests. Try again in $retryAfter seconds.",
+            'window_seconds' => $windowSeconds,
+            'limit'   => $maxRequests,
+        ]);
+        exit();
+    }
+
+    $insert = $db->prepare(
+        'INSERT INTO rate_limit_events (scope, user_id) VALUES (:s, :u)'
+    );
+    $insert->execute([':s' => $scope, ':u' => $userId]);
+
+    // Opportunistic cleanup of rows older than 1 day. Cheap; runs ~1% of calls.
+    if (random_int(1, 100) === 1) {
+        $db->exec(
+            "DELETE FROM rate_limit_events WHERE created_at < DATE_SUB(NOW(), INTERVAL 1 DAY)"
+        );
+    }
+}
+
 function validateUploadedArtifact(array $phpFile): void
 {
     if (($phpFile['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {

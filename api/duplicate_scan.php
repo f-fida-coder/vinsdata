@@ -12,6 +12,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 assertAdmin($user);
 
+// Throttle expensive duplicate scans: max 5 per admin per 5 minutes.
+enforceRateLimit($db, 'duplicate_scan', (int) $user['id'], 5, 300);
+
 $input     = json_decode(file_get_contents('php://input'), true) ?? [];
 $batchId   = isset($input['batch_id']) ? (int) $input['batch_id'] : 0;
 $fileId    = isset($input['file_id'])  ? (int) $input['file_id']  : 0;

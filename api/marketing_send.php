@@ -29,6 +29,11 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 assertAdminOrMarketer($user);
 
+// Throttle bulk-send to protect sender reputation: 3 dispatches per user
+// per 10 minutes. Each "send" can already be capped to 500 recipients via
+// CAMPAIGN_RECIPIENT_CAP, so 3/10min is the right granularity here.
+enforceRateLimit($db, 'marketing_send', (int) $user['id'], 3, 600);
+
 $input = json_decode(file_get_contents('php://input'), true) ?? [];
 $campaignId = (int) ($input['campaign_id'] ?? 0);
 if ($campaignId <= 0) pipelineFail(400, 'campaign_id is required', 'missing_fields');
