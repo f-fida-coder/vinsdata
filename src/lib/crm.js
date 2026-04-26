@@ -43,11 +43,13 @@ export const RECIPIENT_STATUS_META = {
 
 export const STATUS_BY_KEY = Object.fromEntries(LEAD_STATUSES.map((s) => [s.key, s]));
 
+// 'hot' was removed (it overlapped with lead_temperature='hot' and confused
+// operators). Priority is now a 3-step ladder. Old rows with priority='hot'
+// were migrated to 'high' — see migration 017.
 export const LEAD_PRIORITIES = [
   { key: 'low',    label: 'Low',    bg: 'bg-gray-50',   text: 'text-gray-600',   dot: 'bg-gray-400' },
-  { key: 'medium', label: 'Medium', bg: 'bg-blue-50',   text: 'text-blue-700',   dot: 'bg-blue-500' },
+  { key: 'medium', label: 'Medium', bg: 'bg-zinc-100',  text: 'text-zinc-700',   dot: 'bg-zinc-500' },
   { key: 'high',   label: 'High',   bg: 'bg-amber-50',  text: 'text-amber-700',  dot: 'bg-amber-500' },
-  { key: 'hot',    label: 'Hot',    bg: 'bg-red-50',    text: 'text-red-700',    dot: 'bg-red-500' },
 ];
 
 export const PRIORITY_BY_KEY = Object.fromEntries(LEAD_PRIORITIES.map((p) => [p.key, p]));

@@ -235,7 +235,7 @@ const LEAD_STATUSES = [
     'nurture','disqualified','do_not_call',
     'marketing',
 ];
-const LEAD_PRIORITIES = ['low','medium','high','hot'];
+const LEAD_PRIORITIES = ['low','medium','high'];
 const LEAD_TEMPERATURES = ['no_answer','cold','warm','hot','closed'];
 
 // -- Tier classification --------------------------------------------------
