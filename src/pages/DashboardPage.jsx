@@ -123,7 +123,7 @@ function StagePipeline({ stages, artifactsByStage, currentStage, status }) {
           dotClass = 'bg-emerald-500'; ringClass = 'ring-emerald-100';
           tooltip = `${count} ${count === 1 ? 'artifact' : 'artifacts'}${isCurrent ? ' · current' : ''}`;
         } else if (isCurrent) {
-          dotClass = 'bg-blue-400'; ringClass = 'ring-blue-100'; tooltip = 'Current · awaiting upload';
+          dotClass = 'bg-zinc-400'; ringClass = 'ring-zinc-100'; tooltip = 'Current · awaiting upload';
         } else {
           dotClass = 'bg-gray-200'; ringClass = 'ring-gray-50'; tooltip = 'Waiting';
         }
@@ -465,16 +465,16 @@ export default function DashboardPage() {
 
       {/* Bulk Actions */}
       {selected.size > 0 && (
-        <div className="bg-blue-50 border border-zinc-200 rounded-2xl px-3 sm:px-5 py-3 mb-4 flex flex-wrap items-center gap-2 sm:gap-3">
+        <div className="bg-zinc-50 border border-zinc-200 rounded-2xl px-3 sm:px-5 py-3 mb-4 flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-md bg-[var(--vv-bg-dark)] text-white flex items-center justify-center text-xs font-bold">{selected.size}</div>
-            <span className="text-sm font-medium text-blue-800">selected</span>
+            <span className="text-sm font-medium text-[var(--vv-text)]">selected</span>
           </div>
-          <div className="h-5 w-px bg-blue-200" />
+          <div className="h-5 w-px bg-zinc-200" />
           <button onClick={() => handleBulkInvalid(true)} className="inline-flex items-center gap-1.5 text-xs font-medium bg-white border border-red-200 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors">Mark Invalid</button>
           <button onClick={() => handleBulkInvalid(false)} className="inline-flex items-center gap-1.5 text-xs font-medium bg-white border border-emerald-200 text-emerald-600 px-3 py-1.5 rounded-lg hover:bg-emerald-50 transition-colors">Mark Valid</button>
           <button onClick={handleBulkDelete} className="inline-flex items-center gap-1.5 text-xs font-medium bg-white border border-red-200 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors">Delete</button>
-          <button onClick={() => setSelected(new Set())} className="text-xs text-blue-500 hover:underline ml-auto">Deselect all</button>
+          <button onClick={() => setSelected(new Set())} className="text-xs text-[var(--vv-text-muted)] hover:underline ml-auto">Deselect all</button>
         </div>
       )}
 
@@ -553,7 +553,7 @@ export default function DashboardPage() {
                             </span>
                           )}
                           {status === 'active' && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-[var(--vv-text)] border border-zinc-200 w-fit">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-zinc-50 text-[var(--vv-text)] border border-zinc-200 w-fit">
                               <span className="w-1.5 h-1.5 rounded-full bg-[var(--vv-bg-dark)]"></span> {STAGE_META[file.current_stage].label}
                             </span>
                           )}
@@ -628,7 +628,7 @@ export default function DashboardPage() {
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Upload File</label>
-            <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 text-center hover:border-blue-300 transition-colors cursor-pointer">
+            <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 text-center hover:border-zinc-400 transition-colors cursor-pointer">
               <input type="file" onChange={(e) => { const f = e.target.files[0] || null; setSelectedFile(f); if (f) setNewFile((p) => ({ ...p, file_name: p.file_name || f.name.replace(/\.[^/.]+$/, '') })); }} className="hidden" id="add-file-input" />
               <label htmlFor="add-file-input" className="cursor-pointer">
                 <svg className="w-8 h-8 text-gray-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
@@ -681,13 +681,13 @@ export default function DashboardPage() {
                 </p>
               </div>
             ) : (
-              <div className="bg-blue-50 border border-zinc-200 rounded-xl p-3">
-                <p className="text-sm text-blue-800">Upload the <strong>{stageModal.stage}</strong> file for "<strong>{stageModal.fileName}</strong>"</p>
+              <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3">
+                <p className="text-sm text-[var(--vv-text)]">Upload the <strong>{stageModal.stage}</strong> file for "<strong>{stageModal.fileName}</strong>"</p>
               </div>
             )}
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">File (required)</label>
-              <div className={`border-2 border-dashed rounded-xl p-4 text-center transition-colors cursor-pointer ${stageFile ? 'border-emerald-300 bg-emerald-50' : 'border-gray-200 hover:border-blue-300'}`}>
+              <div className={`border-2 border-dashed rounded-xl p-4 text-center transition-colors cursor-pointer ${stageFile ? 'border-emerald-300 bg-emerald-50' : 'border-gray-200 hover:border-zinc-400'}`}>
                 <input type="file" onChange={(e) => setStageFile(e.target.files[0] || null)} className="hidden" id="stage-file-input" />
                 <label htmlFor="stage-file-input" className="cursor-pointer">
                   {stageFile ? (

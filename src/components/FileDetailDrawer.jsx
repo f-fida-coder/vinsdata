@@ -15,7 +15,7 @@ const STAGE_ROLES = {
 };
 
 const STATUS_STYLES = {
-  active:    { bg: 'bg-blue-50',    text: 'text-blue-700',    dot: 'bg-[var(--vv-bg-dark)]',    label: 'Active' },
+  active:    { bg: 'bg-zinc-50',    text: 'text-[var(--vv-text)]',    dot: 'bg-[var(--vv-bg-dark)]',    label: 'Active' },
   completed: { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Completed' },
   blocked:   { bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500',   label: 'Blocked' },
   invalid:   { bg: 'bg-red-50',     text: 'text-red-700',     dot: 'bg-red-500',     label: 'Invalid' },
@@ -28,7 +28,7 @@ const ACTION_META = {
   complete:   { label: 'Completed',   dot: 'bg-emerald-600' },
   block:      { label: 'Blocked',     dot: 'bg-amber-500' },
   invalidate: { label: 'Invalidated', dot: 'bg-red-500' },
-  reactivate: { label: 'Reactivated', dot: 'bg-blue-400' },
+  reactivate: { label: 'Reactivated', dot: 'bg-zinc-400' },
 };
 
 function formatDate(s) {
@@ -56,7 +56,7 @@ function StageCard({ stage, artifacts, isCurrent, fileStatus, canReupload, onReu
 
   const isDone = artifacts.length > 0 && !isCurrent;
   const dotClass = artifacts.length === 0
-    ? (isCurrent ? 'bg-blue-400 ring-blue-100' : 'bg-gray-200 ring-gray-100')
+    ? (isCurrent ? 'bg-zinc-400 ring-zinc-100' : 'bg-gray-200 ring-gray-100')
     : 'bg-emerald-500 ring-emerald-100';
 
   return (
@@ -127,7 +127,7 @@ function StageCard({ stage, artifacts, isCurrent, fileStatus, canReupload, onReu
       {isCurrent && fileStatus === 'active' && canReupload && (
         <button
           onClick={onReupload}
-          className="mt-3 w-full inline-flex items-center justify-center gap-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg border border-zinc-200 transition-colors"
+          className="mt-3 w-full inline-flex items-center justify-center gap-1.5 text-xs font-medium text-[var(--vv-text)] bg-zinc-50 hover:bg-blue-100 px-3 py-2 rounded-lg border border-zinc-200 transition-colors"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
           Re-upload {STAGE_LABEL[stage]} (new version)

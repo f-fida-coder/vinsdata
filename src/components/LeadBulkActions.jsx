@@ -15,7 +15,7 @@ const ACTIONS = [
 ];
 
 const BUTTON_TONE = {
-  blue:    'text-blue-700 bg-blue-50 hover:bg-blue-100 border-zinc-200',
+  blue:    'text-[var(--vv-text)] bg-zinc-50 hover:bg-blue-100 border-zinc-200',
   amber:   'text-amber-700 bg-amber-50 hover:bg-amber-100 border-amber-100',
   emerald: 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-100',
   violet:  'text-violet-700 bg-violet-50 hover:bg-violet-100 border-violet-100',
@@ -32,12 +32,12 @@ export function BulkActionsBar({ selection, onClear, onAction, user }) {
   const isAdmin = user?.role === 'admin';
 
   return (
-    <div className="sticky top-0 z-20 bg-blue-50 border border-zinc-200 rounded-xl px-3 sm:px-4 py-2.5 mb-3 flex flex-wrap items-center gap-2 shadow-sm">
+    <div className="sticky top-0 z-20 bg-zinc-50 border border-zinc-200 rounded-xl px-3 sm:px-4 py-2.5 mb-3 flex flex-wrap items-center gap-2 shadow-sm">
       <div className="flex items-center gap-2 mr-1">
         <div className="w-6 h-6 rounded-md bg-[var(--vv-bg-dark)] text-white flex items-center justify-center text-[11px] font-bold">{count}</div>
-        <span className="text-sm font-medium text-blue-800">selected</span>
+        <span className="text-sm font-medium text-[var(--vv-text)]">selected</span>
       </div>
-      <div className="h-5 w-px bg-blue-200" />
+      <div className="h-5 w-px bg-zinc-200" />
       {ACTIONS.map((a) => {
         const disabled = a.adminOnly && !isAdmin;
         return (
@@ -52,7 +52,7 @@ export function BulkActionsBar({ selection, onClear, onAction, user }) {
           </button>
         );
       })}
-      <button onClick={onClear} className="text-xs text-blue-500 hover:underline ml-auto">Clear selection</button>
+      <button onClick={onClear} className="text-xs text-[var(--vv-text-muted)] hover:underline ml-auto">Clear selection</button>
     </div>
   );
 }
@@ -160,7 +160,7 @@ function BulkActionModalInner({ action, count, onClose, onSubmit, submitting, op
       submitLabel={destructive ? 'Remove from all' : 'Apply'}
       destructive={destructive}
     >
-      <div className="bg-blue-50 border border-zinc-200 rounded-lg p-2.5 text-xs text-blue-800">
+      <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-2.5 text-xs text-[var(--vv-text)]">
         This will affect <strong>{count}</strong> {count === 1 ? 'lead' : 'leads'}. Unchanged leads are skipped silently.
       </div>
 

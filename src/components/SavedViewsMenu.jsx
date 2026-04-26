@@ -150,13 +150,13 @@ export default function SavedViewsMenu({ viewType, currentFilters, activeViewId,
                     const isActive = v.id === activeViewId;
                     return (
                       <li key={v.id} className="group">
-                        <div className={`flex items-center justify-between gap-2 px-3 py-2 ${isActive ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                        <div className={`flex items-center justify-between gap-2 px-3 py-2 ${isActive ? 'bg-zinc-50' : 'hover:bg-gray-50'}`}>
                           <button
                             onClick={() => { onApply(v); setOpen(false); }}
                             className="flex-1 text-left min-w-0"
                           >
                             <div className="flex items-center gap-1.5">
-                              <span className={`text-sm font-medium truncate ${isActive ? 'text-blue-700' : 'text-gray-800'}`}>{v.name}</span>
+                              <span className={`text-sm font-medium truncate ${isActive ? 'text-[var(--vv-text)]' : 'text-gray-800'}`}>{v.name}</span>
                               {v.is_default && (
                                 <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider text-amber-700 bg-amber-100 px-1 py-0.5 rounded">default</span>
                               )}

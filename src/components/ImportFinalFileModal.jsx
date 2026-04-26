@@ -334,7 +334,7 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
                     </div>
                   ))}
                   {activeRowFilters.length > 0 && (
-                    <p className="text-[11px] text-blue-700">
+                    <p className="text-[11px] text-[var(--vv-text)]">
                       {filteredRows.length} of {rows.length} rows match {activeRowFilters.length === 1 ? 'this filter' : `all ${activeRowFilters.length} filters`}.
                     </p>
                   )}
@@ -394,7 +394,7 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
                         <th key={h} className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">
                           {h}
                           {mapping[h] && mapping[h] !== '_ignore' && (
-                            <span className="ml-1 text-[10px] font-normal text-[var(--vv-text)] bg-blue-50 px-1 py-0.5 rounded">
+                            <span className="ml-1 text-[10px] font-normal text-[var(--vv-text)] bg-zinc-50 px-1 py-0.5 rounded">
                               → {mapping[h]}
                             </span>
                           )}

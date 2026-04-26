@@ -139,7 +139,7 @@ export default function TasksPage() {
               onClick={() => setQueue(q.key)}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 queue === q.key
-                  ? 'text-blue-700 border-blue-600'
+                  ? 'text-[var(--vv-text)] border-blue-600'
                   : 'text-gray-500 border-transparent hover:text-gray-800'
               }`}
             >
@@ -213,7 +213,7 @@ export default function TasksPage() {
                       <td className="px-3 py-3 text-sm text-gray-700">
                         {t.assigned_user_name || <span className="text-gray-400 italic">Unassigned</span>}
                         {Number(t.assigned_user_id) === Number(user?.id) && (
-                          <span className="ml-1 text-[10px] font-semibold text-blue-700 bg-blue-50 px-1 py-0.5 rounded">you</span>
+                          <span className="ml-1 text-[10px] font-semibold text-[var(--vv-text)] bg-zinc-50 px-1 py-0.5 rounded">you</span>
                         )}
                       </td>
                       <td className="px-3 py-3 text-xs text-gray-500">{t.created_by_name}</td>

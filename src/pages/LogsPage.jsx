@@ -57,7 +57,7 @@ export default function LogsPage() {
           {logs.map((log, i) => (
             <div key={log.id} className="flex gap-3 sm:gap-4">
               <div className="flex flex-col items-center shrink-0">
-                <div className="w-3 h-3 rounded-full bg-[var(--vv-bg-dark)] mt-2 ring-4 ring-blue-100"></div>
+                <div className="w-3 h-3 rounded-full bg-[var(--vv-bg-dark)] mt-2 ring-4 ring-zinc-100"></div>
                 {i < logs.length - 1 && <div className="w-0.5 flex-1 bg-gray-100 mt-1"></div>}
               </div>
               <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 sm:p-4 mb-3 flex-1 min-w-0">

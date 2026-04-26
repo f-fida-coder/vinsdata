@@ -188,7 +188,7 @@ export default function DuplicatesPage() {
         <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl mb-4">{scanError}</div>
       )}
       {scanSummary && (
-        <div className="bg-blue-50 border border-zinc-200 text-blue-800 px-4 py-3 rounded-xl mb-4 text-sm flex items-start justify-between gap-3">
+        <div className="bg-zinc-50 border border-zinc-200 text-[var(--vv-text)] px-4 py-3 rounded-xl mb-4 text-sm flex items-start justify-between gap-3">
           <div>
             <p className="font-semibold">Scan complete</p>
             <p className="text-xs mt-1">
@@ -196,7 +196,7 @@ export default function DuplicatesPage() {
               updated {scanSummary.updated} · added {scanSummary.members_added} memberships · {scanSummary.total_groups} total groups.
             </p>
           </div>
-          <button onClick={() => setScanSummary(null)} className="text-blue-500 hover:underline">&times;</button>
+          <button onClick={() => setScanSummary(null)} className="text-[var(--vv-text-muted)] hover:underline">&times;</button>
         </div>
       )}
 
@@ -273,7 +273,7 @@ export default function DuplicatesPage() {
           {activeChips.map(({ key, value }) => (
             <span key={key} className="inline-flex items-center gap-1 bg-zinc-100 text-zinc-700 text-[11px] font-medium px-2 py-1 rounded-md border border-zinc-200">
               {CHIP_LABELS[key]}: <span className="font-semibold">{renderChipValue(key, value)}</span>
-              <button onClick={() => clearFilter(key)} className="ml-0.5 text-blue-500 hover:underline">&times;</button>
+              <button onClick={() => clearFilter(key)} className="ml-0.5 text-[var(--vv-text-muted)] hover:underline">&times;</button>
             </span>
           ))}
         </div>

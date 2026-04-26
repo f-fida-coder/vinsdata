@@ -190,7 +190,7 @@ export default function MergePrepPage() {
           {activeChips.map(({ key, value }) => (
             <span key={key} className="inline-flex items-center gap-1 bg-zinc-100 text-zinc-700 text-[11px] font-medium px-2 py-1 rounded-md border border-zinc-200">
               {CHIP_LABELS[key]}: <span className="font-semibold">{renderChipValue(key, value)}</span>
-              <button onClick={() => clearFilter(key)} className="ml-0.5 text-blue-500 hover:underline">&times;</button>
+              <button onClick={() => clearFilter(key)} className="ml-0.5 text-[var(--vv-text-muted)] hover:underline">&times;</button>
             </span>
           ))}
         </div>

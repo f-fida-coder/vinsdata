@@ -14,7 +14,7 @@ function formatDateTime(s) {
 function StatTile({ label, value, tone = 'gray', hint }) {
   const tones = {
     gray:    'from-gray-100 to-gray-50 text-gray-700',
-    blue:    'from-blue-50 to-blue-100 text-blue-700',
+    blue:    'from-blue-50 to-blue-100 text-[var(--vv-text)]',
     emerald: 'from-emerald-50 to-emerald-100 text-emerald-700',
     amber:   'from-amber-50 to-amber-100 text-amber-700',
     red:     'from-red-50 to-red-100 text-red-700',

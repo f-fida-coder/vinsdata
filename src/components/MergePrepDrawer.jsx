@@ -67,7 +67,7 @@ function MemberCard({ m, isPrimary, onSetPrimary, choice, onChoiceChange, onOpen
   const setField = (field, value) => onChoiceChange({ ...choice, [field]: value });
 
   return (
-    <div className={`rounded-xl border p-3 ${isPrimary ? 'border-blue-300 bg-zinc-50 ring-1 ring-blue-200' : 'border-gray-100 bg-white'}`}>
+    <div className={`rounded-xl border p-3 ${isPrimary ? 'border-zinc-400 bg-zinc-50 ring-1 ring-zinc-200' : 'border-gray-100 bg-white'}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -75,7 +75,7 @@ function MemberCard({ m, isPrimary, onSetPrimary, choice, onChoiceChange, onOpen
               <input type="radio" checked={isPrimary} onChange={() => onSetPrimary(m.imported_lead_id)} className="text-[var(--vv-text)] focus:ring-[var(--vv-bg-dark)]" />
               <span className="text-sm font-semibold text-gray-900">{memberName(m)}</span>
             </label>
-            {isPrimary && <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">Primary</span>}
+            {isPrimary && <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--vv-text)] bg-blue-100 px-1.5 py-0.5 rounded">Primary</span>}
           </div>
           {np.vin && <p className="text-[11px] font-mono text-gray-500 mt-0.5">VIN {np.vin}</p>}
         </div>
