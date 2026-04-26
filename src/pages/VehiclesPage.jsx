@@ -1,101 +1,255 @@
-import { useState, useEffect } from 'react';
-import api from '../api';
+import { useState, useEffect, useCallback } from 'react';
+import api, { extractApiError } from '../api';
 import { useAuth } from '../context/AuthContext';
+
+const EMPTY_FORM = { name: '', make: '', model: '', year: '' };
+
+function formatVehicleTitle(v) {
+  const ymm = [v.year, v.make, v.model].filter(Boolean).join(' ');
+  if (ymm && v.name) return `${ymm} — ${v.name}`;
+  return ymm || v.name || '—';
+}
+
+function Modal({ open, title, onClose, children }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50" />
+      <div
+        className="relative w-full max-w-md flex flex-col"
+        style={{
+          backgroundColor: 'var(--vv-bg-surface)',
+          border: '1px solid var(--vv-border)',
+          borderRadius: 'var(--vv-radius-lg)',
+          boxShadow: '0 10px 40px rgba(9,9,11,0.16)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom: '1px solid var(--vv-border)' }}>
+          <h2 className="text-[14px] font-semibold">{title}</h2>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--vv-bg-surface-muted)]">&times;</button>
+        </div>
+        <div className="px-5 py-4">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function VehicleForm({ initial, onCancel, onSubmit, submitting }) {
+  const [form, setForm] = useState(() => ({
+    name:  initial?.name  ?? '',
+    make:  initial?.make  ?? '',
+    model: initial?.model ?? '',
+    year:  initial?.year  ?? '',
+  }));
+
+  const inputStyle = {
+    backgroundColor: 'var(--vv-bg-surface-muted)',
+    border: '1px solid var(--vv-border)',
+    borderRadius: 'var(--vv-radius-md)',
+  };
+
+  const labelStyle = {
+    color: 'var(--vv-text-subtle)',
+    letterSpacing: 'var(--vv-tracking-label)',
+  };
+
+  return (
+    <form
+      onSubmit={(e) => { e.preventDefault(); onSubmit(form); }}
+      className="space-y-3 text-[13px]"
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <label className="block mb-1.5 text-[10px] uppercase font-semibold" style={labelStyle}>Name</label>
+          <input
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            placeholder="LFA hunt list"
+            required
+            className="w-full px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--vv-bg-dark)]"
+            style={inputStyle}
+          />
+        </div>
+        <div>
+          <label className="block mb-1.5 text-[10px] uppercase font-semibold" style={labelStyle}>Make</label>
+          <input
+            value={form.make}
+            onChange={(e) => setForm({ ...form, make: e.target.value })}
+            placeholder="Lexus"
+            className="w-full px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--vv-bg-dark)]"
+            style={inputStyle}
+          />
+        </div>
+        <div>
+          <label className="block mb-1.5 text-[10px] uppercase font-semibold" style={labelStyle}>Model</label>
+          <input
+            value={form.model}
+            onChange={(e) => setForm({ ...form, model: e.target.value })}
+            placeholder="LFA"
+            className="w-full px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--vv-bg-dark)]"
+            style={inputStyle}
+          />
+        </div>
+        <div className="col-span-2">
+          <label className="block mb-1.5 text-[10px] uppercase font-semibold" style={labelStyle}>Year</label>
+          <input
+            type="number" min={1900} max={2100}
+            value={form.year}
+            onChange={(e) => setForm({ ...form, year: e.target.value })}
+            placeholder="2014"
+            className="w-32 px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--vv-bg-dark)] tabular-nums"
+            style={inputStyle}
+          />
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2 pt-2">
+        <button type="button" onClick={onCancel} className="px-3 py-1.5 text-[13px] rounded-md" style={{ border: '1px solid var(--vv-border)' }}>Cancel</button>
+        <button type="submit" disabled={submitting} className="px-3 py-1.5 text-[13px] rounded-md text-white disabled:opacity-60" style={{ backgroundColor: 'var(--vv-bg-dark)' }}>
+          {submitting ? 'Saving…' : (initial ? 'Save' : 'Add vehicle')}
+        </button>
+      </div>
+    </form>
+  );
+}
 
 export default function VehiclesPage() {
   const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [vehicles, setVehicles] = useState([]);
-  const [showModal, setShowModal] = useState(false);
-  const [name, setName] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState('');
+  const [editing, setEditing]   = useState(null); // null | 'new' | vehicleObject
+  const [submitting, setSubmit] = useState(false);
 
-  const fetchVehicles = async () => {
-    setLoading(true);
-    try { const res = await api.get('/vehicles'); setVehicles(res.data); }
-    catch { setError('Failed to load vehicles'); }
-    finally { setLoading(false); }
-  };
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      const res = await api.get('/vehicles');
+      setVehicles(res.data || []);
+    } catch (err) {
+      setError(extractApiError(err, 'Failed to load vehicles'));
+    } finally { setLoading(false); }
+  }, []);
 
-  useEffect(() => { fetchVehicles(); }, []);
+  useEffect(() => { load(); }, [load]);
 
-  const handleAdd = async (e) => {
-    e.preventDefault(); setSubmitting(true); setError('');
-    try { await api.post('/vehicles', { name }); setShowModal(false); setName(''); fetchVehicles(); }
-    catch { setError('Failed to add vehicle'); }
-    finally { setSubmitting(false); }
+  const submit = async (form) => {
+    setSubmit(true); setError('');
+    try {
+      const payload = {
+        name:  form.name.trim(),
+        make:  form.make.trim()  || null,
+        model: form.model.trim() || null,
+        year:  form.year === '' ? null : Number(form.year),
+      };
+      if (editing === 'new') {
+        await api.post('/vehicles', payload);
+      } else if (editing && editing.id) {
+        await api.patch('/vehicles', { id: editing.id, ...payload });
+      }
+      setEditing(null);
+      load();
+    } catch (err) {
+      setError(extractApiError(err, 'Save failed'));
+    } finally { setSubmit(false); }
   };
 
   return (
     <div className="max-w-[1600px] mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Vehicles</h1>
-        {user.role === 'admin' && (
-          <button onClick={() => setShowModal(true)} className="inline-flex items-center justify-center gap-2 bg-[var(--vv-bg-dark)] text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all w-full sm:w-auto">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-            Add Vehicle
+      <div className="flex items-start justify-between gap-3 mb-5">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Vehicles</h1>
+          <p className="text-[12px] mt-0.5" style={{ color: 'var(--vv-text-muted)' }}>
+            One row per vehicle the team is hunting. Files are assigned to vehicles; lists carry year, make, model.
+          </p>
+        </div>
+        {isAdmin && (
+          <button
+            onClick={() => setEditing('new')}
+            className="px-3 py-1.5 text-[13px] rounded-md text-white shrink-0"
+            style={{ backgroundColor: 'var(--vv-bg-dark)' }}
+          >
+            + New vehicle
           </button>
         )}
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl mb-6 flex items-center justify-between">
-          <span className="text-sm">{error}</span>
-          <button onClick={() => setError('')} className="text-red-400 hover:text-red-600">&times;</button>
+        <div className="mb-4 px-4 py-2 rounded-md text-[13px]" style={{ backgroundColor: '#FEE2E2', color: 'var(--vv-status-danger)', border: '1px solid #FECACA' }}>
+          {error}
         </div>
       )}
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div
+        className="overflow-hidden"
+        style={{ backgroundColor: 'var(--vv-bg-surface)', border: '1px solid var(--vv-border)', borderRadius: 'var(--vv-radius-lg)' }}
+      >
         {loading ? (
-          <div className="flex justify-center py-16"><div className="w-10 h-10 border-4 border-zinc-200 border-t-[var(--vv-bg-dark)] rounded-full animate-spin"></div></div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="px-4 sm:px-5 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">ID</th>
-                  <th className="px-4 sm:px-5 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Name</th>
-                  <th className="px-4 sm:px-5 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Created At</th>
-                </tr>
-              </thead>
-              <tbody>
-                {vehicles.length === 0 ? (
-                  <tr><td colSpan="3" className="px-4 py-12 text-center text-gray-400 text-sm">No vehicles found.</td></tr>
-                ) : vehicles.map((v, i) => (
-                  <tr key={v.id} className={`border-b border-gray-50 hover:bg-gray-50/50 ${i % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
-                    <td className="px-4 sm:px-5 py-3.5 text-gray-400">{v.id}</td>
-                    <td className="px-4 sm:px-5 py-3.5 font-medium text-gray-900">{v.name}</td>
-                    <td className="px-4 sm:px-5 py-3.5 text-gray-400 text-xs">{v.created_at || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="py-10 text-center text-[13px]" style={{ color: 'var(--vv-text-muted)' }}>Loading…</div>
+        ) : vehicles.length === 0 ? (
+          <div className="py-10 text-center text-[13px]" style={{ color: 'var(--vv-text-muted)' }}>
+            No vehicles yet.
+            {isAdmin && <> Click <span className="font-medium" style={{ color: 'var(--vv-text)' }}>+ New vehicle</span> to add one.</>}
           </div>
+        ) : (
+          <table className="w-full text-[13px]">
+            <thead style={{ backgroundColor: 'var(--vv-bg-surface-muted)' }}>
+              <tr style={{ borderBottom: '1px solid var(--vv-border)' }}>
+                <th className="px-4 py-2 text-left text-[10px] font-semibold uppercase tabular-nums" style={{ color: 'var(--vv-text-muted)', letterSpacing: 'var(--vv-tracking-label)' }}>ID</th>
+                <th className="px-4 py-2 text-left text-[10px] font-semibold uppercase" style={{ color: 'var(--vv-text-muted)', letterSpacing: 'var(--vv-tracking-label)' }}>Vehicle</th>
+                <th className="px-4 py-2 text-left text-[10px] font-semibold uppercase" style={{ color: 'var(--vv-text-muted)', letterSpacing: 'var(--vv-tracking-label)' }}>Year</th>
+                <th className="px-4 py-2 text-left text-[10px] font-semibold uppercase" style={{ color: 'var(--vv-text-muted)', letterSpacing: 'var(--vv-tracking-label)' }}>Make</th>
+                <th className="px-4 py-2 text-left text-[10px] font-semibold uppercase" style={{ color: 'var(--vv-text-muted)', letterSpacing: 'var(--vv-tracking-label)' }}>Model</th>
+                <th className="px-4 py-2 text-left text-[10px] font-semibold uppercase" style={{ color: 'var(--vv-text-muted)', letterSpacing: 'var(--vv-tracking-label)' }}>Created</th>
+                {isAdmin && <th className="px-4 py-2" />}
+              </tr>
+            </thead>
+            <tbody>
+              {vehicles.map((v) => (
+                <tr key={v.id} style={{ borderBottom: '1px solid var(--vv-border)' }}>
+                  <td className="px-4 py-2 tabular-nums" style={{ color: 'var(--vv-text-subtle)' }}>{v.id}</td>
+                  <td className="px-4 py-2">
+                    <div className="font-medium">{formatVehicleTitle(v)}</div>
+                    {(v.make || v.model || v.year) && v.name && (
+                      <div className="text-[11px]" style={{ color: 'var(--vv-text-muted)' }}>{v.name}</div>
+                    )}
+                  </td>
+                  <td className="px-4 py-2 tabular-nums" style={{ color: v.year ? 'var(--vv-text)' : 'var(--vv-text-subtle)' }}>
+                    {v.year ?? '—'}
+                  </td>
+                  <td className="px-4 py-2" style={{ color: v.make ? 'var(--vv-text)' : 'var(--vv-text-subtle)' }}>
+                    {v.make ?? '—'}
+                  </td>
+                  <td className="px-4 py-2" style={{ color: v.model ? 'var(--vv-text)' : 'var(--vv-text-subtle)' }}>
+                    {v.model ?? '—'}
+                  </td>
+                  <td className="px-4 py-2 text-[11px]" style={{ color: 'var(--vv-text-subtle)' }}>{v.created_at || '—'}</td>
+                  {isAdmin && (
+                    <td className="px-4 py-2 text-right">
+                      <button onClick={() => setEditing(v)} className="text-[12px] px-2 py-1 rounded" style={{ color: 'var(--vv-text)' }}>Edit</button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
 
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4" onClick={() => setShowModal(false)}>
-          <div className="absolute inset-0 bg-gray-900/60" />
-          <div className="relative bg-white w-full max-w-sm sm:rounded-2xl rounded-t-2xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-              <h2 className="text-base sm:text-lg font-semibold text-gray-900">Add Vehicle</h2>
-              <button onClick={() => setShowModal(false)} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">&times;</button>
-            </div>
-            <form onSubmit={handleAdd} className="px-5 py-5 space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Vehicle Name</label>
-                <input type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder="LandCruiser" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none" />
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-50 rounded-xl hover:bg-gray-100">Cancel</button>
-                <button type="submit" disabled={submitting} className="px-5 py-2.5 text-sm font-medium bg-[var(--vv-bg-dark)] text-white rounded-xl disabled:opacity-50">{submitting ? 'Adding...' : 'Add'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <Modal
+        open={!!editing}
+        title={editing === 'new' ? 'New vehicle' : `Edit: ${editing?.name ?? ''}`}
+        onClose={() => setEditing(null)}
+      >
+        <VehicleForm
+          initial={editing === 'new' ? null : editing}
+          onCancel={() => setEditing(null)}
+          onSubmit={submit}
+          submitting={submitting}
+        />
+      </Modal>
     </div>
   );
 }
