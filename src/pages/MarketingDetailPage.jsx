@@ -148,7 +148,7 @@ export default function MarketingDetailPage() {
             <button
               onClick={sendNow}
               disabled={sending}
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-fuchsia-600 to-pink-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium shadow-lg shadow-fuchsia-500/25 hover:shadow-xl transition-all disabled:opacity-50"
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-fuchsia-600 to-pink-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium shadow-lg shadow-fuchsia-500/25 transition-all disabled:opacity-50"
             >
               {sending ? 'Sending…' : `Send ${pendingCount} pending`}
             </button>

@@ -32,7 +32,7 @@ export default function VehiclesPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Vehicles</h1>
         {user.role === 'admin' && (
-          <button onClick={() => setShowModal(true)} className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium shadow-lg shadow-blue-500/25 transition-all w-full sm:w-auto">
+          <button onClick={() => setShowModal(true)} className="inline-flex items-center justify-center gap-2 bg-[var(--vv-bg-dark)] text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all w-full sm:w-auto">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
             Add Vehicle
           </button>
@@ -90,7 +90,7 @@ export default function VehiclesPage() {
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-50 rounded-xl hover:bg-gray-100">Cancel</button>
-                <button type="submit" disabled={submitting} className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl shadow-lg shadow-blue-500/25 disabled:opacity-50">{submitting ? 'Adding...' : 'Add'}</button>
+                <button type="submit" disabled={submitting} className="px-5 py-2.5 text-sm font-medium bg-[var(--vv-bg-dark)] text-white rounded-xl disabled:opacity-50">{submitting ? 'Adding...' : 'Add'}</button>
               </div>
             </form>
           </div>

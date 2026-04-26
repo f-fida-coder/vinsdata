@@ -70,7 +70,7 @@ export default function UsersPage() {
     <div className="max-w-[1600px] mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Users</h1>
-        <button onClick={() => setShowModal(true)} className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium shadow-lg shadow-blue-500/25 transition-all w-full sm:w-auto">
+        <button onClick={() => setShowModal(true)} className="inline-flex items-center justify-center gap-2 bg-[var(--vv-bg-dark)] text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all w-full sm:w-auto">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
           Add User
         </button>
@@ -106,7 +106,7 @@ export default function UsersPage() {
                   <tr key={u.id} className={`border-b border-gray-50 hover:bg-gray-50/50 ${i % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
                     <td className="px-4 sm:px-5 py-3.5">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold shrink-0">{u.name.charAt(0)}</div>
+                        <div className="w-7 h-7 rounded-lg bg-[var(--vv-bg-dark)] flex items-center justify-center text-white text-xs font-bold shrink-0">{u.name.charAt(0)}</div>
                         <span className="font-medium text-gray-900">{u.name}</span>
                       </div>
                     </td>
@@ -136,7 +136,7 @@ export default function UsersPage() {
           <div><label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Role</label><select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} required className={inputClass}><option value="">Select role</option>{ROLES.map((r) => <option key={r} value={r}>{r}</option>)}</select></div>
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-50 rounded-xl hover:bg-gray-100">Cancel</button>
-            <button type="submit" disabled={submitting} className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl shadow-lg shadow-blue-500/25 disabled:opacity-50">{submitting ? 'Adding...' : 'Add User'}</button>
+            <button type="submit" disabled={submitting} className="px-5 py-2.5 text-sm font-medium bg-[var(--vv-bg-dark)] text-white rounded-xl disabled:opacity-50">{submitting ? 'Adding...' : 'Add User'}</button>
           </div>
         </form>
       </UserModal>
@@ -150,7 +150,7 @@ export default function UsersPage() {
             <div><label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Role</label><select value={editModal.role} onChange={(e) => setEditModal({ ...editModal, role: e.target.value })} required className={inputClass}>{ROLES.map((r) => <option key={r} value={r}>{r}</option>)}</select></div>
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={() => setEditModal(null)} className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-50 rounded-xl hover:bg-gray-100">Cancel</button>
-              <button type="submit" className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl shadow-lg shadow-blue-500/25">Save</button>
+              <button type="submit" className="px-5 py-2.5 text-sm font-medium bg-[var(--vv-bg-dark)] text-white rounded-xl">Save</button>
             </div>
           </form>
         )}

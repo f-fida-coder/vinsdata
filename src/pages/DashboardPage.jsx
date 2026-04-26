@@ -42,7 +42,7 @@ function Modal({ open, onClose, title, width = 'max-w-md', children }) {
 
 function StatCard({ label, count, color, icon }) {
   const colors = {
-    blue: 'from-blue-500 to-blue-600 shadow-blue-500/20',
+    blue: 'from-blue-500 to-blue-600',
     amber: 'from-amber-500 to-amber-600 shadow-amber-500/20',
     orange: 'from-orange-500 to-orange-600 shadow-orange-500/20',
     emerald: 'from-emerald-500 to-emerald-600 shadow-emerald-500/20',
@@ -56,7 +56,7 @@ function StatCard({ label, count, color, icon }) {
     red: 'bg-red-50 text-red-700 border-red-100',
   };
   return (
-    <div className={`bg-white rounded-2xl p-5 border ${bgColors[color].split(' ')[2]} shadow-sm hover:shadow-md transition-shadow`}>
+    <div className={`bg-white rounded-2xl p-5 border ${bgColors[color].split(' ')[2]} shadow-sm transition-shadow`}>
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">{label}</p>
@@ -355,7 +355,7 @@ export default function DashboardPage() {
         </div>
         <button
           onClick={() => setShowModal(true)}
-          className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-4 sm:px-5 py-2.5 rounded-xl text-sm font-medium shadow-lg shadow-blue-500/25 hover:shadow-xl transition-all duration-200 w-full sm:w-auto"
+          className="inline-flex items-center justify-center gap-2 bg-[var(--vv-bg-dark)] text-white px-4 sm:px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 w-full sm:w-auto"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
           Add File
@@ -603,7 +603,7 @@ export default function DashboardPage() {
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={() => { setShowModal(false); setSelectedFile(null); }} className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">Cancel</button>
-            <button type="submit" disabled={submitting} className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-xl disabled:opacity-50 transition-all">{submitting ? 'Adding...' : 'Add File'}</button>
+            <button type="submit" disabled={submitting} className="px-5 py-2.5 text-sm font-medium bg-[var(--vv-bg-dark)] text-white rounded-xl disabled:opacity-50 transition-all">{submitting ? 'Adding...' : 'Add File'}</button>
           </div>
         </form>
       </Modal>
@@ -627,7 +627,7 @@ export default function DashboardPage() {
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={() => setEditModal(null)} className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">Cancel</button>
-              <button type="submit" className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl shadow-lg shadow-blue-500/25 transition-all">Save</button>
+              <button type="submit" className="px-5 py-2.5 text-sm font-medium bg-[var(--vv-bg-dark)] text-white rounded-xl transition-all">Save</button>
             </div>
           </form>
         )}
@@ -671,7 +671,7 @@ export default function DashboardPage() {
             )}
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={() => { setStageModal(null); setStageFile(null); setStageNotes(''); }} className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">Cancel</button>
-              <button onClick={handleStageSubmit} disabled={uploading || !stageFile} className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl shadow-lg shadow-blue-500/25 disabled:opacity-50 transition-all">
+              <button onClick={handleStageSubmit} disabled={uploading || !stageFile} className="px-5 py-2.5 text-sm font-medium bg-[var(--vv-bg-dark)] text-white rounded-xl disabled:opacity-50 transition-all">
                 {uploading
                   ? 'Uploading...'
                   : stageModal.mode === 'reupload' ? 'Upload new version' : 'Upload & Move'}

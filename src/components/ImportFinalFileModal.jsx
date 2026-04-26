@@ -458,7 +458,7 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
                 type="button"
                 onClick={handleImport}
                 disabled={!canImport || submitting}
-                className="px-5 py-2 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-lg shadow-lg shadow-blue-500/25 disabled:opacity-50"
+                className="px-5 py-2 text-sm font-medium bg-[var(--vv-bg-dark)] text-white rounded-lg disabled:opacity-50"
               >
                 {submitting ? 'Importing…' : `Import ${filteredRows.length} ${filteredRows.length === 1 ? 'row' : 'rows'}`}
               </button>

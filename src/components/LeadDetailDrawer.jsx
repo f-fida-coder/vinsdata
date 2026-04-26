@@ -999,7 +999,7 @@ function MarketingSection({ leadId, currentStatus, onChanged }) {
         <button
           onClick={moveToMarketing}
           disabled={moving}
-          className="w-full text-sm font-medium bg-gradient-to-r from-fuchsia-600 to-pink-500 text-white rounded-lg px-3 py-2 shadow-md shadow-fuchsia-500/20 hover:shadow-lg disabled:opacity-50 transition-all"
+          className="w-full text-sm font-medium bg-gradient-to-r from-fuchsia-600 to-pink-500 text-white rounded-lg px-3 py-2 shadow-md shadow-fuchsia-500/20 disabled:opacity-50 transition-all"
         >
           {moving ? 'Moving…' : 'Move to Mass Marketing'}
         </button>
