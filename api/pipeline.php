@@ -499,6 +499,20 @@ function logLeadActivity(PDO $db, int $leadId, int $userId, string $type, $oldVa
         ':old'  => $oldValue === null ? null : json_encode($oldValue),
         ':new'  => $newValue === null ? null : json_encode($newValue),
     ]);
+
+    // Auto-resolve any open SLA alerts for this lead. Activity = no longer
+    // stale, so the rule should re-evaluate from scratch on the next cron pass.
+    // Soft-fail if the SLA tables don't exist yet (pre-migration installs).
+    try {
+        $u = $db->prepare(
+            "UPDATE sla_alerts
+                SET resolved_at = NOW(), resolved_reason = :reason
+              WHERE imported_lead_id = :lead AND resolved_at IS NULL"
+        );
+        $u->execute([':lead' => $leadId, ':reason' => 'activity:' . $type]);
+    } catch (Throwable $_e) {
+        // sla_alerts not present; ignore.
+    }
 }
 
 // ----- Notifications -----
