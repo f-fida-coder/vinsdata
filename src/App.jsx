@@ -16,6 +16,7 @@ import MarketingDetailPage from './pages/MarketingDetailPage';
 import FilterRulesPage from './pages/FilterRulesPage';
 import FilterReviewPage from './pages/FilterReviewPage';
 import SlaRulesPage from './pages/SlaRulesPage';
+import PipelinePage from './pages/PipelinePage';
 import NotificationBell from './components/NotificationBell';
 import BrandMark from './components/BrandMark';
 
@@ -48,6 +49,11 @@ const NAV_ICONS = {
   filter: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+    </svg>
+  ),
+  pipeline: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 5h4v14H4zM10 5h4v14h-4zM16 5h4v14h-4z" />
     </svg>
   ),
   tasks: (
@@ -178,6 +184,7 @@ function Sidebar({ open, onClose }) {
           <NavLink to="/" end className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.dashboard} Dashboard</NavLink>
           <NavLink to="/vehicles" className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.vehicles} Vehicles</NavLink>
           <NavLink to="/leads" className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.leads} Leads</NavLink>
+          <NavLink to="/pipeline" className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.pipeline} Pipeline</NavLink>
           <NavLink to="/tasks" className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.tasks} Tasks</NavLink>
           <NavLink to="/duplicates" className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.duplicates} Duplicate Review</NavLink>
           <NavLink to="/merge-prep" className={linkClass} style={linkStyle} onClick={onClose}>{NAV_ICONS.mergePrep} Merge Prep</NavLink>
@@ -253,6 +260,7 @@ function DashboardLayout() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/vehicles" element={<VehiclesPage />} />
             <Route path="/leads" element={<LeadsPage />} />
+            <Route path="/pipeline" element={<PipelinePage />} />
             <Route path="/tasks" element={<TasksPage />} />
             <Route path="/duplicates" element={<DuplicatesPage />} />
             <Route path="/merge-prep" element={<MergePrepPage />} />
