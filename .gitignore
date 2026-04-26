@@ -14,8 +14,11 @@ dist-ssr
 # API - user uploads must never be tracked (git pulls would wipe them).
 api/uploads/
 
-# API - local credentials. Never commit. See api/config.local.php.example.
-api/config.local.php
+# API - local credentials.
+# NOTE: api/config.local.php IS currently committed for deploy convenience —
+# the repo is private and the user has chosen not to rotate. If you ever
+# rotate creds, set them on the server only and re-add this file to the
+# .gitignore on the same commit.
 
 # Editor directories and files
 .vscode/*
