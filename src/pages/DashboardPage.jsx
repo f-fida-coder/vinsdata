@@ -41,28 +41,63 @@ function Modal({ open, onClose, title, width = 'max-w-md', children }) {
 }
 
 function StatCard({ label, count, color, icon }) {
-  const colors = {
-    blue: 'from-blue-500 to-blue-600',
-    amber: 'from-amber-500 to-amber-600 shadow-amber-500/20',
-    orange: 'from-orange-500 to-orange-600 shadow-orange-500/20',
-    emerald: 'from-emerald-500 to-emerald-600 shadow-emerald-500/20',
-    red: 'from-red-500 to-red-600 shadow-red-500/20',
-  };
-  const bgColors = {
-    blue: 'bg-blue-50 text-blue-700 border-zinc-200',
-    amber: 'bg-amber-50 text-amber-700 border-amber-100',
-    orange: 'bg-orange-50 text-orange-700 border-orange-100',
-    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-    red: 'bg-red-50 text-red-700 border-red-100',
-  };
+  // vinvault.us style: flat white card, neutral indicator block. The
+  // semantic stage color shows up as a 1.5px dot under the number — enough
+  // to differentiate the four stages at a glance without a brand-blue glow.
+  const dotColor = {
+    blue:    '#3b82f6',
+    amber:   '#d97706',
+    orange:  '#ea580c',
+    emerald: '#16a34a',
+    red:     '#dc2626',
+  }[color] || 'var(--vv-text-subtle)';
+
   return (
-    <div className={`bg-white rounded-2xl p-5 border ${bgColors[color].split(' ')[2]} shadow-sm transition-shadow`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">{label}</p>
-          <p className="text-3xl font-bold mt-1 text-gray-900">{count}</p>
+    <div
+      className="p-5"
+      style={{
+        backgroundColor: 'var(--vv-bg-surface)',
+        border: '1px solid var(--vv-border)',
+        borderRadius: 'var(--vv-radius-lg)',
+        boxShadow: 'var(--vv-shadow-sm)',
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p
+            className="text-[10px] font-semibold uppercase"
+            style={{
+              color: 'var(--vv-text-subtle)',
+              letterSpacing: 'var(--vv-tracking-label)',
+            }}
+          >
+            {label}
+          </p>
+          <div className="flex items-baseline gap-2 mt-1">
+            <p
+              className="text-2xl font-semibold tabular-nums"
+              style={{
+                color: 'var(--vv-text)',
+                letterSpacing: 'var(--vv-tracking-tight)',
+              }}
+            >
+              {count}
+            </p>
+            <span
+              aria-hidden
+              className="w-1.5 h-1.5 rounded-full"
+              style={{ backgroundColor: dotColor }}
+            />
+          </div>
         </div>
-        <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${colors[color]} shadow-lg flex items-center justify-center text-white text-sm font-bold`}>
+        <div
+          className="w-7 h-7 flex items-center justify-center text-[12px] font-semibold shrink-0"
+          style={{
+            backgroundColor: 'var(--vv-bg-surface-muted)',
+            color: 'var(--vv-text-muted)',
+            borderRadius: 'var(--vv-radius-sm)',
+          }}
+        >
           {icon}
         </div>
       </div>
