@@ -150,7 +150,7 @@ export default function TasksPage() {
 
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16">
-            <div className="w-10 h-10 border-4 border-zinc-200 border-t-blue-600 rounded-full animate-spin"></div>
+            <div className="w-10 h-10 border-4 border-zinc-200 border-t-[var(--vv-bg-dark)] rounded-full animate-spin"></div>
             <p className="text-sm text-gray-400 mt-3">Loading tasks…</p>
           </div>
         ) : tasks.length === 0 ? (

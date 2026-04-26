@@ -15,14 +15,14 @@ const STAGE_ROLES = {
 };
 
 const STATUS_STYLES = {
-  active:    { bg: 'bg-blue-50',    text: 'text-blue-700',    dot: 'bg-blue-500',    label: 'Active' },
+  active:    { bg: 'bg-blue-50',    text: 'text-blue-700',    dot: 'bg-[var(--vv-bg-dark)]',    label: 'Active' },
   completed: { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Completed' },
   blocked:   { bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500',   label: 'Blocked' },
   invalid:   { bg: 'bg-red-50',     text: 'text-red-700',     dot: 'bg-red-500',     label: 'Invalid' },
 };
 
 const ACTION_META = {
-  create:     { label: 'Created',     dot: 'bg-blue-500' },
+  create:     { label: 'Created',     dot: 'bg-[var(--vv-bg-dark)]' },
   upload:     { label: 'Upload',      dot: 'bg-sky-500' },
   advance:    { label: 'Advanced',    dot: 'bg-emerald-500' },
   complete:   { label: 'Completed',   dot: 'bg-emerald-600' },
@@ -60,7 +60,7 @@ function StageCard({ stage, artifacts, isCurrent, fileStatus, canReupload, onReu
     : 'bg-emerald-500 ring-emerald-100';
 
   return (
-    <div className={`rounded-xl border ${isCurrent ? 'border-zinc-200 bg-blue-50/30' : 'border-gray-100 bg-white'} p-4`}>
+    <div className={`rounded-xl border ${isCurrent ? 'border-zinc-200 bg-zinc-50' : 'border-gray-100 bg-white'} p-4`}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <div className={`w-3 h-3 rounded-full ring-4 ${dotClass}`} />
@@ -250,7 +250,7 @@ function FileDetailDrawerInner({ file, onClose, onReupload, onImport }) {
                   title={importReason || 'Import this final file into lead staging'}
                   className={`mt-3 inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border transition-colors ${
                     importEligible
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600'
+                      ? 'bg-[var(--vv-bg-dark)] hover:bg-black text-white border-blue-600'
                       : 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed'
                   }`}
                 >

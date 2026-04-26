@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 
 const STAGE_COLORS = {
-  generated: 'bg-blue-50 text-blue-700 border-zinc-200',
+  generated: 'bg-zinc-100 text-zinc-700 border-zinc-200',
   carfax: 'bg-amber-50 text-amber-700 border-amber-100',
   filter: 'bg-orange-50 text-orange-700 border-orange-100',
   tlo: 'bg-emerald-50 text-emerald-700 border-emerald-100',
@@ -44,7 +44,7 @@ export default function LogsPage() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-16"><div className="w-10 h-10 border-4 border-zinc-200 border-t-blue-600 rounded-full animate-spin"></div></div>
+        <div className="flex justify-center py-16"><div className="w-10 h-10 border-4 border-zinc-200 border-t-[var(--vv-bg-dark)] rounded-full animate-spin"></div></div>
       ) : error ? (
         <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl text-sm">{error}</div>
       ) : logs.length === 0 ? (
@@ -57,7 +57,7 @@ export default function LogsPage() {
           {logs.map((log, i) => (
             <div key={log.id} className="flex gap-3 sm:gap-4">
               <div className="flex flex-col items-center shrink-0">
-                <div className="w-3 h-3 rounded-full bg-blue-500 mt-2 ring-4 ring-blue-100"></div>
+                <div className="w-3 h-3 rounded-full bg-[var(--vv-bg-dark)] mt-2 ring-4 ring-blue-100"></div>
                 {i < logs.length - 1 && <div className="w-0.5 flex-1 bg-gray-100 mt-1"></div>}
               </div>
               <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 sm:p-4 mb-3 flex-1 min-w-0">

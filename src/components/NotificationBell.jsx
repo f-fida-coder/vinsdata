@@ -143,7 +143,7 @@ export default function NotificationBell({ tone = 'dark' }) {
                     <li key={n.id}>
                       <button
                         onClick={() => handleRowClick(n)}
-                        className={`w-full text-left px-4 py-2.5 border-b border-gray-50 flex gap-2.5 hover:bg-gray-50 transition-colors ${n.is_read ? 'opacity-70' : 'bg-blue-50/40'}`}
+                        className={`w-full text-left px-4 py-2.5 border-b border-gray-50 flex gap-2.5 hover:bg-gray-50 transition-colors ${n.is_read ? 'opacity-70' : 'bg-zinc-50'}`}
                       >
                         <div className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${n.is_read ? 'bg-gray-300' : meta.accent}`} />
                         <div className="flex-1 min-w-0">

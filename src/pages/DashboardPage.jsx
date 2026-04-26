@@ -206,13 +206,13 @@ function ActionDropdown({ file, onMove, onReupload, onEdit, onDelete, onNotify, 
             View details
           </button>
           {!invalid && next && (
-            <button onClick={() => { setOpen(false); onMove(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:underline transition-colors">
+            <button onClick={() => { setOpen(false); onMove(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-zinc-100 hover:underline transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
               Move to {next}
             </button>
           )}
           {canReupload && (
-            <button onClick={() => { setOpen(false); onReupload(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:underline transition-colors">
+            <button onClick={() => { setOpen(false); onReupload(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-zinc-100 hover:underline transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
               Re-upload {file.current_stage}
             </button>
@@ -482,7 +482,7 @@ export default function DashboardPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16 sm:py-20">
-            <div className="w-10 h-10 border-4 border-zinc-200 border-t-blue-600 rounded-full animate-spin"></div>
+            <div className="w-10 h-10 border-4 border-zinc-200 border-t-[var(--vv-bg-dark)] rounded-full animate-spin"></div>
             <p className="text-sm text-gray-400 mt-3">Loading files...</p>
           </div>
         ) : (
@@ -554,7 +554,7 @@ export default function DashboardPage() {
                           )}
                           {status === 'active' && (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-[var(--vv-text)] border border-zinc-200 w-fit">
-                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span> {STAGE_META[file.current_stage].label}
+                              <span className="w-1.5 h-1.5 rounded-full bg-[var(--vv-bg-dark)]"></span> {STAGE_META[file.current_stage].label}
                             </span>
                           )}
                           {file.next_upload_missing && next && (

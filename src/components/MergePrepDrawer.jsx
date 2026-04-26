@@ -42,7 +42,7 @@ function ValueRow({ label, children }) {
 
 function FlagToggle({ checked, onChange, label, color = 'blue' }) {
   const palette = {
-    blue:   checked ? 'bg-blue-50 text-blue-700 border-zinc-200'       : 'bg-white hover:bg-gray-50 text-gray-600 border-gray-200',
+    blue:   checked ? 'bg-zinc-100 text-zinc-700 border-zinc-200'       : 'bg-white hover:bg-gray-50 text-gray-600 border-gray-200',
     amber:  checked ? 'bg-amber-50 text-amber-700 border-amber-200'    : 'bg-white hover:bg-gray-50 text-gray-600 border-gray-200',
     violet: checked ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-white hover:bg-gray-50 text-gray-600 border-gray-200',
     gray:   checked ? 'bg-gray-100 text-gray-700 border-gray-300'      : 'bg-white hover:bg-gray-50 text-gray-600 border-gray-200',
@@ -67,7 +67,7 @@ function MemberCard({ m, isPrimary, onSetPrimary, choice, onChoiceChange, onOpen
   const setField = (field, value) => onChoiceChange({ ...choice, [field]: value });
 
   return (
-    <div className={`rounded-xl border p-3 ${isPrimary ? 'border-blue-300 bg-blue-50/40 ring-1 ring-blue-200' : 'border-gray-100 bg-white'}`}>
+    <div className={`rounded-xl border p-3 ${isPrimary ? 'border-blue-300 bg-zinc-50 ring-1 ring-blue-200' : 'border-gray-100 bg-white'}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -291,7 +291,7 @@ function MergePrepDrawerInner({ duplicateGroupId, onClose, onChanged }) {
         <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-4">
           {loading && !data && (
             <div className="py-10 text-center">
-              <div className="w-8 h-8 border-4 border-zinc-200 border-t-blue-600 rounded-full animate-spin mx-auto" />
+              <div className="w-8 h-8 border-4 border-zinc-200 border-t-[var(--vv-bg-dark)] rounded-full animate-spin mx-auto" />
               <p className="text-xs text-gray-400 mt-2">Loading workspace…</p>
             </div>
           )}
@@ -367,7 +367,7 @@ function MergePrepDrawerInner({ duplicateGroupId, onClose, onChanged }) {
               <button
                 onClick={() => save({ markPrepared: true })}
                 disabled={saving || primary === null}
-                className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow disabled:opacity-40"
+                className="px-3 py-1.5 text-xs font-medium text-white bg-[var(--vv-bg-dark)] hover:bg-black rounded-lg shadow disabled:opacity-40"
               >
                 {saving ? 'Saving…' : 'Mark prepared'}
               </button>

@@ -74,7 +74,7 @@ function ModalShell({ title, onClose, children, submitLabel = 'Apply', onSubmit,
           <button
             onClick={onSubmit}
             disabled={submitDisabled || submitting}
-            className={`px-4 py-2 text-sm font-medium text-white rounded-lg shadow disabled:opacity-40 ${destructive ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+            className={`px-4 py-2 text-sm font-medium text-white rounded-lg shadow disabled:opacity-40 ${destructive ? 'bg-red-600 hover:bg-red-700' : 'bg-[var(--vv-bg-dark)] hover:bg-black'}`}
           >
             {submitting ? 'Working…' : submitLabel}
           </button>

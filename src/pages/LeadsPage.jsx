@@ -421,7 +421,7 @@ export default function LeadsPage() {
           </div>
           <button
             onClick={() => setShowFilters((v) => !v)}
-            className={`inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${showFilters ? 'bg-blue-50 text-blue-700 border-zinc-200' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}
+            className={`inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${showFilters ? 'bg-zinc-100 text-zinc-700 border-zinc-200' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
             Filters
@@ -539,7 +539,7 @@ export default function LeadsPage() {
       {activeChips.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 mb-3">
           {activeChips.map(({ key, value }) => (
-            <span key={key} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-[11px] font-medium px-2 py-1 rounded-md border border-zinc-200">
+            <span key={key} className="inline-flex items-center gap-1 bg-zinc-100 text-zinc-700 text-[11px] font-medium px-2 py-1 rounded-md border border-zinc-200">
               {CHIP_LABELS[key]}: <span className="font-semibold">{renderChipValue(key, value)}</span>
               <button onClick={() => clearFilter(key)} className="ml-0.5 text-blue-500 hover:underline">&times;</button>
             </span>
@@ -566,7 +566,7 @@ export default function LeadsPage() {
       >
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16 sm:py-20">
-            <div className="w-10 h-10 border-4 border-zinc-200 border-t-blue-600 rounded-full animate-spin"></div>
+            <div className="w-10 h-10 border-4 border-zinc-200 border-t-[var(--vv-bg-dark)] rounded-full animate-spin"></div>
             <p className="text-sm text-gray-400 mt-3">Loading leads…</p>
           </div>
         ) : (
@@ -638,7 +638,7 @@ export default function LeadsPage() {
                     <tr
                       key={lead.id}
                       onClick={() => setDetailId(lead.id)}
-                      className={`border-b border-gray-50 transition-colors cursor-pointer ${isSelected ? 'bg-blue-50/50' : 'hover:bg-gray-50/60'}`}
+                      className={`border-b border-gray-50 transition-colors cursor-pointer ${isSelected ? 'bg-zinc-50' : 'hover:bg-gray-50/60'}`}
                     >
                       <td className="pl-5 pr-1 py-2 w-8" onClick={(e) => { e.stopPropagation(); toggleRow(lead.id); }}>
                         <input
@@ -881,7 +881,7 @@ const QUICK_STATUS_KEYS = ['new', 'callback', 'interested', 'marketing'];
 function InlineStats({ total, summary, isAdmin, activeFilters, onToggleFilter }) {
   const items = [];
   // Total is informational, not a filter.
-  items.push({ key: '__total', label: total === 1 ? 'lead' : 'leads', value: total, dotColor: 'bg-blue-500', filterKey: null });
+  items.push({ key: '__total', label: total === 1 ? 'lead' : 'leads', value: total, dotColor: 'bg-[var(--vv-bg-dark)]', filterKey: null });
 
   if (summary) {
     if (isAdmin && summary.unassigned > 0) {
@@ -892,7 +892,7 @@ function InlineStats({ total, summary, isAdmin, activeFilters, onToggleFilter })
     }
     if (summary.open_tasks > 0) {
       items.push({
-        key: 'open_tasks', label: 'open tasks', value: summary.open_tasks, dotColor: 'bg-blue-500',
+        key: 'open_tasks', label: 'open tasks', value: summary.open_tasks, dotColor: 'bg-[var(--vv-bg-dark)]',
         filterKey: 'has_open_tasks', filterValue: '1',
       });
     }

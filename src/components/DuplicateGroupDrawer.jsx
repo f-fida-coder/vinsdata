@@ -186,7 +186,7 @@ function DuplicateGroupInner({ groupId, onClose, onChanged }) {
         <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-5">
           {loading && !data && (
             <div className="py-10 text-center">
-              <div className="w-8 h-8 border-4 border-zinc-200 border-t-blue-600 rounded-full animate-spin mx-auto" />
+              <div className="w-8 h-8 border-4 border-zinc-200 border-t-[var(--vv-bg-dark)] rounded-full animate-spin mx-auto" />
               <p className="text-xs text-gray-400 mt-2">Loading group…</p>
             </div>
           )}
