@@ -172,7 +172,7 @@ function CrmStateSection({ leadId, initialState, users, isAdmin, onChanged }) {
           <select
             value={state.status}
             onChange={(e) => setState({ ...state, status: e.target.value })}
-            className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
           >
             {LEAD_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
@@ -182,7 +182,7 @@ function CrmStateSection({ leadId, initialState, users, isAdmin, onChanged }) {
           <select
             value={state.priority}
             onChange={(e) => setState({ ...state, priority: e.target.value })}
-            className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
           >
             {LEAD_PRIORITIES.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
           </select>
@@ -192,7 +192,7 @@ function CrmStateSection({ leadId, initialState, users, isAdmin, onChanged }) {
           <select
             value={state.lead_temperature ?? ''}
             onChange={(e) => setState({ ...state, lead_temperature: e.target.value })}
-            className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
           >
             <option value="">— Not set —</option>
             {LEAD_TEMPERATURES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
@@ -209,7 +209,7 @@ function CrmStateSection({ leadId, initialState, users, isAdmin, onChanged }) {
             value={state.assigned_user_id ?? ''}
             disabled={!isAdmin}
             onChange={(e) => setState({ ...state, assigned_user_id: e.target.value === '' ? null : Number(e.target.value) })}
-            className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:text-gray-500 disabled:cursor-not-allowed"
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none disabled:text-gray-500 disabled:cursor-not-allowed"
           >
             <option value="">Unassigned</option>
             {users.map((u) => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
@@ -222,7 +222,7 @@ function CrmStateSection({ leadId, initialState, users, isAdmin, onChanged }) {
             value={state.price_wanted}
             onChange={(e) => setState({ ...state, price_wanted: e.target.value })}
             placeholder="—"
-            className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
           />
         </label>
         <label className="block">
@@ -232,7 +232,7 @@ function CrmStateSection({ leadId, initialState, users, isAdmin, onChanged }) {
             value={state.price_offered}
             onChange={(e) => setState({ ...state, price_offered: e.target.value })}
             placeholder="—"
-            className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
           />
         </label>
       </div>
@@ -313,7 +313,7 @@ function LabelsSection({ leadId, initialLabels, availableLabels, onChanged }) {
           value={selectedAdd}
           onChange={(e) => setSelectedAdd(e.target.value)}
           disabled={candidates.length === 0 || working}
-          className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:opacity-50"
+          className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none disabled:opacity-50"
         >
           <option value="">{candidates.length === 0 ? 'No more labels available' : 'Select a label to add'}</option>
           {candidates.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
@@ -344,7 +344,7 @@ function TaskRow({ t, currentUser, onComplete, onCancel, onReopen, onEdit, editi
 
   if (editingId === t.id) {
     return (
-      <li className="rounded-lg border border-blue-200 bg-blue-50/30 p-2.5">
+      <li className="rounded-lg border border-zinc-200 bg-blue-50/30 p-2.5">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <input
             type="text"
@@ -386,7 +386,7 @@ function TaskRow({ t, currentUser, onComplete, onCancel, onReopen, onEdit, editi
         </div>
         <div className="flex justify-end gap-2 mt-2">
           <button onClick={onCancelEdit} className="text-xs text-gray-500 hover:text-gray-800 px-2 py-1">Cancel</button>
-          <button onClick={() => onSaveEdit(t.id)} className="px-3 py-1 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700">Save</button>
+          <button onClick={() => onSaveEdit(t.id)} className="px-3 py-1 text-xs font-medium bg-[var(--vv-bg-dark)] text-white rounded-md hover:bg-blue-700">Save</button>
         </div>
       </li>
     );
@@ -424,7 +424,7 @@ function TaskRow({ t, currentUser, onComplete, onCancel, onReopen, onEdit, editi
             </button>
           )}
           {canEdit && (
-            <button onClick={() => onEdit(t)} title="Edit" className="p-1 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-md">
+            <button onClick={() => onEdit(t)} title="Edit" className="p-1 text-gray-500 hover:text-[var(--vv-text)] hover:bg-blue-50 rounded-md">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
             </button>
           )}
@@ -434,7 +434,7 @@ function TaskRow({ t, currentUser, onComplete, onCancel, onReopen, onEdit, editi
             </button>
           )}
           {canReopen && (
-            <button onClick={() => onReopen(t.id)} title="Reopen" className="p-1 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-md">
+            <button onClick={() => onReopen(t.id)} title="Reopen" className="p-1 text-gray-500 hover:text-[var(--vv-text)] hover:bg-blue-50 rounded-md">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
             </button>
           )}
@@ -585,7 +585,7 @@ function TasksSection({ leadId, currentUser, users, onChanged }) {
             <div className="mt-3">
               <button
                 onClick={() => setShowCompleted((v) => !v)}
-                className="text-[11px] font-medium text-blue-600 hover:text-blue-800"
+                className="text-[11px] font-medium text-[var(--vv-text)] hover:underline"
               >
                 {showCompleted ? 'Hide' : `Show ${closedTasks.length} closed`}
               </button>
@@ -613,7 +613,7 @@ function TasksSection({ leadId, currentUser, users, onChanged }) {
           )}
 
           {creating ? (
-            <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50/30 p-2.5">
+            <div className="mt-3 rounded-lg border border-zinc-200 bg-blue-50/30 p-2.5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <input
                   type="text"
@@ -656,7 +656,7 @@ function TasksSection({ leadId, currentUser, users, onChanged }) {
               </div>
               <div className="flex justify-end gap-2 mt-2">
                 <button onClick={() => setCreating(false)} className="text-xs text-gray-500 hover:text-gray-800 px-2 py-1">Cancel</button>
-                <button onClick={create} disabled={!draft.title.trim() || saving} className="px-3 py-1 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40">
+                <button onClick={create} disabled={!draft.title.trim() || saving} className="px-3 py-1 text-xs font-medium bg-[var(--vv-bg-dark)] text-white rounded-md hover:bg-blue-700 disabled:opacity-40">
                   {saving ? 'Creating…' : 'Create task'}
                 </button>
               </div>
@@ -664,7 +664,7 @@ function TasksSection({ leadId, currentUser, users, onChanged }) {
           ) : (
             <button
               onClick={() => setCreating(true)}
-              className="mt-3 w-full text-center text-sm font-medium text-blue-600 hover:text-blue-800 border border-dashed border-blue-200 hover:bg-blue-50 rounded-lg py-2"
+              className="mt-3 w-full text-center text-sm font-medium text-[var(--vv-text)] hover:underline border border-dashed border-zinc-200 hover:bg-blue-50 rounded-lg py-2"
             >
               + New task
             </button>
@@ -886,7 +886,7 @@ function NotesSection({ leadId, currentUser, onNotesLoaded }) {
           rows={2}
           maxLength={5000}
           placeholder="Add a note…"
-          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
         />
         <div className="flex justify-end mt-1.5">
           <button
@@ -914,7 +914,7 @@ function NotesSection({ leadId, currentUser, onNotesLoaded }) {
                 </p>
                 {canModify(n) && editingId !== n.id && (
                   <div className="flex items-center gap-1">
-                    <button onClick={() => startEdit(n)} className="text-[11px] text-blue-600 hover:text-blue-800">Edit</button>
+                    <button onClick={() => startEdit(n)} className="text-[11px] text-[var(--vv-text)] hover:underline">Edit</button>
                     <span className="text-gray-300">·</span>
                     <button onClick={() => remove(n.id)} className="text-[11px] text-red-600 hover:text-red-800">Delete</button>
                   </div>
@@ -931,7 +931,7 @@ function NotesSection({ leadId, currentUser, onNotesLoaded }) {
                   />
                   <div className="flex justify-end gap-2 mt-1">
                     <button onClick={cancelEdit} className="text-[11px] text-gray-500 hover:text-gray-700">Cancel</button>
-                    <button onClick={saveEdit} disabled={saving} className="px-2 py-1 text-[11px] font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40">Save</button>
+                    <button onClick={saveEdit} disabled={saving} className="px-2 py-1 text-[11px] font-medium bg-[var(--vv-bg-dark)] text-white rounded-md hover:bg-blue-700 disabled:opacity-40">Save</button>
                   </div>
                 </div>
               ) : (
@@ -1181,7 +1181,7 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
                   Batch: {detail.batch_name}
                 </span>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-100">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-blue-50 text-blue-700 border border-zinc-200">
                   Row #{detail.source_row_number}
                 </span>
               </div>
@@ -1208,7 +1208,7 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
         <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-5">
           {loading && !detail && (
             <div className="py-10 text-center">
-              <div className="w-8 h-8 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mx-auto" />
+              <div className="w-8 h-8 border-4 border-zinc-200 border-t-blue-600 rounded-full animate-spin mx-auto" />
               <p className="text-xs text-gray-400 mt-2">Loading lead…</p>
             </div>
           )}
@@ -1284,7 +1284,7 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
                   ['Artifact',         (
                     <span className="inline-flex items-center gap-2">
                       <span className="truncate">{detail.artifact_name}</span>
-                      <a href={getArtifactDownloadUrl(detail.artifact_id)} className="text-[11px] text-blue-600 hover:underline">download</a>
+                      <a href={getArtifactDownloadUrl(detail.artifact_id)} className="text-[11px] text-[var(--vv-text)] hover:underline">download</a>
                     </span>
                   )],
                   ['Artifact uploaded', formatDate(detail.artifact_uploaded_at)],

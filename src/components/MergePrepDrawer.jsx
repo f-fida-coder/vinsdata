@@ -42,7 +42,7 @@ function ValueRow({ label, children }) {
 
 function FlagToggle({ checked, onChange, label, color = 'blue' }) {
   const palette = {
-    blue:   checked ? 'bg-blue-50 text-blue-700 border-blue-200'       : 'bg-white hover:bg-gray-50 text-gray-600 border-gray-200',
+    blue:   checked ? 'bg-blue-50 text-blue-700 border-zinc-200'       : 'bg-white hover:bg-gray-50 text-gray-600 border-gray-200',
     amber:  checked ? 'bg-amber-50 text-amber-700 border-amber-200'    : 'bg-white hover:bg-gray-50 text-gray-600 border-gray-200',
     violet: checked ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-white hover:bg-gray-50 text-gray-600 border-gray-200',
     gray:   checked ? 'bg-gray-100 text-gray-700 border-gray-300'      : 'bg-white hover:bg-gray-50 text-gray-600 border-gray-200',
@@ -72,14 +72,14 @@ function MemberCard({ m, isPrimary, onSetPrimary, choice, onChoiceChange, onOpen
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <label className="inline-flex items-center gap-1.5 cursor-pointer">
-              <input type="radio" checked={isPrimary} onChange={() => onSetPrimary(m.imported_lead_id)} className="text-blue-600 focus:ring-blue-500" />
+              <input type="radio" checked={isPrimary} onChange={() => onSetPrimary(m.imported_lead_id)} className="text-[var(--vv-text)] focus:ring-[var(--vv-bg-dark)]" />
               <span className="text-sm font-semibold text-gray-900">{memberName(m)}</span>
             </label>
             {isPrimary && <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">Primary</span>}
           </div>
           {np.vin && <p className="text-[11px] font-mono text-gray-500 mt-0.5">VIN {np.vin}</p>}
         </div>
-        <button onClick={() => onOpenCrm(m.imported_lead_id)} className="shrink-0 text-[11px] text-blue-600 hover:text-blue-800 font-medium">
+        <button onClick={() => onOpenCrm(m.imported_lead_id)} className="shrink-0 text-[11px] text-[var(--vv-text)] hover:underline font-medium">
           Open CRM →
         </button>
       </div>
@@ -291,7 +291,7 @@ function MergePrepDrawerInner({ duplicateGroupId, onClose, onChanged }) {
         <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-4">
           {loading && !data && (
             <div className="py-10 text-center">
-              <div className="w-8 h-8 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mx-auto" />
+              <div className="w-8 h-8 border-4 border-zinc-200 border-t-blue-600 rounded-full animate-spin mx-auto" />
               <p className="text-xs text-gray-400 mt-2">Loading workspace…</p>
             </div>
           )}
@@ -338,7 +338,7 @@ function MergePrepDrawerInner({ duplicateGroupId, onClose, onChanged }) {
                   rows={3}
                   maxLength={5000}
                   placeholder="Why did you pick this primary lead? Any caveats for a future merge?"
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
                 />
               </section>
             </>
@@ -349,7 +349,7 @@ function MergePrepDrawerInner({ duplicateGroupId, onClose, onChanged }) {
           <div className="shrink-0 border-t border-gray-100 px-5 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-2 bg-white">
             <p className="text-[11px] text-gray-500">
               {primary ? 'Primary picked.' : <span className="text-amber-600">Pick a primary before marking prepared.</span>}
-              {dirty && <span className="ml-2 text-blue-600 font-medium">Unsaved changes</span>}
+              {dirty && <span className="ml-2 text-[var(--vv-text)] font-medium">Unsaved changes</span>}
             </p>
             <div className="flex gap-2">
               {status === 'prepared' && (

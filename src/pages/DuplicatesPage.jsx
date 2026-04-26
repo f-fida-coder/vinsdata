@@ -188,7 +188,7 @@ export default function DuplicatesPage() {
         <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl mb-4">{scanError}</div>
       )}
       {scanSummary && (
-        <div className="bg-blue-50 border border-blue-100 text-blue-800 px-4 py-3 rounded-xl mb-4 text-sm flex items-start justify-between gap-3">
+        <div className="bg-blue-50 border border-zinc-200 text-blue-800 px-4 py-3 rounded-xl mb-4 text-sm flex items-start justify-between gap-3">
           <div>
             <p className="font-semibold">Scan complete</p>
             <p className="text-xs mt-1">
@@ -196,7 +196,7 @@ export default function DuplicatesPage() {
               updated {scanSummary.updated} · added {scanSummary.members_added} memberships · {scanSummary.total_groups} total groups.
             </p>
           </div>
-          <button onClick={() => setScanSummary(null)} className="text-blue-500 hover:text-blue-800">&times;</button>
+          <button onClick={() => setScanSummary(null)} className="text-blue-500 hover:underline">&times;</button>
         </div>
       )}
 
@@ -216,16 +216,16 @@ export default function DuplicatesPage() {
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <button
             onClick={() => setShowFilters((v) => !v)}
-            className={`inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${showFilters ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}
+            className={`inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${showFilters ? 'bg-blue-50 text-blue-700 border-zinc-200' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
             Filters
             {activeChips.length > 0 && (
-              <span className="ml-1 text-[10px] font-semibold bg-blue-600 text-white px-1.5 py-0.5 rounded-full">{activeChips.length}</span>
+              <span className="ml-1 text-[10px] font-semibold bg-[var(--vv-bg-dark)] text-white px-1.5 py-0.5 rounded-full">{activeChips.length}</span>
             )}
           </button>
           {activeChips.length > 0 && (
-            <button onClick={clearAll} className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-2">Clear all</button>
+            <button onClick={clearAll} className="text-xs text-[var(--vv-text)] hover:underline font-medium px-2 py-2">Clear all</button>
           )}
           <div className="ml-auto">
             <SavedViewsMenu
@@ -271,9 +271,9 @@ export default function DuplicatesPage() {
       {activeChips.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 mb-3">
           {activeChips.map(({ key, value }) => (
-            <span key={key} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-[11px] font-medium px-2 py-1 rounded-md border border-blue-100">
+            <span key={key} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-[11px] font-medium px-2 py-1 rounded-md border border-zinc-200">
               {CHIP_LABELS[key]}: <span className="font-semibold">{renderChipValue(key, value)}</span>
-              <button onClick={() => clearFilter(key)} className="ml-0.5 text-blue-500 hover:text-blue-800">&times;</button>
+              <button onClick={() => clearFilter(key)} className="ml-0.5 text-blue-500 hover:underline">&times;</button>
             </span>
           ))}
         </div>
@@ -282,7 +282,7 @@ export default function DuplicatesPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16 sm:py-20">
-            <div className="w-10 h-10 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
+            <div className="w-10 h-10 border-4 border-zinc-200 border-t-blue-600 rounded-full animate-spin"></div>
             <p className="text-sm text-gray-400 mt-3">Loading groups…</p>
           </div>
         ) : (
@@ -305,7 +305,7 @@ export default function DuplicatesPage() {
                     <td colSpan={7} className="py-16 text-center">
                       <p className="text-sm text-gray-400">No duplicate groups match these filters.</p>
                       {activeChips.length > 0 && (
-                        <button onClick={clearAll} className="text-sm text-blue-600 hover:text-blue-700 font-medium mt-2">Clear all filters</button>
+                        <button onClick={clearAll} className="text-sm text-[var(--vv-text)] hover:underline font-medium mt-2">Clear all filters</button>
                       )}
                       {isAdmin && activeChips.length === 0 && (
                         <p className="text-xs text-gray-400 mt-2">Run a scan to detect duplicates.</p>
@@ -387,7 +387,7 @@ function FilterSelect({ label, value, onChange, children }) {
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
       >{children}</select>
     </label>
   );
@@ -401,7 +401,7 @@ function FilterInput({ label, value, onChange, type = 'text' }) {
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
       />
     </label>
   );

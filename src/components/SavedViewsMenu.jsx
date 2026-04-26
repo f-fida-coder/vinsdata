@@ -127,7 +127,7 @@ export default function SavedViewsMenu({ viewType, currentFilters, activeViewId,
         aria-label={activeView ? `Saved view: ${activeView.name}` : 'Saved views'}
         className={`relative inline-flex items-center justify-center w-9 h-9 rounded-lg border transition-colors ${
           activeView
-            ? 'bg-blue-50 text-blue-700 border-blue-200'
+            ? 'bg-blue-50 text-blue-700 border-zinc-200'
             : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-700'
         }`}
       >
@@ -169,7 +169,7 @@ export default function SavedViewsMenu({ viewType, currentFilters, activeViewId,
                             <button
                               onClick={(e) => { e.stopPropagation(); updateToCurrent(v); }}
                               title="Update this view to current filters"
-                              className="p-1 text-gray-400 hover:text-blue-600"
+                              className="p-1 text-gray-400 hover:text-[var(--vv-text)]"
                             >
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                             </button>
@@ -199,7 +199,7 @@ export default function SavedViewsMenu({ viewType, currentFilters, activeViewId,
                 {!saveMode ? (
                   <button
                     onClick={() => setSaveMode(true)}
-                    className="w-full text-left text-sm font-medium text-blue-600 hover:text-blue-800 px-2 py-1.5"
+                    className="w-full text-left text-sm font-medium text-[var(--vv-text)] hover:underline px-2 py-1.5"
                   >
                     + Save current view…
                   </button>
@@ -211,7 +211,7 @@ export default function SavedViewsMenu({ viewType, currentFilters, activeViewId,
                       onChange={(e) => setSaveName(e.target.value)}
                       placeholder="View name"
                       maxLength={128}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
                       autoFocus
                     />
                     <label className="flex items-center gap-2 text-xs text-gray-700">
@@ -220,7 +220,7 @@ export default function SavedViewsMenu({ viewType, currentFilters, activeViewId,
                     </label>
                     <div className="flex justify-end gap-2">
                       <button onClick={() => { setSaveMode(false); setSaveName(''); setSaveDefault(false); }} className="text-xs text-gray-500 hover:text-gray-800 px-2 py-1">Cancel</button>
-                      <button onClick={createView} disabled={!saveName.trim() || saving} className="px-3 py-1 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40">
+                      <button onClick={createView} disabled={!saveName.trim() || saving} className="px-3 py-1 text-xs font-medium bg-[var(--vv-bg-dark)] text-white rounded-md hover:bg-blue-700 disabled:opacity-40">
                         {saving ? 'Saving…' : 'Save'}
                       </button>
                     </div>

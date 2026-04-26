@@ -150,7 +150,7 @@ export default function TasksPage() {
 
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16">
-            <div className="w-10 h-10 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
+            <div className="w-10 h-10 border-4 border-zinc-200 border-t-blue-600 rounded-full animate-spin"></div>
             <p className="text-sm text-gray-400 mt-3">Loading tasks…</p>
           </div>
         ) : tasks.length === 0 ? (
@@ -182,7 +182,7 @@ export default function TasksPage() {
                       <td className="pl-5 pr-2 py-3">
                         <button
                           onClick={() => setDetailId(t.imported_lead_id)}
-                          className="text-sm text-gray-900 font-medium hover:underline hover:text-blue-600 text-left"
+                          className="text-sm text-gray-900 font-medium hover:underline hover:text-[var(--vv-text)] text-left"
                         >
                           {t.lead?.display_name || `Lead #${t.imported_lead_id}`}
                         </button>

@@ -48,7 +48,7 @@ export default function VehiclesPage() {
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {loading ? (
-          <div className="flex justify-center py-16"><div className="w-10 h-10 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div></div>
+          <div className="flex justify-center py-16"><div className="w-10 h-10 border-4 border-zinc-200 border-t-blue-600 rounded-full animate-spin"></div></div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -86,7 +86,7 @@ export default function VehiclesPage() {
             <form onSubmit={handleAdd} className="px-5 py-5 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Vehicle Name</label>
-                <input type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder="LandCruiser" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+                <input type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder="LandCruiser" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none" />
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-50 rounded-xl hover:bg-gray-100">Cancel</button>

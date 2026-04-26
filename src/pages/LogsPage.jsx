@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 
 const STAGE_COLORS = {
-  generated: 'bg-blue-50 text-blue-700 border-blue-100',
+  generated: 'bg-blue-50 text-blue-700 border-zinc-200',
   carfax: 'bg-amber-50 text-amber-700 border-amber-100',
   filter: 'bg-orange-50 text-orange-700 border-orange-100',
   tlo: 'bg-emerald-50 text-emerald-700 border-emerald-100',
@@ -44,7 +44,7 @@ export default function LogsPage() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-16"><div className="w-10 h-10 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div></div>
+        <div className="flex justify-center py-16"><div className="w-10 h-10 border-4 border-zinc-200 border-t-blue-600 rounded-full animate-spin"></div></div>
       ) : error ? (
         <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl text-sm">{error}</div>
       ) : logs.length === 0 ? (

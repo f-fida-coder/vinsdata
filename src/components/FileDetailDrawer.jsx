@@ -60,12 +60,12 @@ function StageCard({ stage, artifacts, isCurrent, fileStatus, canReupload, onReu
     : 'bg-emerald-500 ring-emerald-100';
 
   return (
-    <div className={`rounded-xl border ${isCurrent ? 'border-blue-200 bg-blue-50/30' : 'border-gray-100 bg-white'} p-4`}>
+    <div className={`rounded-xl border ${isCurrent ? 'border-zinc-200 bg-blue-50/30' : 'border-gray-100 bg-white'} p-4`}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <div className={`w-3 h-3 rounded-full ring-4 ${dotClass}`} />
           <h4 className="text-sm font-semibold text-gray-800">{STAGE_LABEL[stage]}</h4>
-          {isCurrent && <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded">Current</span>}
+          {isCurrent && <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--vv-text)] bg-blue-100 px-1.5 py-0.5 rounded">Current</span>}
           {isDone && <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">Done</span>}
         </div>
         <span className="text-[11px] text-gray-400">{artifacts.length} {artifacts.length === 1 ? 'version' : 'versions'}</span>
@@ -94,7 +94,7 @@ function StageCard({ stage, artifacts, isCurrent, fileStatus, canReupload, onReu
           {historic.length > 0 && (
             <button
               onClick={() => setExpanded((v) => !v)}
-              className="mt-2 text-xs font-medium text-blue-600 hover:text-blue-800"
+              className="mt-2 text-xs font-medium text-[var(--vv-text)] hover:underline"
             >
               {expanded ? 'Hide' : `Show ${historic.length} older ${historic.length === 1 ? 'version' : 'versions'}`}
             </button>
@@ -127,7 +127,7 @@ function StageCard({ stage, artifacts, isCurrent, fileStatus, canReupload, onReu
       {isCurrent && fileStatus === 'active' && canReupload && (
         <button
           onClick={onReupload}
-          className="mt-3 w-full inline-flex items-center justify-center gap-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg border border-blue-100 transition-colors"
+          className="mt-3 w-full inline-flex items-center justify-center gap-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg border border-zinc-200 transition-colors"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
           Re-upload {STAGE_LABEL[stage]} (new version)

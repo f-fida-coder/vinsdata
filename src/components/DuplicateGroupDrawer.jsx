@@ -53,7 +53,7 @@ function MemberCard({ m, onOpen }) {
         </div>
         <button
           onClick={() => onOpen(m.imported_lead_id)}
-          className="text-[11px] text-blue-600 hover:text-blue-800 font-medium shrink-0"
+          className="text-[11px] text-[var(--vv-text)] hover:underline font-medium shrink-0"
         >
           Open in CRM →
         </button>
@@ -186,7 +186,7 @@ function DuplicateGroupInner({ groupId, onClose, onChanged }) {
         <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-5">
           {loading && !data && (
             <div className="py-10 text-center">
-              <div className="w-8 h-8 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mx-auto" />
+              <div className="w-8 h-8 border-4 border-zinc-200 border-t-blue-600 rounded-full animate-spin mx-auto" />
               <p className="text-xs text-gray-400 mt-2">Loading group…</p>
             </div>
           )}
@@ -228,7 +228,7 @@ function DuplicateGroupInner({ groupId, onClose, onChanged }) {
                       rows={2}
                       maxLength={2000}
                       placeholder="Optional notes for this decision…"
-                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
                     />
                     {reviewError && <p className="text-xs text-red-600 mt-2">{reviewError}</p>}
                     <div className="flex flex-wrap gap-2 mt-2">
@@ -239,7 +239,7 @@ function DuplicateGroupInner({ groupId, onClose, onChanged }) {
                           disabled={submitting}
                           className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors disabled:opacity-40 ${
                             group.review_status === s.key
-                              ? 'bg-blue-600 text-white border-blue-600'
+                              ? 'bg-[var(--vv-bg-dark)] text-white border-blue-600'
                               : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200'
                           }`}
                         >

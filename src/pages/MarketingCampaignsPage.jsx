@@ -32,7 +32,7 @@ function StatusPill({ status }) {
 function Stat({ label, value, tone = 'gray' }) {
   const tones = {
     gray:    'text-gray-500',
-    blue:    'text-blue-600',
+    blue:    'text-[var(--vv-text)]',
     amber:   'text-amber-600',
     emerald: 'text-emerald-600',
     red:     'text-red-600',
@@ -107,7 +107,7 @@ export default function MarketingCampaignsPage() {
           <select
             value={filters.status}
             onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
-            className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
           >
             <option value="">Any status</option>
             {Object.entries(CAMPAIGN_STATUS_META).map(([k, m]) => (
@@ -117,13 +117,13 @@ export default function MarketingCampaignsPage() {
           <select
             value={filters.channel}
             onChange={(e) => setFilters((f) => ({ ...f, channel: e.target.value }))}
-            className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
           >
             <option value="">Any channel</option>
             {MARKETING_CHANNELS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
           </select>
           {(filters.status || filters.channel) && (
-            <button onClick={() => setFilters({ status: '', channel: '' })} className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-2">
+            <button onClick={() => setFilters({ status: '', channel: '' })} className="text-xs text-[var(--vv-text)] hover:underline font-medium px-2 py-2">
               Clear
             </button>
           )}

@@ -49,7 +49,7 @@ function StatCard({ label, count, color, icon }) {
     red: 'from-red-500 to-red-600 shadow-red-500/20',
   };
   const bgColors = {
-    blue: 'bg-blue-50 text-blue-700 border-blue-100',
+    blue: 'bg-blue-50 text-blue-700 border-zinc-200',
     amber: 'bg-amber-50 text-amber-700 border-amber-100',
     orange: 'bg-orange-50 text-orange-700 border-orange-100',
     emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
@@ -171,13 +171,13 @@ function ActionDropdown({ file, onMove, onReupload, onEdit, onDelete, onNotify, 
             View details
           </button>
           {!invalid && next && (
-            <button onClick={() => { setOpen(false); onMove(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
+            <button onClick={() => { setOpen(false); onMove(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:underline transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
               Move to {next}
             </button>
           )}
           {canReupload && (
-            <button onClick={() => { setOpen(false); onReupload(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
+            <button onClick={() => { setOpen(false); onReupload(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:underline transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
               Re-upload {file.current_stage}
             </button>
@@ -411,17 +411,17 @@ export default function DashboardPage() {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
             <span className="text-xs font-semibold uppercase tracking-wider">Filters</span>
           </div>
-          <select value={filters.vehicle_id} onChange={(e) => setFilters({ ...filters, vehicle_id: e.target.value })} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none flex-1 sm:flex-none min-w-0">
+          <select value={filters.vehicle_id} onChange={(e) => setFilters({ ...filters, vehicle_id: e.target.value })} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none flex-1 sm:flex-none min-w-0">
             <option value="">All Vehicles</option>
             {vehicles.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
           </select>
-          <select value={filters.stage} onChange={(e) => setFilters({ ...filters, stage: e.target.value })} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none flex-1 sm:flex-none min-w-0">
+          <select value={filters.stage} onChange={(e) => setFilters({ ...filters, stage: e.target.value })} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none flex-1 sm:flex-none min-w-0">
             <option value="">All Stages</option>
             {STAGES.map((s) => <option key={s} value={s}>{STAGE_META[s].label}</option>)}
           </select>
-          <input type="number" value={filters.year} onChange={(e) => setFilters({ ...filters, year: e.target.value })} placeholder="Year" className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm w-20 sm:w-24 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+          <input type="number" value={filters.year} onChange={(e) => setFilters({ ...filters, year: e.target.value })} placeholder="Year" className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm w-20 sm:w-24 focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none" />
           {hasFilters && (
-            <button onClick={() => setFilters({ vehicle_id: '', stage: '', year: '' })} className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-2">
+            <button onClick={() => setFilters({ vehicle_id: '', stage: '', year: '' })} className="text-xs text-[var(--vv-text)] hover:underline font-medium px-2 py-2">
               Clear all
             </button>
           )}
@@ -430,16 +430,16 @@ export default function DashboardPage() {
 
       {/* Bulk Actions */}
       {selected.size > 0 && (
-        <div className="bg-blue-50 border border-blue-100 rounded-2xl px-3 sm:px-5 py-3 mb-4 flex flex-wrap items-center gap-2 sm:gap-3">
+        <div className="bg-blue-50 border border-zinc-200 rounded-2xl px-3 sm:px-5 py-3 mb-4 flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-blue-600 text-white flex items-center justify-center text-xs font-bold">{selected.size}</div>
+            <div className="w-6 h-6 rounded-md bg-[var(--vv-bg-dark)] text-white flex items-center justify-center text-xs font-bold">{selected.size}</div>
             <span className="text-sm font-medium text-blue-800">selected</span>
           </div>
           <div className="h-5 w-px bg-blue-200" />
           <button onClick={() => handleBulkInvalid(true)} className="inline-flex items-center gap-1.5 text-xs font-medium bg-white border border-red-200 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors">Mark Invalid</button>
           <button onClick={() => handleBulkInvalid(false)} className="inline-flex items-center gap-1.5 text-xs font-medium bg-white border border-emerald-200 text-emerald-600 px-3 py-1.5 rounded-lg hover:bg-emerald-50 transition-colors">Mark Valid</button>
           <button onClick={handleBulkDelete} className="inline-flex items-center gap-1.5 text-xs font-medium bg-white border border-red-200 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors">Delete</button>
-          <button onClick={() => setSelected(new Set())} className="text-xs text-blue-500 hover:text-blue-700 ml-auto">Deselect all</button>
+          <button onClick={() => setSelected(new Set())} className="text-xs text-blue-500 hover:underline ml-auto">Deselect all</button>
         </div>
       )}
 
@@ -447,7 +447,7 @@ export default function DashboardPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16 sm:py-20">
-            <div className="w-10 h-10 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
+            <div className="w-10 h-10 border-4 border-zinc-200 border-t-blue-600 rounded-full animate-spin"></div>
             <p className="text-sm text-gray-400 mt-3">Loading files...</p>
           </div>
         ) : (
@@ -456,7 +456,7 @@ export default function DashboardPage() {
               <thead>
                 <tr className="border-b border-gray-100">
                   <th className="pl-5 pr-2 py-4 w-10">
-                    <input type="checkbox" checked={files.length > 0 && selected.size === files.length} onChange={toggleSelectAll} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                    <input type="checkbox" checked={files.length > 0 && selected.size === files.length} onChange={toggleSelectAll} className="rounded border-gray-300 text-[var(--vv-text)] focus:ring-[var(--vv-bg-dark)]" />
                   </th>
                   <th className="px-4 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">File</th>
                   <th className="px-4 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Vehicle</th>
@@ -475,7 +475,7 @@ export default function DashboardPage() {
                       <div className="flex flex-col items-center">
                         <svg className="w-12 h-12 text-gray-200 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
                         <p className="text-sm text-gray-400">No files found</p>
-                        <button onClick={() => setShowModal(true)} className="text-sm text-blue-600 hover:text-blue-700 font-medium mt-1">Add your first file</button>
+                        <button onClick={() => setShowModal(true)} className="text-sm text-[var(--vv-text)] hover:underline font-medium mt-1">Add your first file</button>
                       </div>
                     </td>
                   </tr>
@@ -490,10 +490,10 @@ export default function DashboardPage() {
                   return (
                     <tr key={file.id} className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${dimmed ? 'opacity-60' : ''}`}>
                       <td className="pl-5 pr-2 py-2.5">
-                        <input type="checkbox" checked={selected.has(file.id)} onChange={() => toggleSelect(file.id)} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                        <input type="checkbox" checked={selected.has(file.id)} onChange={() => toggleSelect(file.id)} className="rounded border-gray-300 text-[var(--vv-text)] focus:ring-[var(--vv-bg-dark)]" />
                       </td>
                       <td className="px-4 py-2.5">
-                        <button onClick={() => setDetailId(file.id)} className={`text-sm font-medium hover:underline ${invalid ? 'text-gray-400 line-through' : 'text-gray-900 hover:text-blue-600'}`}>
+                        <button onClick={() => setDetailId(file.id)} className={`text-sm font-medium hover:underline ${invalid ? 'text-gray-400 line-through' : 'text-gray-900 hover:text-[var(--vv-text)]'}`}>
                           {file.display_name || file.file_name}
                         </button>
                         {file.version && <span className="ml-2 text-[10px] font-medium text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{file.version}</span>}
@@ -518,7 +518,7 @@ export default function DashboardPage() {
                             </span>
                           )}
                           {status === 'active' && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-600 border border-blue-100 w-fit">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-[var(--vv-text)] border border-zinc-200 w-fit">
                               <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span> {STAGE_META[file.current_stage].label}
                             </span>
                           )}
@@ -572,23 +572,23 @@ export default function DashboardPage() {
         <form onSubmit={handleAddFile} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Vehicle</label>
-            <select value={newFile.vehicle_id} onChange={(e) => setNewFile({ ...newFile, vehicle_id: e.target.value })} required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+            <select value={newFile.vehicle_id} onChange={(e) => setNewFile({ ...newFile, vehicle_id: e.target.value })} required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none">
               <option value="">Select vehicle</option>
               {vehicles.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">File Name</label>
-            <input type="text" value={newFile.file_name} onChange={(e) => setNewFile({ ...newFile, file_name: e.target.value })} required placeholder="LandCruiser_2003_VIN_v1" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+            <input type="text" value={newFile.file_name} onChange={(e) => setNewFile({ ...newFile, file_name: e.target.value })} required placeholder="LandCruiser_2003_VIN_v1" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Year</label>
-              <input type="number" value={newFile.year} onChange={(e) => setNewFile({ ...newFile, year: e.target.value })} placeholder="2003" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+              <input type="number" value={newFile.year} onChange={(e) => setNewFile({ ...newFile, year: e.target.value })} placeholder="2003" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none" />
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Version</label>
-              <input type="text" value={newFile.version} onChange={(e) => setNewFile({ ...newFile, version: e.target.value })} placeholder="v1" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+              <input type="text" value={newFile.version} onChange={(e) => setNewFile({ ...newFile, version: e.target.value })} placeholder="v1" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none" />
             </div>
           </div>
           <div>
@@ -613,16 +613,16 @@ export default function DashboardPage() {
           <form onSubmit={handleEdit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">File Name</label>
-              <input type="text" value={editModal.file_name} onChange={(e) => setEditModal({ ...editModal, file_name: e.target.value })} required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+              <input type="text" value={editModal.file_name} onChange={(e) => setEditModal({ ...editModal, file_name: e.target.value })} required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Year</label>
-                <input type="number" value={editModal.year} onChange={(e) => setEditModal({ ...editModal, year: e.target.value })} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+                <input type="number" value={editModal.year} onChange={(e) => setEditModal({ ...editModal, year: e.target.value })} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none" />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Version</label>
-                <input type="text" value={editModal.version} onChange={(e) => setEditModal({ ...editModal, version: e.target.value })} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+                <input type="text" value={editModal.version} onChange={(e) => setEditModal({ ...editModal, version: e.target.value })} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none" />
               </div>
             </div>
             <div className="flex justify-end gap-3 pt-2">
@@ -646,7 +646,7 @@ export default function DashboardPage() {
                 </p>
               </div>
             ) : (
-              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+              <div className="bg-blue-50 border border-zinc-200 rounded-xl p-3">
                 <p className="text-sm text-blue-800">Upload the <strong>{stageModal.stage}</strong> file for "<strong>{stageModal.fileName}</strong>"</p>
               </div>
             )}
@@ -666,7 +666,7 @@ export default function DashboardPage() {
             {stageModal.mode === 'advance' && (
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Notes (optional)</label>
-                <input type="text" value={stageNotes} onChange={(e) => setStageNotes(e.target.value)} placeholder="Any notes..." className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+                <input type="text" value={stageNotes} onChange={(e) => setStageNotes(e.target.value)} placeholder="Any notes..." className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none" />
               </div>
             )}
             <div className="flex justify-end gap-3 pt-2">

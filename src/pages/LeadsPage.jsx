@@ -416,21 +416,21 @@ export default function LeadsPage() {
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search VIN, name, phone, email, city…"
-              className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
             />
           </div>
           <button
             onClick={() => setShowFilters((v) => !v)}
-            className={`inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${showFilters ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}
+            className={`inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${showFilters ? 'bg-blue-50 text-blue-700 border-zinc-200' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
             Filters
             {activeChips.length > 0 && (
-              <span className="ml-1 text-[10px] font-semibold bg-blue-600 text-white px-1.5 py-0.5 rounded-full">{activeChips.length}</span>
+              <span className="ml-1 text-[10px] font-semibold bg-[var(--vv-bg-dark)] text-white px-1.5 py-0.5 rounded-full">{activeChips.length}</span>
             )}
           </button>
           {(activeChips.length > 0 || filters.q) && (
-            <button onClick={clearAll} className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-2">Clear all</button>
+            <button onClick={clearAll} className="text-xs text-[var(--vv-text)] hover:underline font-medium px-2 py-2">Clear all</button>
           )}
           <div className="ml-auto flex items-center gap-1">
             <SavedViewsMenu
@@ -539,9 +539,9 @@ export default function LeadsPage() {
       {activeChips.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 mb-3">
           {activeChips.map(({ key, value }) => (
-            <span key={key} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-[11px] font-medium px-2 py-1 rounded-md border border-blue-100">
+            <span key={key} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-[11px] font-medium px-2 py-1 rounded-md border border-zinc-200">
               {CHIP_LABELS[key]}: <span className="font-semibold">{renderChipValue(key, value)}</span>
-              <button onClick={() => clearFilter(key)} className="ml-0.5 text-blue-500 hover:text-blue-800">&times;</button>
+              <button onClick={() => clearFilter(key)} className="ml-0.5 text-blue-500 hover:underline">&times;</button>
             </span>
           ))}
         </div>
@@ -566,7 +566,7 @@ export default function LeadsPage() {
       >
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16 sm:py-20">
-            <div className="w-10 h-10 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
+            <div className="w-10 h-10 border-4 border-zinc-200 border-t-blue-600 rounded-full animate-spin"></div>
             <p className="text-sm text-gray-400 mt-3">Loading leads…</p>
           </div>
         ) : (
@@ -580,7 +580,7 @@ export default function LeadsPage() {
                       checked={allPageSelected}
                       ref={(el) => { if (el) el.indeterminate = somePageSelected; }}
                       onChange={togglePageSelection}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      className="rounded border-gray-300 text-[var(--vv-text)] focus:ring-[var(--vv-bg-dark)]"
                       aria-label="Select all on page"
                     />
                   </th>
@@ -616,7 +616,7 @@ export default function LeadsPage() {
                     <td colSpan={20 + visibleCustomColumns.length} className="py-16 text-center">
                       <p className="text-sm text-gray-400">No leads match these filters.</p>
                       {activeChips.length > 0 && (
-                        <button onClick={clearAll} className="text-sm text-blue-600 hover:text-blue-700 font-medium mt-2">Clear all filters</button>
+                        <button onClick={clearAll} className="text-sm text-[var(--vv-text)] hover:underline font-medium mt-2">Clear all filters</button>
                       )}
                     </td>
                   </tr>
@@ -646,7 +646,7 @@ export default function LeadsPage() {
                           checked={isSelected}
                           onChange={() => toggleRow(lead.id)}
                           onClick={(e) => e.stopPropagation()}
-                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          className="rounded border-gray-300 text-[var(--vv-text)] focus:ring-[var(--vv-bg-dark)]"
                           aria-label={`Select lead ${lead.id}`}
                         />
                       </td>
@@ -814,7 +814,7 @@ function ColumnsMenu({ open, onOpenChange, customColumns, hiddenColumns, onToggl
             <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Imported columns</span>
               <div className="flex items-center gap-2 text-[11px]">
-                <button onClick={onShowAll} className="text-blue-600 hover:text-blue-800 font-medium">Show all</button>
+                <button onClick={onShowAll} className="text-[var(--vv-text)] hover:underline font-medium">Show all</button>
                 <span className="text-gray-300">·</span>
                 <button onClick={onHideAll} className="text-gray-500 hover:text-gray-700 font-medium">Hide all</button>
               </div>
@@ -830,7 +830,7 @@ function ColumnsMenu({ open, onOpenChange, customColumns, hiddenColumns, onToggl
                     type="checkbox"
                     checked={!hiddenColumns.has(k)}
                     onChange={() => onToggle(k)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    className="rounded border-gray-300 text-[var(--vv-text)] focus:ring-[var(--vv-bg-dark)]"
                   />
                   <span className="text-gray-700 truncate" title={k}>{k}</span>
                 </label>
@@ -861,7 +861,7 @@ function FilterSelect({ label, value, onChange, children }) {
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
       >
         {children}
       </select>
@@ -1006,7 +1006,7 @@ function NumberOfOwnersFilter({ min, max, onChangeMin, onChangeMax }) {
         <select
           value={min}
           onChange={(e) => onChangeMin(e.target.value)}
-          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
           aria-label="Minimum number of owners"
         >
           {opts.map((n) => <option key={`min-${n}`} value={n}>{n === '' ? 'Min' : n}</option>)}
@@ -1015,7 +1015,7 @@ function NumberOfOwnersFilter({ min, max, onChangeMin, onChangeMax }) {
         <select
           value={max}
           onChange={(e) => onChangeMax(e.target.value)}
-          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
           aria-label="Maximum number of owners"
         >
           {opts.map((n) => <option key={`max-${n}`} value={n}>{n === '' ? 'Max' : n}</option>)}
@@ -1033,7 +1033,7 @@ function FilterInput({ label, value, onChange, type = 'text' }) {
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
       />
     </label>
   );

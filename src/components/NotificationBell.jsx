@@ -114,7 +114,7 @@ export default function NotificationBell({ tone = 'dark' }) {
               Notifications{data.unread_count > 0 ? ` · ${data.unread_count} unread` : ''}
             </h3>
             {data.unread_count > 0 && (
-              <button onClick={markAll} className="text-xs font-medium text-blue-600 hover:text-blue-800">
+              <button onClick={markAll} className="text-xs font-medium text-[var(--vv-text)] hover:underline">
                 Mark all read
               </button>
             )}

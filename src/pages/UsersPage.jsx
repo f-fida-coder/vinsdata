@@ -64,7 +64,7 @@ export default function UsersPage() {
     catch { setError('Failed to update user'); }
   };
 
-  const inputClass = "w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none";
+  const inputClass = "w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none";
 
   return (
     <div className="max-w-[1600px] mx-auto">
@@ -85,7 +85,7 @@ export default function UsersPage() {
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {loading ? (
-          <div className="flex justify-center py-16"><div className="w-10 h-10 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div></div>
+          <div className="flex justify-center py-16"><div className="w-10 h-10 border-4 border-zinc-200 border-t-blue-600 rounded-full animate-spin"></div></div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[600px]">
@@ -117,7 +117,7 @@ export default function UsersPage() {
                     </td>
                     <td className="px-4 sm:px-5 py-3.5 text-gray-400 text-xs">{(u.created_at || '').slice(0, 10)}</td>
                     <td className="px-4 sm:px-5 py-3.5">
-                      <button onClick={() => setEditModal({ id: u.id, name: u.name, email: u.email, phone: u.phone || '', role: u.role })} className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2.5 py-1.5 rounded-lg transition-colors">Edit</button>
+                      <button onClick={() => setEditModal({ id: u.id, name: u.name, email: u.email, phone: u.phone || '', role: u.role })} className="text-xs font-medium text-[var(--vv-text)] hover:underline hover:bg-blue-50 px-2.5 py-1.5 rounded-lg transition-colors">Edit</button>
                     </td>
                   </tr>
                 ))}

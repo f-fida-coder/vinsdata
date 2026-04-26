@@ -246,7 +246,7 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
 
         {phase === 'parsing' && (
           <div className="py-8 text-center">
-            <div className="w-10 h-10 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mx-auto" />
+            <div className="w-10 h-10 border-4 border-zinc-200 border-t-blue-600 rounded-full animate-spin mx-auto" />
             <p className="text-sm text-gray-500 mt-3">Parsing spreadsheet…</p>
           </div>
         )}
@@ -273,14 +273,14 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
                   value={batchName}
                   onChange={(e) => setBatchName(e.target.value)}
                   placeholder="e.g. April TLO batch"
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
                 />
               </Field>
               <Field label="Use mapping template">
                 <select
                   value={templateId}
                   onChange={(e) => applyTemplate(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
                 >
                   <option value="">— No template (manual mapping) —</option>
                   {templates.map((t) => (
@@ -296,7 +296,7 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
                 <button
                   type="button"
                   onClick={() => setRowFilters([...rowFilters, { column: '', value: '' }])}
-                  className="text-[11px] font-medium text-blue-600 hover:text-blue-800"
+                  className="text-[11px] font-medium text-[var(--vv-text)] hover:underline"
                 >
                   + Add filter
                 </button>
@@ -361,7 +361,7 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
                     <select
                       value={mapping[h] ?? h}
                       onChange={(e) => setMapping({ ...mapping, [h]: e.target.value })}
-                      className="bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                      className="bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5 text-xs focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none"
                     >
                       <option value={h}>Keep as "{h}"</option>
                       <optgroup label="Map to standard field">
@@ -394,7 +394,7 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
                         <th key={h} className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">
                           {h}
                           {mapping[h] && mapping[h] !== '_ignore' && (
-                            <span className="ml-1 text-[10px] font-normal text-blue-600 bg-blue-50 px-1 py-0.5 rounded">
+                            <span className="ml-1 text-[10px] font-normal text-[var(--vv-text)] bg-blue-50 px-1 py-0.5 rounded">
                               → {mapping[h]}
                             </span>
                           )}
@@ -420,7 +420,7 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
 
             <section className="space-y-2">
               <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input type="checkbox" checked={saveAsTemplate} onChange={(e) => setSaveAsTemplate(e.target.checked)} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                <input type="checkbox" checked={saveAsTemplate} onChange={(e) => setSaveAsTemplate(e.target.checked)} className="rounded border-gray-300 text-[var(--vv-text)] focus:ring-[var(--vv-bg-dark)]" />
                 Save this mapping as a new template
               </label>
               {saveAsTemplate && (
