@@ -102,7 +102,10 @@ function Column({ col, leads, total, page, loading, onCardClick, onPage }) {
 
   return (
     <div
-      className="flex flex-col w-[260px] shrink-0 max-h-[calc(100vh-220px)]"
+      // On desktop: flex-1 so the five columns share available width.
+      // On mobile: w-full so the active column fills the screen.
+      // h-full so each column takes the full height of its parent flex row.
+      className="flex flex-col flex-1 min-w-0 w-full md:min-w-[220px] h-full"
       style={{
         backgroundColor: 'var(--vv-bg-surface-muted)',
         border: '1px solid var(--vv-border)',
@@ -238,13 +241,24 @@ export default function PipelinePage() {
     [columns]
   );
 
+  // On phones (< md) we render only one column at a time; the column
+  // chooser sits at the top as a horizontally-scrolling tab strip.
+  const [mobileActive, setMobileActive] = useState(COLUMNS[0].key);
+
   return (
-    <div className="max-w-[1800px] mx-auto">
-      <div className="flex items-start justify-between mb-5 gap-3 flex-wrap">
+    // Outer wrapper fills the main area below the page padding. flex-col so
+    // header sits on top and the kanban grid takes the rest. min-h-0 +
+    // overflow-hidden on the grid prevents the page itself from scrolling
+    // — the columns scroll internally instead.
+    <div
+      className="flex flex-col w-full"
+      style={{ minHeight: 'calc(100dvh - 160px)', height: 'calc(100dvh - 160px)' }}
+    >
+      <div className="flex items-start justify-between mb-3 gap-3 flex-wrap shrink-0">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-tight">Lead Pipeline</h1>
           <p className="text-[12px] mt-0.5" style={{ color: 'var(--vv-text-muted)' }}>
-            Every lead grouped by temperature. Click a card to open the full record.
+            Every lead grouped by temperature. Tap a card to open the full record.
             <span className="ml-2 tabular-nums" style={{ color: 'var(--vv-text-subtle)' }}>
               {grandTotal.toLocaleString()} total in view
             </span>
@@ -279,7 +293,7 @@ export default function PipelinePage() {
 
       {error && (
         <div
-          className="mb-4 px-4 py-2 rounded-md text-[13px]"
+          className="mb-3 px-4 py-2 rounded-md text-[13px] shrink-0"
           style={{
             backgroundColor: '#FEE2E2',
             color: 'var(--vv-status-danger)',
@@ -290,24 +304,55 @@ export default function PipelinePage() {
         </div>
       )}
 
-      <div className="overflow-x-auto pb-3">
-        <div
-          className="flex gap-3"
-          style={{ minWidth: `${COLUMNS.length * 270 + 12}px` }}
-        >
-          {COLUMNS.map((col) => (
-            <Column
+      {/* Mobile-only column tab strip. Hidden at md+ where the full kanban shows. */}
+      <div className="md:hidden flex gap-1.5 mb-2 overflow-x-auto pb-1 shrink-0">
+        {COLUMNS.map((col) => {
+          const active = mobileActive === col.key;
+          const total = columns[col.key]?.total ?? null;
+          return (
+            <button
               key={col.key}
-              col={col}
-              leads={columns[col.key]?.leads ?? []}
-              total={columns[col.key]?.total ?? null}
-              page={columns[col.key]?.page ?? 1}
-              loading={columns[col.key]?.loading ?? false}
-              onCardClick={setDetailId}
-              onPage={(p) => setColumnPage(col.key, p)}
-            />
-          ))}
-        </div>
+              onClick={() => setMobileActive(col.key)}
+              className="px-2.5 py-1.5 rounded-md text-[11px] flex items-center gap-1.5 shrink-0"
+              style={{
+                backgroundColor: active ? 'var(--vv-bg-dark)' : 'var(--vv-bg-surface)',
+                color: active ? '#ffffff' : 'var(--vv-text-muted)',
+                border: `1px solid ${active ? 'var(--vv-bg-dark)' : 'var(--vv-border)'}`,
+                fontWeight: active ? 600 : 500,
+              }}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${col.dot}`} />
+              <span className="uppercase" style={{ letterSpacing: 'var(--vv-tracking-label)' }}>{col.label}</span>
+              {total != null && (
+                <span className="tabular-nums opacity-80">{total.toLocaleString()}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Columns container: flex-1 takes all remaining vertical space.
+          min-h-0 + overflow-hidden ensures children don't blow up height. */}
+      <div className="flex-1 flex gap-2 md:gap-3 min-h-0 overflow-hidden">
+        {COLUMNS.map((col) => {
+          const isMobileVisible = mobileActive === col.key;
+          return (
+            <div
+              key={col.key}
+              className={`${isMobileVisible ? 'flex' : 'hidden'} md:flex flex-1 min-w-0 min-h-0`}
+            >
+              <Column
+                col={col}
+                leads={columns[col.key]?.leads ?? []}
+                total={columns[col.key]?.total ?? null}
+                page={columns[col.key]?.page ?? 1}
+                loading={columns[col.key]?.loading ?? false}
+                onCardClick={setDetailId}
+                onPage={(p) => setColumnPage(col.key, p)}
+              />
+            </div>
+          );
+        })}
       </div>
 
       <LeadDetailDrawer
