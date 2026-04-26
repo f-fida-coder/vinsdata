@@ -8,12 +8,31 @@ $user = requireAuth();
 $db   = getDBConnection();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    // Per-vehicle lead count via correlated subquery. Chain:
+    //   vehicles -> files.vehicle_id -> lead_import_batches.file_id ->
+    //   imported_leads_raw.batch_id (only counting status='imported').
     $stmt = $db->query(
-        'SELECT id, name, make, model, year, created_at
-           FROM vehicles
-          ORDER BY (year IS NULL), year DESC, name ASC'
+        "SELECT v.id, v.name, v.make, v.model, v.year, v.created_at,
+                (SELECT COUNT(DISTINCT r.id)
+                   FROM files f
+                   JOIN lead_import_batches b ON b.file_id = f.id
+                   JOIN imported_leads_raw r ON r.batch_id = b.id
+                  WHERE f.vehicle_id = v.id
+                    AND r.import_status = 'imported') AS lead_count,
+                (SELECT COUNT(*) FROM files f WHERE f.vehicle_id = v.id) AS file_count
+           FROM vehicles v
+          ORDER BY v.make IS NULL, v.make ASC,
+                   v.model IS NULL, v.model ASC,
+                   v.year IS NULL, v.year DESC,
+                   v.name ASC"
     );
-    echo json_encode($stmt->fetchAll());
+    $rows = $stmt->fetchAll();
+    foreach ($rows as &$r) {
+        $r['lead_count'] = (int) $r['lead_count'];
+        $r['file_count'] = (int) $r['file_count'];
+    }
+    unset($r);
+    echo json_encode($rows);
     exit();
 }
 

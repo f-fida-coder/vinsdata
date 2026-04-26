@@ -197,35 +197,34 @@ export default function VehiclesPage() {
           <table className="w-full text-[13px]">
             <thead style={{ backgroundColor: 'var(--vv-bg-surface-muted)' }}>
               <tr style={{ borderBottom: '1px solid var(--vv-border)' }}>
-                <th className="px-4 py-2 text-left text-[10px] font-semibold uppercase tabular-nums" style={{ color: 'var(--vv-text-muted)', letterSpacing: 'var(--vv-tracking-label)' }}>ID</th>
-                <th className="px-4 py-2 text-left text-[10px] font-semibold uppercase" style={{ color: 'var(--vv-text-muted)', letterSpacing: 'var(--vv-tracking-label)' }}>Vehicle</th>
-                <th className="px-4 py-2 text-left text-[10px] font-semibold uppercase" style={{ color: 'var(--vv-text-muted)', letterSpacing: 'var(--vv-tracking-label)' }}>Year</th>
                 <th className="px-4 py-2 text-left text-[10px] font-semibold uppercase" style={{ color: 'var(--vv-text-muted)', letterSpacing: 'var(--vv-tracking-label)' }}>Make</th>
                 <th className="px-4 py-2 text-left text-[10px] font-semibold uppercase" style={{ color: 'var(--vv-text-muted)', letterSpacing: 'var(--vv-tracking-label)' }}>Model</th>
-                <th className="px-4 py-2 text-left text-[10px] font-semibold uppercase" style={{ color: 'var(--vv-text-muted)', letterSpacing: 'var(--vv-tracking-label)' }}>Created</th>
+                <th className="px-4 py-2 text-left text-[10px] font-semibold uppercase" style={{ color: 'var(--vv-text-muted)', letterSpacing: 'var(--vv-tracking-label)' }}>Year</th>
+                <th className="px-4 py-2 text-right text-[10px] font-semibold uppercase tabular-nums" style={{ color: 'var(--vv-text-muted)', letterSpacing: 'var(--vv-tracking-label)' }}>Leads</th>
+                <th className="px-4 py-2 text-right text-[10px] font-semibold uppercase tabular-nums" style={{ color: 'var(--vv-text-muted)', letterSpacing: 'var(--vv-tracking-label)' }}>Files</th>
+                <th className="px-4 py-2 text-left text-[10px] font-semibold uppercase" style={{ color: 'var(--vv-text-muted)', letterSpacing: 'var(--vv-tracking-label)' }}>Name</th>
                 {isAdmin && <th className="px-4 py-2" />}
               </tr>
             </thead>
             <tbody>
               {vehicles.map((v) => (
                 <tr key={v.id} style={{ borderBottom: '1px solid var(--vv-border)' }}>
-                  <td className="px-4 py-2 tabular-nums" style={{ color: 'var(--vv-text-subtle)' }}>{v.id}</td>
-                  <td className="px-4 py-2">
-                    <div className="font-medium">{formatVehicleTitle(v)}</div>
-                    {(v.make || v.model || v.year) && v.name && (
-                      <div className="text-[11px]" style={{ color: 'var(--vv-text-muted)' }}>{v.name}</div>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 tabular-nums" style={{ color: v.year ? 'var(--vv-text)' : 'var(--vv-text-subtle)' }}>
-                    {v.year ?? '—'}
-                  </td>
-                  <td className="px-4 py-2" style={{ color: v.make ? 'var(--vv-text)' : 'var(--vv-text-subtle)' }}>
+                  <td className="px-4 py-2 font-medium" style={{ color: v.make ? 'var(--vv-text)' : 'var(--vv-text-subtle)' }}>
                     {v.make ?? '—'}
                   </td>
                   <td className="px-4 py-2" style={{ color: v.model ? 'var(--vv-text)' : 'var(--vv-text-subtle)' }}>
                     {v.model ?? '—'}
                   </td>
-                  <td className="px-4 py-2 text-[11px]" style={{ color: 'var(--vv-text-subtle)' }}>{v.created_at || '—'}</td>
+                  <td className="px-4 py-2 tabular-nums" style={{ color: v.year ? 'var(--vv-text)' : 'var(--vv-text-subtle)' }}>
+                    {v.year ?? '—'}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums font-medium" style={{ color: (v.lead_count ?? 0) > 0 ? 'var(--vv-text)' : 'var(--vv-text-subtle)' }}>
+                    {(v.lead_count ?? 0).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums" style={{ color: (v.file_count ?? 0) > 0 ? 'var(--vv-text-muted)' : 'var(--vv-text-subtle)' }}>
+                    {(v.file_count ?? 0).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2 text-[12px]" style={{ color: 'var(--vv-text-muted)' }}>{v.name || '—'}</td>
                   {isAdmin && (
                     <td className="px-4 py-2 text-right">
                       <button onClick={() => setEditing(v)} className="text-[12px] px-2 py-1 rounded" style={{ color: 'var(--vv-text)' }}>Edit</button>
