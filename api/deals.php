@@ -101,11 +101,90 @@ function normalizeDealInput(array $input): array
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    // Single-deal mode: ?lead_id=X
     $leadId = (int) ($_GET['lead_id'] ?? 0);
-    if ($leadId <= 0) pipelineFail(400, 'lead_id is required', 'missing_fields');
-    assertLeadExists($db, $leadId);
-    $deal = readDealForLead($db, $leadId);
-    echo json_encode(['success' => true, 'deal' => formatDeal($deal)]);
+    if ($leadId > 0) {
+        assertLeadExists($db, $leadId);
+        $deal = readDealForLead($db, $leadId);
+        echo json_encode(['success' => true, 'deal' => formatDeal($deal)]);
+        exit();
+    }
+
+    // List mode: every deal joined to its lead/vehicle/CRM context.
+    // Supports ?status=closed|sold|open|all (default all).
+    //   open   = no purchase_price set yet
+    //   closed = purchase_price set, sold_date NULL (acquired but not sold)
+    //   sold   = sold_date set
+    $status = $_GET['status'] ?? 'all';
+    $where = ['1=1'];
+    if ($status === 'open')        $where[] = 'd.purchase_price IS NULL';
+    elseif ($status === 'closed')  $where[] = 'd.purchase_price IS NOT NULL AND d.sold_date IS NULL';
+    elseif ($status === 'sold')    $where[] = 'd.sold_date IS NOT NULL';
+    elseif ($status !== 'all') {
+        pipelineFail(400, "Invalid status '$status'", 'invalid_status');
+    }
+    $whereSql = implode(' AND ', $where);
+
+    $sql = "
+        SELECT  d.*,
+                r.norm_vin,
+                r.norm_make, r.norm_model, r.norm_year,
+                r.norm_state,
+                r.normalized_payload_json,
+                s.lead_temperature, s.status AS lead_status,
+                s.assigned_user_id,
+                u.name AS assigned_user_name
+          FROM  deals d
+          JOIN  imported_leads_raw r ON r.id = d.imported_lead_id
+          LEFT JOIN lead_states  s   ON s.imported_lead_id = r.id
+          LEFT JOIN users        u   ON u.id = s.assigned_user_id
+         WHERE  $whereSql
+         ORDER BY (d.sold_date IS NULL) ASC,
+                   d.sold_date DESC,
+                   d.purchase_date DESC,
+                   d.created_at DESC
+    ";
+    $stmt = $db->prepare($sql);
+    $stmt->execute();
+    $rows = $stmt->fetchAll();
+
+    $deals = array_map(function ($r) {
+        $payload = json_decode((string) ($r['normalized_payload_json'] ?? 'null'), true);
+        unset($r['normalized_payload_json']);
+        $r = formatDeal($r);
+        $owner = '';
+        if (is_array($payload)) {
+            $owner = $payload['full_name']
+                  ?? trim(($payload['first_name'] ?? '') . ' ' . ($payload['last_name'] ?? ''));
+            $owner = trim((string) $owner);
+        }
+        $r['owner_name'] = $owner !== '' ? $owner : null;
+        return $r;
+    }, $rows);
+
+    $totals = ['count' => count($deals), 'total_cost' => 0.0, 'total_sale' => 0.0, 'total_profit' => 0.0, 'sold_count' => 0];
+    $domSum = 0; $domSamples = 0;
+    foreach ($deals as $d) {
+        $cost = ($d['purchase_price'] ?? 0) + ($d['transport_cost'] ?? 0) + ($d['selling_fees'] ?? 0) + ($d['other_cost'] ?? 0);
+        $totals['total_cost'] += $cost;
+        if ($d['sale_price'] !== null) {
+            $totals['total_sale']   += (float) $d['sale_price'];
+            $totals['total_profit'] += (float) $d['sale_price'] - $cost;
+            $totals['sold_count']++;
+        }
+        if ($d['days_on_market'] !== null) {
+            $domSum += $d['days_on_market'];
+            $domSamples++;
+        }
+    }
+    $totals['avg_days_on_market'] = $domSamples > 0 ? round($domSum / $domSamples, 1) : null;
+
+    echo json_encode([
+        'success' => true,
+        'deals'   => $deals,
+        'totals'  => $totals,
+        'status'  => $status,
+    ]);
     exit();
 }
 
