@@ -10,7 +10,7 @@ import {
   TIER_BY_KEY, computeLeadTier,
 } from '../lib/crm';
 
-const PHONE_FIELDS = new Set(['phone_primary', 'phone_secondary']);
+const PHONE_FIELDS = new Set(['phone_primary', 'phone_secondary', 'phone_3', 'phone_4']);
 import {
   TASK_TYPES, TASK_TYPE_BY_KEY,
   CONTACT_CHANNELS, CONTACT_OUTCOMES, CHANNEL_BY_KEY, OUTCOME_BY_KEY,
@@ -25,7 +25,8 @@ const FIELD_ORDER = [
   'vin',
   'year', 'make', 'model', 'mileage',
   'full_name', 'first_name', 'last_name',
-  'phone_primary', 'phone_secondary', 'email_primary',
+  'phone_primary', 'phone_secondary', 'phone_3', 'phone_4',
+  'email_primary',
   'full_address', 'city', 'state', 'zip_code',
 ];
 
@@ -257,6 +258,243 @@ function CrmStateSection({ leadId, initialState, users, isAdmin, onChanged }) {
           {saving ? 'Saving…' : 'Save'}
         </button>
       </div>
+    </CollapsibleSection>
+  );
+}
+
+// ---------- Deal section (acquisition + resale) ----------
+
+const DEAL_COST_FIELDS = ['purchase_price', 'transport_cost', 'selling_fees', 'other_cost'];
+const DEAL_DATE_FIELDS = ['purchase_date', 'listed_date', 'sold_date'];
+
+function dealHasContent(d) {
+  if (!d) return false;
+  for (const f of [...DEAL_COST_FIELDS, ...DEAL_DATE_FIELDS, 'sale_price', 'buyer_name', 'notes']) {
+    if (d[f] != null && d[f] !== '') return true;
+  }
+  return false;
+}
+
+function DealSection({ leadId, status, temperature, onChanged }) {
+  const [deal, setDeal]       = useState(null);
+  const [draft, setDraft]     = useState({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState('');
+
+  // Default-open when this is plausibly a deal-track lead.
+  const isLikelyDeal = status === 'deal_closed' || temperature === 'closed' || dealHasContent(deal);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    api.get('/deals', { params: { lead_id: leadId } })
+      .then((res) => {
+        if (cancelled) return;
+        const d = res.data.deal;
+        setDeal(d);
+        setDraft(d ? { ...d } : {});
+      })
+      .catch((err) => { if (!cancelled) setError(extractApiError(err, 'Failed to load deal')); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [leadId]);
+
+  const totalCost = useMemo(() => {
+    let sum = 0;
+    let any = false;
+    for (const f of DEAL_COST_FIELDS) {
+      const v = draft[f];
+      if (v !== '' && v !== null && v !== undefined && !Number.isNaN(Number(v))) {
+        sum += Number(v);
+        any = true;
+      }
+    }
+    return any ? sum : null;
+  }, [draft]);
+
+  const netProfit = useMemo(() => {
+    const sp = draft.sale_price;
+    if (sp === '' || sp === null || sp === undefined) return null;
+    const spN = Number(sp);
+    if (Number.isNaN(spN)) return null;
+    return spN - (totalCost ?? 0);
+  }, [draft.sale_price, totalCost]);
+
+  const daysOnMarket = useMemo(() => {
+    const sold = draft.sold_date;
+    if (!sold) return null;
+    const startStr = draft.listed_date || draft.purchase_date;
+    if (!startStr) return null;
+    const start = new Date(startStr + 'T00:00:00');
+    const end   = new Date(sold + 'T00:00:00');
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+    return Math.max(0, Math.round((end - start) / 86400000));
+  }, [draft.listed_date, draft.purchase_date, draft.sold_date]);
+
+  const dirty = useMemo(() => {
+    if (!deal) {
+      // No row yet — dirty if any field has a value.
+      return Object.values(draft).some((v) => v !== '' && v != null);
+    }
+    return [...DEAL_COST_FIELDS, ...DEAL_DATE_FIELDS, 'sale_price', 'buyer_name', 'buyer_notes', 'notes']
+      .some((f) => (draft[f] ?? '') !== (deal[f] ?? ''));
+  }, [draft, deal]);
+
+  const save = async () => {
+    setSaving(true); setError('');
+    try {
+      const payload = { lead_id: leadId };
+      for (const f of [...DEAL_COST_FIELDS, ...DEAL_DATE_FIELDS, 'sale_price', 'buyer_name', 'buyer_notes', 'notes']) {
+        if ((draft[f] ?? '') !== (deal?.[f] ?? '')) {
+          payload[f] = draft[f] === '' ? null : draft[f];
+        }
+      }
+      const res = await api.post('/deals', payload);
+      const d = res.data.deal;
+      setDeal(d);
+      setDraft(d ? { ...d } : {});
+      onChanged?.();
+    } catch (err) {
+      setError(extractApiError(err, 'Failed to save deal'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputCls = "w-full bg-gray-50 border border-zinc-200 rounded-md px-2 py-1.5 text-xs focus:ring-2 focus:ring-[var(--vv-bg-dark)] focus:border-transparent outline-none";
+  const labelCls = "block text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1";
+
+  const setField = (f, v) => setDraft((prev) => ({ ...prev, [f]: v }));
+
+  return (
+    <CollapsibleSection title="Deal" defaultOpen={isLikelyDeal} count={dealHasContent(deal) ? 1 : 0}>
+      {loading ? (
+        <p className="text-[11px] text-gray-400">Loading…</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <label>
+              <span className={labelCls}>Purchase price</span>
+              <input
+                type="number" min="0" step="0.01" inputMode="decimal" placeholder="—"
+                value={draft.purchase_price ?? ''} onChange={(e) => setField('purchase_price', e.target.value)}
+                className={`${inputCls} tabular-nums`}
+              />
+            </label>
+            <label>
+              <span className={labelCls}>Transport</span>
+              <input
+                type="number" min="0" step="0.01" inputMode="decimal" placeholder="—"
+                value={draft.transport_cost ?? ''} onChange={(e) => setField('transport_cost', e.target.value)}
+                className={`${inputCls} tabular-nums`}
+              />
+            </label>
+            <label>
+              <span className={labelCls}>Selling fees</span>
+              <input
+                type="number" min="0" step="0.01" inputMode="decimal" placeholder="—"
+                value={draft.selling_fees ?? ''} onChange={(e) => setField('selling_fees', e.target.value)}
+                className={`${inputCls} tabular-nums`}
+              />
+            </label>
+            <label>
+              <span className={labelCls}>Other</span>
+              <input
+                type="number" min="0" step="0.01" inputMode="decimal" placeholder="—"
+                value={draft.other_cost ?? ''} onChange={(e) => setField('other_cost', e.target.value)}
+                className={`${inputCls} tabular-nums`}
+              />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
+            <label>
+              <span className={labelCls}>Purchase date</span>
+              <input
+                type="date" value={draft.purchase_date ?? ''} onChange={(e) => setField('purchase_date', e.target.value)}
+                className={`${inputCls} tabular-nums`}
+              />
+            </label>
+            <label>
+              <span className={labelCls}>Listed date</span>
+              <input
+                type="date" value={draft.listed_date ?? ''} onChange={(e) => setField('listed_date', e.target.value)}
+                className={`${inputCls} tabular-nums`}
+              />
+            </label>
+            <label>
+              <span className={labelCls}>Sell date</span>
+              <input
+                type="date" value={draft.sold_date ?? ''} onChange={(e) => setField('sold_date', e.target.value)}
+                className={`${inputCls} tabular-nums`}
+              />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+            <label>
+              <span className={labelCls}>Sale price</span>
+              <input
+                type="number" min="0" step="0.01" inputMode="decimal" placeholder="—"
+                value={draft.sale_price ?? ''} onChange={(e) => setField('sale_price', e.target.value)}
+                className={`${inputCls} tabular-nums`}
+              />
+            </label>
+            <label>
+              <span className={labelCls}>Buyer</span>
+              <input
+                type="text" placeholder="Buyer name"
+                value={draft.buyer_name ?? ''} onChange={(e) => setField('buyer_name', e.target.value)}
+                className={inputCls}
+              />
+            </label>
+          </div>
+
+          <label className="block mt-2">
+            <span className={labelCls}>Deal notes</span>
+            <textarea
+              rows={2} placeholder="Anything worth remembering about this deal"
+              value={draft.notes ?? ''} onChange={(e) => setField('notes', e.target.value)}
+              className={inputCls}
+            />
+          </label>
+
+          {/* Computed summary */}
+          <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
+            <div className="rounded-md p-2" style={{ backgroundColor: 'var(--vv-bg-surface-muted)', border: '1px solid var(--vv-border)' }}>
+              <div className="uppercase font-semibold" style={{ color: 'var(--vv-text-subtle)', letterSpacing: 'var(--vv-tracking-label)' }}>Total cost</div>
+              <div className="mt-1 tabular-nums font-semibold" style={{ color: totalCost == null ? 'var(--vv-text-subtle)' : 'var(--vv-text)' }}>
+                {totalCost == null ? '—' : formatPrice(totalCost)}
+              </div>
+            </div>
+            <div className="rounded-md p-2" style={{ backgroundColor: 'var(--vv-bg-surface-muted)', border: '1px solid var(--vv-border)' }}>
+              <div className="uppercase font-semibold" style={{ color: 'var(--vv-text-subtle)', letterSpacing: 'var(--vv-tracking-label)' }}>Days on market</div>
+              <div className="mt-1 tabular-nums font-semibold" style={{ color: daysOnMarket == null ? 'var(--vv-text-subtle)' : 'var(--vv-text)' }}>
+                {daysOnMarket == null ? '—' : `${daysOnMarket} d`}
+              </div>
+            </div>
+            <div className="rounded-md p-2" style={{ backgroundColor: 'var(--vv-bg-surface-muted)', border: '1px solid var(--vv-border)' }}>
+              <div className="uppercase font-semibold" style={{ color: 'var(--vv-text-subtle)', letterSpacing: 'var(--vv-tracking-label)' }}>Net profit</div>
+              <div className="mt-1 tabular-nums font-semibold" style={{ color: netProfit == null ? 'var(--vv-text-subtle)' : (netProfit >= 0 ? 'var(--vv-status-success)' : 'var(--vv-status-danger)') }}>
+                {netProfit == null ? '—' : formatPrice(netProfit)}
+              </div>
+            </div>
+          </div>
+
+          {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+
+          <div className="flex justify-end mt-3">
+            <button
+              onClick={save}
+              disabled={!dirty || saving}
+              className="px-3 py-1.5 text-xs font-medium bg-[var(--vv-bg-dark)] hover:bg-black text-white rounded-md disabled:opacity-40"
+            >
+              {saving ? 'Saving…' : (deal ? 'Save deal' : 'Create deal')}
+            </button>
+          </div>
+        </>
+      )}
     </CollapsibleSection>
   );
 }
@@ -1257,6 +1495,13 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
                   </div>
                 )}
               </CollapsibleSection>
+
+              <DealSection
+                leadId={detail.id}
+                status={crmState?.status}
+                temperature={crmState?.lead_temperature}
+                onChanged={handleChildChanged}
+              />
 
               <LabelsSection
                 leadId={detail.id}
