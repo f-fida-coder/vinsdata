@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>VINVAULT · Internal CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css"/>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="ui.jsx"></script>
+<script type="text/babel" src="shell.jsx"></script>
+<script type="text/babel" src="page-dashboard.jsx"></script>
+<script type="text/babel" src="page-leads.jsx"></script>
+<script type="text/babel" src="page-others-1.jsx"></script>
+<script type="text/babel" src="page-others-2.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "light"
+}/*EDITMODE-END*/;
+
+function App() {
+  const [route, setRoute] = React.useState("dashboard");
+  const [cmdkOpen, setCmdkOpen] = React.useState(false);
+  const [notifsOpen, setNotifsOpen] = React.useState(false);
+  const [qaOpen, setQaOpen] = React.useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
+  const [activeLead, setActiveLead] = React.useState(null);
+  const [activeFile, setActiveFile] = React.useState(null);
+  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  React.useEffect(() => {
+    document.documentElement.setAttribute("data-theme", tweaks.theme);
+  }, [tweaks.theme]);
+
+  const toggleTheme = () => setTweak("theme", tweaks.theme === "dark" ? "light" : "dark");
+
+  React.useEffect(() => {
+    const onKey = (e) => {
+      const meta = e.metaKey || e.ctrlKey;
+      if (meta && e.key.toLowerCase() === "k") { e.preventDefault(); setCmdkOpen(true); }
+      else if (meta && e.key.toLowerCase() === "n") { e.preventDefault(); setQaOpen(o => !o); }
+      else if (meta && e.key === ".") { e.preventDefault(); toggleTheme(); }
+      else if (e.key === "?" && !e.target.matches("input,textarea,select")) { e.preventDefault(); setShortcutsOpen(true); }
+      else if (e.key === "Escape") { setNotifsOpen(false); setQaOpen(false); }
+      else if (!meta && !e.target.matches("input,textarea,select")) {
+        // g + letter
+        if (e.key.toLowerCase() === "g") { window.__gWaiting = true; setTimeout(() => window.__gWaiting = false, 800); return; }
+        if (window.__gWaiting) {
+          const map = { d: "dashboard", l: "leads", p: "pipeline", t: "tasks", r: "reports", v: "vehicles", m: "marketing", u: "users" };
+          const r = map[e.key.toLowerCase()];
+          if (r) { setRoute(r); window.__gWaiting = false; }
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [tweaks.theme]);
+
+  const Page = (() => {
+    switch (route) {
+      case "dashboard": return <Dashboard openLead={setActiveLead} openFile={setActiveFile}/>;
+      case "vehicles": return <Vehicles/>;
+      case "leads": return <Leads openLead={setActiveLead}/>;
+      case "pipeline": return <Pipeline openLead={setActiveLead}/>;
+      case "deals": return <Deals/>;
+      case "reports": return <Reports/>;
+      case "tasks": return <Tasks/>;
+      case "duplicate": return <DuplicateReview openLead={setActiveLead}/>;
+      case "merge": return <MergePrep/>;
+      case "filterReview": return <FilterReview/>;
+      case "filterRules": return <FilterRules/>;
+      case "sla": return <SLA/>;
+      case "marketing": return <Marketing/>;
+      case "users": return <Users/>;
+      default: return <Dashboard openLead={setActiveLead} openFile={setActiveFile}/>;
+    }
+  })();
+
+  return (
+    <div className="app">
+      <Sidebar route={route} setRoute={setRoute}/>
+      <main className="main">
+        <Topbar
+          route={route}
+          theme={tweaks.theme}
+          toggleTheme={toggleTheme}
+          onSearch={() => setCmdkOpen(true)}
+          onQuickAdd={() => setQaOpen(o => !o)}
+          onNotifs={() => setNotifsOpen(o => !o)}
+          onShortcuts={() => setShortcutsOpen(true)}
+        />
+        {Page}
+      </main>
+      <CommandPalette open={cmdkOpen} onClose={() => setCmdkOpen(false)} setRoute={setRoute} openLead={setActiveLead}/>
+      <NotificationsPopover open={notifsOpen} onClose={() => setNotifsOpen(false)}/>
+      <QuickAddMenu open={qaOpen} onClose={() => setQaOpen(false)} setRoute={setRoute}/>
+      <ShortcutsOverlay open={shortcutsOpen} onClose={() => setShortcutsOpen(false)}/>
+      <LeadDrawer lead={activeLead} onClose={() => setActiveLead(null)}/>
+      <FileDrawer file={activeFile} onClose={() => setActiveFile(null)}/>
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="Appearance">
+          <TweakRadio
+            label="Theme"
+            value={tweaks.theme}
+            options={[{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }]}
+            onChange={v => setTweak("theme", v)}
+          />
+        </TweakSection>
+      </TweaksPanel>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App/>);
+</script>
+</body>
+</html>

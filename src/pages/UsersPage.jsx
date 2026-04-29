@@ -1,30 +1,45 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
-
-const ROLE_COLORS = {
-  admin:    'bg-purple-50 text-purple-700 border-purple-100',
-  carfax:   'bg-amber-50 text-amber-700 border-amber-100',
-  filter:   'bg-orange-50 text-orange-700 border-orange-100',
-  tlo:      'bg-emerald-50 text-emerald-700 border-emerald-100',
-  marketer: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100',
-};
+import { SectionHeader, KPI, Button, Avatar, EmptyState } from '../components/ui';
 
 const ROLES = ['admin', 'carfax', 'filter', 'tlo', 'marketer'];
+const ROLE_VARIANT = {
+  admin:    'sb-info',
+  carfax:   'sb-warn',
+  filter:   'sb-warn',
+  tlo:      'sb-success',
+  marketer: 'sb-info',
+};
 
 function UserModal({ title, open, onClose, children }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-gray-900/60" />
-      <div className="relative bg-white w-full max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-gray-100 shrink-0">
-          <h2 className="text-base sm:text-lg font-semibold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">&times;</button>
+    <>
+      <div className="drawer-overlay" onClick={onClose}/>
+      <div style={{
+        position: 'fixed',
+        top: '50%', left: '50%',
+        transform: 'translate(-50%, -50%)',
+        width: 'min(460px, 92vw)',
+        background: 'var(--bg-1)',
+        border: '1px solid var(--border-0)',
+        borderRadius: 14,
+        boxShadow: 'var(--shadow-pop)',
+        zIndex: 90,
+        maxHeight: '90vh',
+        display: 'flex',
+        flexDirection: 'column',
+      }} onClick={(e) => e.stopPropagation()}>
+        <div className="drawer-head">
+          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 400, letterSpacing: '-0.02em' }}>
+            {title}
+          </h3>
+          <Button variant="ghost" size="sm" icon="x" onClick={onClose}/>
         </div>
-        <div className="px-5 sm:px-6 py-5 overflow-y-auto">{children}</div>
+        <div style={{ padding: 20, overflowY: 'auto' }}>{children}</div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -48,109 +63,156 @@ export default function UsersPage() {
   useEffect(() => { fetchUsers(); }, []);
 
   if (user.role !== 'admin') {
-    return (<div className="flex items-center justify-center min-h-[60vh]"><p className="text-lg text-red-600 font-medium">Access Denied</p></div>);
+    return (
+      <div className="page">
+        <EmptyState icon="info" title="Access Denied" body="This page is restricted to admins."/>
+      </div>
+    );
   }
 
   const handleAdd = async (e) => {
     e.preventDefault(); setSubmitting(true); setError('');
-    try { await api.post('/users', form); setShowModal(false); setForm({ name: '', email: '', phone: '', password: '', role: '' }); fetchUsers(); }
-    catch { setError('Failed to add user'); }
+    try {
+      await api.post('/users', form);
+      setShowModal(false);
+      setForm({ name: '', email: '', phone: '', password: '', role: '' });
+      fetchUsers();
+    } catch { setError('Failed to add user'); }
     finally { setSubmitting(false); }
   };
 
   const handleEdit = async (e) => {
     e.preventDefault(); setError('');
-    try { await api.patch('/users', { id: editModal.id, name: editModal.name, email: editModal.email, phone: editModal.phone || null, role: editModal.role }); setEditModal(null); fetchUsers(); }
-    catch { setError('Failed to update user'); }
+    try {
+      await api.patch('/users', {
+        id: editModal.id, name: editModal.name, email: editModal.email,
+        phone: editModal.phone || null, role: editModal.role,
+      });
+      setEditModal(null);
+      fetchUsers();
+    } catch { setError('Failed to update user'); }
   };
 
-  const inputClass = "w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none";
-
   return (
-    <div className="max-w-[1600px] mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Users</h1>
-        <button onClick={() => setShowModal(true)} className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium shadow-lg shadow-blue-500/25 transition-all w-full sm:w-auto">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-          Add User
-        </button>
-      </div>
+    <div className="page">
+      <SectionHeader
+        title="Users"
+        subtitle="Team members and their roles · admins can manage everything · agents see only their leads"
+        actions={<Button variant="primary" icon="plus" onClick={() => setShowModal(true)}>Add user</Button>}
+      />
 
       {error && (
-        <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl mb-6 flex items-center justify-between">
-          <span className="text-sm">{error}</span>
-          <button onClick={() => setError('')} className="text-red-400 hover:text-red-600">&times;</button>
+        <div className="card" style={{ marginBottom: 16, color: 'var(--danger)', borderColor: 'var(--danger)' }}>
+          {error}
         </div>
       )}
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+        <KPI label="Total" value={users.length}/>
+        <KPI label="Admins" value={users.filter((u) => u.role === 'admin').length}/>
+        <KPI label="Carfax" value={users.filter((u) => u.role === 'carfax').length}/>
+        <KPI label="Filter" value={users.filter((u) => u.role === 'filter').length}/>
+        <KPI label="TLO" value={users.filter((u) => u.role === 'tlo').length}/>
+      </div>
+
+      <div className="tbl-wrap">
         {loading ? (
-          <div className="flex justify-center py-16"><div className="w-10 h-10 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div></div>
+          <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-3)' }}>Loading…</div>
+        ) : users.length === 0 ? (
+          <EmptyState icon="users" title="No users" body="Add your first team member."/>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[600px]">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="px-4 sm:px-5 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Name</th>
-                  <th className="px-4 sm:px-5 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Email</th>
-                  <th className="px-4 sm:px-5 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Phone</th>
-                  <th className="px-4 sm:px-5 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Role</th>
-                  <th className="px-4 sm:px-5 py-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Created</th>
-                  <th className="px-4 sm:px-5 py-4 w-16"></th>
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Role</th>
+                <th>Created</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u) => (
+                <tr key={u.id}>
+                  <td>
+                    <div className="row">
+                      <Avatar name={u.name} size={26}/>
+                      <span className="cell-strong">{u.name}</span>
+                    </div>
+                  </td>
+                  <td className="cell-muted">{u.email}</td>
+                  <td className="cell-mono">{u.phone || '—'}</td>
+                  <td><span className={`status-badge ${ROLE_VARIANT[u.role] || 'sb-neutral'}`}>{u.role}</span></td>
+                  <td className="cell-muted">{(u.created_at || '').slice(0, 10)}</td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <Button variant="ghost" size="sm" icon="edit" onClick={() => setEditModal({
+                      id: u.id, name: u.name, email: u.email, phone: u.phone || '', role: u.role,
+                    })}>Edit</Button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {users.length === 0 ? (
-                  <tr><td colSpan="6" className="px-4 py-12 text-center text-gray-400 text-sm">No users found.</td></tr>
-                ) : users.map((u, i) => (
-                  <tr key={u.id} className={`border-b border-gray-50 hover:bg-gray-50/50 ${i % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
-                    <td className="px-4 sm:px-5 py-3.5">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold shrink-0">{u.name.charAt(0)}</div>
-                        <span className="font-medium text-gray-900">{u.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 sm:px-5 py-3.5 text-gray-500">{u.email}</td>
-                    <td className="px-4 sm:px-5 py-3.5 text-gray-500 text-xs">{u.phone || '—'}</td>
-                    <td className="px-4 sm:px-5 py-3.5">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold border ${ROLE_COLORS[u.role] || 'bg-gray-50 text-gray-700 border-gray-100'}`}>{u.role}</span>
-                    </td>
-                    <td className="px-4 sm:px-5 py-3.5 text-gray-400 text-xs">{(u.created_at || '').slice(0, 10)}</td>
-                    <td className="px-4 sm:px-5 py-3.5">
-                      <button onClick={() => setEditModal({ id: u.id, name: u.name, email: u.email, phone: u.phone || '', role: u.role })} className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2.5 py-1.5 rounded-lg transition-colors">Edit</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
 
       <UserModal title="Add User" open={showModal} onClose={() => setShowModal(false)}>
-        <form onSubmit={handleAdd} className="space-y-4">
-          <div><label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Name</label><input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className={inputClass} /></div>
-          <div><label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Email</label><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required className={inputClass} /></div>
-          <div><label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Phone (WhatsApp)</label><input type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+923213531295" className={inputClass} /></div>
-          <div><label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Password</label><input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required className={inputClass} /></div>
-          <div><label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Role</label><select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} required className={inputClass}><option value="">Select role</option>{ROLES.map((r) => <option key={r} value={r}>{r}</option>)}</select></div>
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-50 rounded-xl hover:bg-gray-100">Cancel</button>
-            <button type="submit" disabled={submitting} className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl shadow-lg shadow-blue-500/25 disabled:opacity-50">{submitting ? 'Adding...' : 'Add User'}</button>
+        <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label className="field-label">Name</label>
+            <input className="vv-input" type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required/>
+          </div>
+          <div>
+            <label className="field-label">Email</label>
+            <input className="vv-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required/>
+          </div>
+          <div>
+            <label className="field-label">Phone (WhatsApp)</label>
+            <input className="vv-input" type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+923213531295"/>
+          </div>
+          <div>
+            <label className="field-label">Password</label>
+            <input className="vv-input" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required/>
+          </div>
+          <div>
+            <label className="field-label">Role</label>
+            <select className="vv-input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} required>
+              <option value="">Select role</option>
+              {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+            <Button variant="ghost" onClick={() => setShowModal(false)}>Cancel</Button>
+            <Button variant="primary" type="submit" disabled={submitting}>{submitting ? 'Adding…' : 'Add User'}</Button>
           </div>
         </form>
       </UserModal>
 
       <UserModal title="Edit User" open={!!editModal} onClose={() => setEditModal(null)}>
         {editModal && (
-          <form onSubmit={handleEdit} className="space-y-4">
-            <div><label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Name</label><input type="text" value={editModal.name} onChange={(e) => setEditModal({ ...editModal, name: e.target.value })} required className={inputClass} /></div>
-            <div><label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Email</label><input type="email" value={editModal.email} onChange={(e) => setEditModal({ ...editModal, email: e.target.value })} required className={inputClass} /></div>
-            <div><label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Phone (WhatsApp)</label><input type="text" value={editModal.phone} onChange={(e) => setEditModal({ ...editModal, phone: e.target.value })} placeholder="+923213531295" className={inputClass} /></div>
-            <div><label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Role</label><select value={editModal.role} onChange={(e) => setEditModal({ ...editModal, role: e.target.value })} required className={inputClass}>{ROLES.map((r) => <option key={r} value={r}>{r}</option>)}</select></div>
-            <div className="flex justify-end gap-3 pt-2">
-              <button type="button" onClick={() => setEditModal(null)} className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-50 rounded-xl hover:bg-gray-100">Cancel</button>
-              <button type="submit" className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl shadow-lg shadow-blue-500/25">Save</button>
+          <form onSubmit={handleEdit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div>
+              <label className="field-label">Name</label>
+              <input className="vv-input" type="text" value={editModal.name} onChange={(e) => setEditModal({ ...editModal, name: e.target.value })} required/>
+            </div>
+            <div>
+              <label className="field-label">Email</label>
+              <input className="vv-input" type="email" value={editModal.email} onChange={(e) => setEditModal({ ...editModal, email: e.target.value })} required/>
+            </div>
+            <div>
+              <label className="field-label">Phone (WhatsApp)</label>
+              <input className="vv-input" type="text" value={editModal.phone} onChange={(e) => setEditModal({ ...editModal, phone: e.target.value })}/>
+            </div>
+            <div>
+              <label className="field-label">Role</label>
+              <select className="vv-input" value={editModal.role} onChange={(e) => setEditModal({ ...editModal, role: e.target.value })} required>
+                {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+              <Button variant="ghost" onClick={() => setEditModal(null)}>Cancel</Button>
+              <Button variant="primary" type="submit">Save</Button>
             </div>
           </form>
         )}

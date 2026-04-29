@@ -97,6 +97,19 @@ export const DEFAULT_LEAD_STATE = {
   assigned_user_id: null, assigned_user_name: null,
 };
 
+/** Pretty-print a US-style phone number. Non-US or malformed inputs pass through. */
+export function formatPhone(value) {
+  if (value === null || value === undefined || value === '') return '';
+  const digits = String(value).replace(/\D+/g, '');
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  return String(value);
+}
+
 export function formatPrice(value) {
   if (value === null || value === undefined || value === '') return '—';
   const n = typeof value === 'number' ? value : Number(value);

@@ -1,10 +1,11 @@
 <?php
 
-header("Content-Type: application/json; charset=UTF-8");
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit();
+if (PHP_SAPI !== 'cli') {
+    header("Content-Type: application/json; charset=UTF-8");
+    if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
+        http_response_code(200);
+        exit();
+    }
 }
 
 // Use the remote MySQL host for both environments so the same config works

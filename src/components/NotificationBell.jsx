@@ -88,7 +88,74 @@ export default function NotificationBell({ tone = 'dark' }) {
   const badge = data.unread_count > 99 ? '99+' : String(data.unread_count);
   const buttonClass = tone === 'dark'
     ? 'text-gray-400 hover:text-white hover:bg-white/5'
+    : tone === 'topbar'
+    ? ''
     : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100';
+
+  if (tone === 'topbar') {
+    return (
+      <div className="relative" ref={wrapperRef}>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="tb-icon-btn"
+          title="Notifications"
+          aria-label="Notifications"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 16V11a6 6 0 0112 0v5l1 2H5z"/>
+            <path d="M10 20a2 2 0 004 0"/>
+          </svg>
+          {data.unread_count > 0 && <span className="dot"/>}
+        </button>
+        {open && (
+          <div className="popover" style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)' }}>
+            <div className="popover-head">
+              <span className="popover-title">
+                Notifications{data.unread_count > 0 ? ` · ${data.unread_count} unread` : ''}
+              </span>
+              {data.unread_count > 0 && (
+                <button onClick={markAll} className="vv-btn vv-btn-ghost vv-btn-sm">Mark all read</button>
+              )}
+            </div>
+            {data.overdue_count > 0 && (
+              <div style={{ padding: '8px 14px', background: 'var(--danger-bg)', borderBottom: '1px solid var(--border-0)', fontSize: 11, color: 'var(--danger)', fontWeight: 500 }}>
+                {data.overdue_count} overdue {data.overdue_count === 1 ? 'task needs' : 'tasks need'} attention.
+              </div>
+            )}
+            {error && <div style={{ padding: '8px 14px', background: 'var(--danger-bg)', fontSize: 12, color: 'var(--danger)' }}>{error}</div>}
+            <div className="popover-list">
+              {loading ? (
+                <div style={{ padding: '24px', textAlign: 'center', fontSize: 12, color: 'var(--text-3)' }}>Loading…</div>
+              ) : data.notifications.length === 0 ? (
+                <div style={{ padding: '32px 14px', textAlign: 'center', fontSize: 13, color: 'var(--text-3)', fontStyle: 'italic' }}>You're all caught up.</div>
+              ) : data.notifications.map((n) => {
+                const meta = NOTIFICATION_META[n.type] || { label: n.type };
+                return (
+                  <div key={n.id} className="notif-item" onClick={() => handleRowClick(n)} style={n.is_read ? { opacity: 0.7 } : {}}>
+                    <span className="notif-icon">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="8" r="3.5"/><path d="M5 20c.7-3.5 3.5-6 7-6s6.3 2.5 7 6"/>
+                      </svg>
+                    </span>
+                    <div>
+                      <div className="notif-title">{n.title}</div>
+                      {n.message && <div className="notif-body">{n.message}</div>}
+                    </div>
+                    <span className="notif-time">{relativeFrom(n.created_at)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        <LeadDetailDrawer
+          leadId={leadDrawerId}
+          onClose={() => setLeadDrawerId(null)}
+          onChanged={() => load({ scan: true })}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="relative" ref={wrapperRef}>

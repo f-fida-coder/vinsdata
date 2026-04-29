@@ -258,7 +258,7 @@ function CrmStateSection({ leadId, initialState, users, isAdmin, onChanged }) {
 
 // ---------- Labels section ----------
 
-function LabelsSection({ leadId, initialLabels, availableLabels, onChanged }) {
+function LabelsSection({ leadId, initialLabels, availableLabels, onChanged, defaultOpen = true }) {
   const [labels, setLabels] = useState(initialLabels || []);
   const [selectedAdd, setSelectedAdd] = useState('');
   const [working, setWorking] = useState(false);
@@ -298,7 +298,7 @@ function LabelsSection({ leadId, initialLabels, availableLabels, onChanged }) {
   };
 
   return (
-    <CollapsibleSection title="Labels" count={labels.length} defaultOpen>
+    <CollapsibleSection title="Labels" count={labels.length} defaultOpen={defaultOpen}>
       <div className="flex flex-wrap items-center gap-1.5">
         {labels.length === 0 && <p className="text-xs text-gray-400 italic">No labels attached.</p>}
         {labels.map((l) => (
@@ -444,7 +444,7 @@ function TaskRow({ t, currentUser, onComplete, onCancel, onReopen, onEdit, editi
   );
 }
 
-function TasksSection({ leadId, currentUser, users, onChanged }) {
+function TasksSection({ leadId, currentUser, users, onChanged, defaultOpen = true }) {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -546,7 +546,7 @@ function TasksSection({ leadId, currentUser, users, onChanged }) {
     <CollapsibleSection
       title="Tasks"
       count={openTasks.length + (overdueCount > 0 ? 0 : 0)}
-      defaultOpen
+      defaultOpen={defaultOpen}
     >
       {overdueCount > 0 && (
         <p className="text-[11px] text-red-600 mb-2">{overdueCount} overdue · {openTasks.length - overdueCount} on track</p>
@@ -807,7 +807,7 @@ function ContactLogSection({ leadId, onChanged }) {
 
 // ---------- Notes section ----------
 
-function NotesSection({ leadId, currentUser, onNotesLoaded }) {
+function NotesSection({ leadId, currentUser, onNotesLoaded, defaultOpen = true }) {
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
@@ -878,7 +878,7 @@ function NotesSection({ leadId, currentUser, onNotesLoaded }) {
   );
 
   return (
-    <CollapsibleSection title="Notes" count={notes.length} defaultOpen>
+    <CollapsibleSection title="Notes" count={notes.length} defaultOpen={defaultOpen}>
       <div>
         <textarea
           value={draft}
@@ -1217,7 +1217,11 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
             <div className="bg-red-50 border border-red-100 text-red-700 rounded-xl p-3 text-sm">{error}</div>
           )}
 
-          {detail && (
+          {detail && (() => {
+            // Agents (carfax/filter/tlo) only need CRM state + Contact log + Marketing
+            // open by default; collapsing the rest cuts the visual wall.
+            const isAgent = user?.role && !['admin','marketer'].includes(user.role);
+            return (
             <>
               <CrmStateSection
                 leadId={detail.id}
@@ -1232,6 +1236,7 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
                 initialLabels={detail.labels || []}
                 availableLabels={availableLabels}
                 onChanged={handleChildChanged}
+                defaultOpen={!isAgent}
               />
 
               <TasksSection
@@ -1239,6 +1244,7 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
                 currentUser={user}
                 users={users}
                 onChanged={handleChildChanged}
+                defaultOpen={!isAgent}
               />
 
               <ContactLogSection
@@ -1252,11 +1258,16 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
                 onChanged={handleChildChanged}
               />
 
-              <NotesSection leadId={detail.id} currentUser={user} onNotesLoaded={setNotesSummary} />
+              <NotesSection
+                leadId={detail.id}
+                currentUser={user}
+                onNotesLoaded={setNotesSummary}
+                defaultOpen={!isAgent}
+              />
 
               <ActivitySection leadId={detail.id} reloadKey={activityReloadKey} />
 
-              <CollapsibleSection title="Lead data" defaultOpen>
+              <CollapsibleSection title="Lead data" defaultOpen={!isAgent}>
                 <KeyValueTable
                   rows={FIELD_ORDER
                     .filter((k) => detail.normalized_payload && detail.normalized_payload[k] !== undefined && detail.normalized_payload[k] !== '')
@@ -1305,7 +1316,8 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
                 <KeyValueTable monospaceValue rows={Object.entries(detail.raw_payload || {}).map(([h, v]) => [h, v])} />
               </CollapsibleSection>
             </>
-          )}
+            );
+          })()}
         </div>
       </aside>
     </div>

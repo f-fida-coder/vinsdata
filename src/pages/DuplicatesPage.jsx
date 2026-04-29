@@ -158,23 +158,25 @@ export default function DuplicatesPage() {
   };
 
   return (
-    <div className="max-w-[1600px] mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 sm:mb-8">
+    <div className="page">
+      <div className="section-header">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">Duplicate Review</h1>
-          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-            {data.total.toLocaleString()} {data.total === 1 ? 'group' : 'groups'} detected · no auto-merge
+          <h1 className="section-title">Duplicate Review</h1>
+          <p className="section-subtitle">
+            {data.total.toLocaleString()} {data.total === 1 ? 'group' : 'groups'} detected · confirm or dismiss to keep records clean
           </p>
         </div>
         {isAdmin && (
-          <button
-            onClick={runScan}
-            disabled={scanning}
-            className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium shadow-lg shadow-blue-500/25 hover:shadow-xl disabled:opacity-50 transition-all"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-            {scanning ? 'Scanning…' : 'Run duplicate scan'}
-          </button>
+          <div className="section-actions">
+            <button
+              onClick={runScan}
+              disabled={scanning}
+              className="vv-btn vv-btn-primary vv-btn-md"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 11a8 8 0 10-2.5 7.5"/><path d="M20 4v7h-7"/></svg>
+              {scanning ? 'Scanning…' : 'Run duplicate scan'}
+            </button>
+          </div>
         )}
       </div>
 

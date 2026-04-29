@@ -113,12 +113,12 @@ export default function MergePrepPage() {
   };
 
   return (
-    <div className="max-w-[1600px] mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 sm:mb-8">
+    <div className="page">
+      <div className="section-header">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">Merge Prep</h1>
-          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-            {data.total.toLocaleString()} confirmed {data.total === 1 ? 'group' : 'groups'} · non-destructive workspace
+          <h1 className="section-title">Merge Prep</h1>
+          <p className="section-subtitle">
+            {data.total.toLocaleString()} confirmed {data.total === 1 ? 'group' : 'groups'} · non-destructive workspace · choose primary record and merge fields
           </p>
         </div>
       </div>

@@ -142,13 +142,15 @@ export default function MarketingComposerPage() {
   };
 
   return (
-    <div className="max-w-[1100px] mx-auto">
-      <div className="flex items-center justify-between mb-6 sm:mb-8">
+    <div className="page" style={{ maxWidth: 1100 }}>
+      <div className="section-header">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">New campaign</h1>
-          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Send a marketing message to a segment of leads.</p>
+          <h1 className="section-title">New campaign</h1>
+          <p className="section-subtitle">Send a marketing message to a segment of leads.</p>
         </div>
-        <button onClick={() => nav('/marketing')} className="text-sm text-gray-500 hover:text-gray-700">&larr; Back</button>
+        <div className="section-actions">
+          <button className="vv-btn vv-btn-ghost vv-btn-md" onClick={() => nav('/marketing')}>&larr; Back</button>
+        </div>
       </div>
 
       {/* Stepper */}

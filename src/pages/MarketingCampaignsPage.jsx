@@ -73,21 +73,23 @@ export default function MarketingCampaignsPage() {
   const totalQueued = campaigns.filter((c) => ['draft','queued','sending','partially_failed'].includes(c.status)).length;
 
   return (
-    <div className="max-w-[1400px] mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 sm:mb-8">
+    <div className="page">
+      <div className="section-header">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">Mass Marketing</h1>
-          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+          <h1 className="section-title">Mass Marketing</h1>
+          <p className="section-subtitle">
             {campaigns.length.toLocaleString()} {campaigns.length === 1 ? 'campaign' : 'campaigns'} · {totalSent.toLocaleString()} total sends · {totalQueued} active
           </p>
         </div>
-        <button
-          onClick={() => nav('/marketing/new')}
-          className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-fuchsia-600 to-pink-500 text-white px-4 sm:px-5 py-2.5 rounded-xl text-sm font-medium shadow-lg shadow-fuchsia-500/25 hover:shadow-xl transition-all duration-200 w-full sm:w-auto"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-          New campaign
-        </button>
+        <div className="section-actions">
+          <button
+            onClick={() => nav('/marketing/new')}
+            className="vv-btn vv-btn-primary vv-btn-md"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+            New campaign
+          </button>
+        </div>
       </div>
 
       {error && (

@@ -104,7 +104,7 @@ export default function MarketingDetailPage() {
 
   if (loading) {
     return (
-      <div className="max-w-[1200px] mx-auto flex flex-col items-center justify-center py-20">
+      <div className="page" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 80 }}>
         <div className="w-10 h-10 border-4 border-fuchsia-100 border-t-fuchsia-600 rounded-full animate-spin"></div>
         <p className="text-sm text-gray-400 mt-3">Loading campaign…</p>
       </div>
@@ -113,7 +113,7 @@ export default function MarketingDetailPage() {
 
   if (!campaign) {
     return (
-      <div className="max-w-[1200px] mx-auto py-10 text-center">
+      <div className="page" style={{ textAlign: 'center', padding: 60 }}>
         <p className="text-sm text-gray-500">Campaign not found.</p>
         <Link to="/marketing" className="text-sm text-fuchsia-600 hover:text-fuchsia-700 font-medium mt-2 inline-block">&larr; All campaigns</Link>
       </div>
@@ -126,9 +126,9 @@ export default function MarketingDetailPage() {
   const pendingCount = (campaign.recipient_count ?? 0) - (campaign.sent_count ?? 0) - (campaign.opted_out_count ?? 0);
 
   return (
-    <div className="max-w-[1200px] mx-auto">
-      <div className="mb-4">
-        <Link to="/marketing" className="text-xs text-gray-500 hover:text-gray-700">&larr; All campaigns</Link>
+    <div className="page">
+      <div style={{ marginBottom: 12 }}>
+        <Link to="/marketing" style={{ fontSize: 12, color: 'var(--text-2)' }}>&larr; All campaigns</Link>
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
