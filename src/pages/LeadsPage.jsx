@@ -11,6 +11,7 @@ import {
   LEAD_TIERS, TIER_BY_KEY, computeLeadTier,
   formatPrice, formatPhone,
 } from '../lib/crm';
+import { Button, Icon } from '../components/ui';
 
 const PER_PAGE_OPTIONS = [25, 50, 100, 200];
 
@@ -419,26 +420,43 @@ export default function LeadsPage() {
 
   return (
     <div className="page">
-      <div style={{ marginBottom: 20 }}>
-        <h1 className="section-title">{isAdmin ? 'CRM Leads' : 'My Leads'}</h1>
-        <div style={{ marginTop: 4 }}>
-          <InlineStats
-            total={data.total}
-            summary={summary}
-            isAdmin={isAdmin}
-            activeFilters={filters}
-            onToggleFilter={(key, value) => updateFilter(
-              key,
-              filters[key] === value ? '' : value,
-            )}
-          />
+      <div className="section-header">
+        <div>
+          <h1 className="section-title">{isAdmin ? 'CRM Leads' : 'My Leads'}</h1>
+          <p className="section-subtitle">
+            <InlineStats
+              total={data.total}
+              summary={summary}
+              isAdmin={isAdmin}
+              activeFilters={filters}
+              onToggleFilter={(key, value) => updateFilter(
+                key,
+                filters[key] === value ? '' : value,
+              )}
+            />
+          </p>
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl mb-4 flex items-center justify-between">
+        <div
+          className="row"
+          style={{
+            background: 'var(--danger-bg)',
+            border: '1px solid var(--border-0)',
+            color: 'var(--danger)',
+            padding: '10px 14px',
+            borderRadius: 'var(--radius-lg)',
+            marginBottom: 16,
+            justifyContent: 'space-between',
+          }}
+        >
           <span>{error}</span>
-          <button onClick={() => setError('')} className="text-red-400 hover:text-red-600 p-1">&times;</button>
+          <button
+            type="button"
+            onClick={() => setError('')}
+            style={{ background: 'transparent', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 18 }}
+          >&times;</button>
         </div>
       )}
 
@@ -452,67 +470,90 @@ export default function LeadsPage() {
         onStatus={(v) => updateFilter('status', v === filters.status ? '' : v)}
       />
 
-      {/* Search + filter toggle */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-3 sm:p-4 mb-4 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <div className="relative flex-1 min-w-[200px]">
-            <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-            <input
-              type="text"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search VIN, name, phone, email, city…"
-              className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            />
+      <div className="tbl-wrap" style={{ marginBottom: 16 }}>
+        {/* Toolbar: search + filter toggle + saved views + columns + export */}
+        <div className="tbl-toolbar">
+          <div className="tbl-search">
+            <div className="vv-input-wrap">
+              <Icon name="search" size={15} className="vv-input-icon"/>
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search VIN, name, phone, email, city…   ( / )"
+                className="vv-input has-icon"
+              />
+            </div>
           </div>
-          <button
+          <Button
+            variant={showFilters ? 'primary' : 'secondary'}
+            size="md"
+            icon="filter"
             onClick={() => setShowFilters((v) => !v)}
-            className={`inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border transition-colors ${showFilters ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
             Filters
             {activeChips.length > 0 && (
-              <span className="ml-1 text-[10px] font-semibold bg-blue-600 text-white px-1.5 py-0.5 rounded-full">{activeChips.length}</span>
+              <span
+                style={{
+                  marginLeft: 4,
+                  background: showFilters ? 'var(--bg-1)' : 'var(--text-0)',
+                  color: showFilters ? 'var(--text-0)' : 'var(--bg-1)',
+                  borderRadius: 999,
+                  padding: '0 6px',
+                  fontSize: 11,
+                  fontWeight: 600,
+                }}
+              >
+                {activeChips.length}
+              </span>
             )}
-          </button>
+          </Button>
           {(activeChips.length > 0 || filters.q) && (
-            <button onClick={clearAll} className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-2">Clear all</button>
+            <Button variant="ghost" size="sm" onClick={clearAll}>Clear all</Button>
           )}
-          <div className="ml-auto flex items-center gap-1">
-            <SavedViewsMenu
-              viewType="leads"
-              currentFilters={filters}
-              activeViewId={activeViewId}
-              onApply={applyView}
-            />
-            <ColumnsMenu
-              open={columnsMenuOpen}
-              onOpenChange={setColumnsMenuOpen}
-              customColumns={customColumns}
-              hiddenColumns={hiddenColumns}
-              onToggle={toggleColumn}
-              onShowAll={() => setHiddenColumns(new Set())}
-              onHideAll={() => setHiddenColumns(new Set(customColumns))}
-            />
-            <a
-              href={exportCsvUrl}
-              className="inline-flex items-center justify-center w-9 h-9 rounded-lg border bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-700"
-              title={`Export ${data.total.toLocaleString()} matching leads as CSV`}
-              aria-label="Export CSV"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-            </a>
-          </div>
+          <span className="spacer"/>
+          <SavedViewsMenu
+            viewType="leads"
+            currentFilters={filters}
+            activeViewId={activeViewId}
+            onApply={applyView}
+          />
+          <ColumnsMenu
+            open={columnsMenuOpen}
+            onOpenChange={setColumnsMenuOpen}
+            customColumns={customColumns}
+            hiddenColumns={hiddenColumns}
+            onToggle={toggleColumn}
+            onShowAll={() => setHiddenColumns(new Set())}
+            onHideAll={() => setHiddenColumns(new Set(customColumns))}
+          />
+          <a
+            href={exportCsvUrl}
+            className="vv-btn vv-btn-ghost vv-btn-icon"
+            title={`Export ${data.total.toLocaleString()} matching leads as CSV`}
+            aria-label="Export CSV"
+          >
+            <Icon name="download" size={16}/>
+          </a>
         </div>
 
         {showFilters && (
-          <div className="mt-3 pt-3 border-t border-gray-100 space-y-4 text-sm">
-            {/* Tip: free-text fields (VIN, phone, email, name, city, state, make, model) are
-                all covered by the search box above. Keep these filters focused on the stuff
-                the search can't express. */}
-
-            <FilterGroup label="Vehicle">
-              <FilterSelect label="Make" value={filters.make} onChange={(v) => updateFilter('make', v)}>
+          <div
+            style={{
+              padding: 16,
+              borderBottom: '1px solid var(--border-0)',
+              background: 'var(--bg-2)',
+            }}
+          >
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                gap: 14,
+                marginBottom: 14,
+              }}
+            >
+              <FilterSelect label="Vehicle · Make" value={filters.make} onChange={(v) => updateFilter('make', v)}>
                 <option value="">Any make</option>
                 {options.makes.map((m) => <option key={m} value={m}>{m}</option>)}
               </FilterSelect>
@@ -530,9 +571,7 @@ export default function LeadsPage() {
                 onChangeMin={(v) => updateFilter('number_of_owners_min', v)}
                 onChangeMax={(v) => updateFilter('number_of_owners_max', v)}
               />
-            </FilterGroup>
 
-            <FilterGroup label="CRM">
               <FilterSelect label="Priority" value={filters.priority} onChange={(v) => updateFilter('priority', v)}>
                 <option value="">Any priority</option>
                 {LEAD_PRIORITIES.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
@@ -548,60 +587,63 @@ export default function LeadsPage() {
                 <option value="">Any label</option>
                 {options.labels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
               </FilterSelect>
-            </FilterGroup>
-
-            <FilterGroup label="Tasks">
               <FilterSelect label="Open tasks" value={filters.has_open_tasks} onChange={(v) => updateFilter('has_open_tasks', v)}>
                 <option value="">Any</option>
                 <option value="1">Has open tasks</option>
                 <option value="0">No open tasks</option>
               </FilterSelect>
-              <FilterSelect label="Due today" value={filters.tasks_due_today} onChange={(v) => updateFilter('tasks_due_today', v)}>
-                <option value="">Any</option>
-                <option value="1">Has tasks due today</option>
-              </FilterSelect>
-              <FilterSelect label="Overdue" value={filters.tasks_overdue} onChange={(v) => updateFilter('tasks_overdue', v)}>
-                <option value="">Any</option>
-                <option value="1">Has overdue tasks</option>
-              </FilterSelect>
-            </FilterGroup>
 
-            <FilterGroup label="Source & date">
-              <FilterSelect label="Batch" value={filters.batch_id} onChange={(v) => updateFilter('batch_id', v)}>
-                <option value="">Any batch</option>
-                {options.batches.map((b) => <option key={b.id} value={b.id}>{b.batch_name}</option>)}
-              </FilterSelect>
               <FilterSelect label="Source stage" value={filters.source_stage} onChange={(v) => updateFilter('source_stage', v)}>
                 <option value="">Any stage</option>
                 {options.stages.map((s) => <option key={s} value={s}>{s}</option>)}
               </FilterSelect>
               <FilterInput type="date" label="Imported from" value={filters.imported_from} onChange={(v) => updateFilter('imported_from', v)} />
               <FilterInput type="date" label="Imported to"   value={filters.imported_to}   onChange={(v) => updateFilter('imported_to',   v)} />
-            </FilterGroup>
+              <FilterSelect label="Batch" value={filters.batch_id} onChange={(v) => updateFilter('batch_id', v)}>
+                <option value="">Any batch</option>
+                {options.batches.map((b) => <option key={b.id} value={b.id}>{b.batch_name}</option>)}
+              </FilterSelect>
+            </div>
+            <div className="row" style={{ justifyContent: 'flex-end', gap: 6 }}>
+              <Button variant="ghost" size="sm" onClick={clearAll}>Reset</Button>
+              <Button variant="primary" size="sm" onClick={() => setShowFilters(false)}>Apply filters</Button>
+            </div>
           </div>
         )}
-      </div>
 
-      {activeChips.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 mb-3">
-          {activeChips.map(({ key, value }) => (
-            <span key={key} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-[11px] font-medium px-2 py-1 rounded-md border border-blue-100">
-              {CHIP_LABELS[key]}: <span className="font-semibold">{renderChipValue(key, value)}</span>
-              <button onClick={() => clearFilter(key)} className="ml-0.5 text-blue-500 hover:text-blue-800">&times;</button>
-            </span>
-          ))}
-        </div>
-      )}
+        {activeChips.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: 6,
+              padding: '10px 14px',
+              borderBottom: '1px solid var(--border-0)',
+            }}
+          >
+            {activeChips.map(({ key, value }) => (
+              <span key={key} className="status-badge sb-info" style={{ paddingRight: 4 }}>
+                {CHIP_LABELS[key]}: <strong style={{ marginLeft: 2 }}>{renderChipValue(key, value)}</strong>
+                <button
+                  type="button"
+                  onClick={() => clearFilter(key)}
+                  style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', marginLeft: 4, opacity: 0.7 }}
+                  aria-label={`Clear ${CHIP_LABELS[key]} filter`}
+                >&times;</button>
+              </span>
+            ))}
+          </div>
+        )}
 
-      {/* Table */}
-      <BulkActionsBar
-        selection={selection}
-        onClear={clearSelection}
-        onAction={(a) => setBulkAction(a)}
-        user={user}
-      />
+        <BulkActionsBar
+          selection={selection}
+          onClear={clearSelection}
+          onAction={(a) => setBulkAction(a)}
+          user={user}
+        />
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div>
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16 sm:py-20">
             <div className="w-10 h-10 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
@@ -777,43 +819,31 @@ export default function LeadsPage() {
           </div>
         )}
 
+        </div>
+
         {/* Pagination */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-3 border-t border-gray-100 bg-gray-50/40">
-          <div className="flex items-center gap-2 text-xs text-gray-500">
+        <div className="tbl-pagination">
+          <div className="row" style={{ gap: 8 }}>
             <span>Rows per page:</span>
             <select
               value={perPage}
               onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }}
-              className="bg-white border border-gray-200 rounded-md px-2 py-1 text-xs"
+              className="vv-input"
+              style={{ width: 'auto', padding: '4px 24px 4px 8px', fontSize: 12 }}
             >
               {PER_PAGE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
-            <span className="ml-2">
+            <span>·</span>
+            <span>
               {data.total === 0 ? '0' : `${(page - 1) * perPage + 1}–${Math.min(page * perPage, data.total)}`} of {data.total.toLocaleString()}
             </span>
           </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setPage(1)}
-              disabled={page <= 1}
-              className="px-2 py-1 text-xs rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40"
-            >«</button>
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="px-2 py-1 text-xs rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40"
-            >‹ Prev</button>
-            <span className="text-xs text-gray-500 px-2">Page {page} / {totalPages}</span>
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-              className="px-2 py-1 text-xs rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40"
-            >Next ›</button>
-            <button
-              onClick={() => setPage(totalPages)}
-              disabled={page >= totalPages}
-              className="px-2 py-1 text-xs rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40"
-            >»</button>
+          <div className="tbl-pag-controls">
+            <Button variant="ghost" size="sm" onClick={() => setPage(1)} disabled={page <= 1}>«</Button>
+            <Button variant="ghost" size="sm" icon="chevronLeft" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>Prev</Button>
+            <span style={{ padding: '0 6px' }}>Page {page} / {totalPages}</span>
+            <Button variant="ghost" size="sm" iconAfter="chevronRight" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>Next</Button>
+            <Button variant="ghost" size="sm" onClick={() => setPage(totalPages)} disabled={page >= totalPages}>»</Button>
           </div>
         </div>
       </div>
@@ -892,29 +922,18 @@ function ColumnsMenu({ open, onOpenChange, customColumns, hiddenColumns, onToggl
   );
 }
 
-function FilterGroup({ label, children }) {
-  return (
-    <fieldset className="rounded-xl border border-gray-100 bg-gray-50/40 px-3 py-2.5">
-      <legend className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 px-1">{label}</legend>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 mt-1">
-        {children}
-      </div>
-    </fieldset>
-  );
-}
-
 function FilterSelect({ label, value, onChange, children }) {
   return (
-    <label className="block">
-      <span className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">{label}</span>
+    <div>
+      <label className="field-label">{label}</label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+        className="vv-input"
       >
         {children}
       </select>
-    </label>
+    </div>
   );
 }
 
@@ -929,66 +948,70 @@ const QUICK_STATUS_KEYS = ['new', 'callback', 'interested', 'marketing'];
  */
 function InlineStats({ total, summary, isAdmin, activeFilters, onToggleFilter }) {
   const items = [];
-  // Total is informational, not a filter.
-  items.push({ key: '__total', label: total === 1 ? 'lead' : 'leads', value: total, dotColor: 'bg-blue-500', filterKey: null });
+  items.push({ key: '__total', label: total === 1 ? 'lead' : 'leads', value: total, dot: 'var(--info)', filterKey: null });
 
   if (summary) {
     if (isAdmin && summary.unassigned > 0) {
       items.push({
-        key: 'unassigned', label: 'unassigned', value: summary.unassigned, dotColor: 'bg-amber-500',
+        key: 'unassigned', label: 'unassigned', value: summary.unassigned, dot: 'var(--warm)',
         filterKey: 'assigned_user_id', filterValue: 'unassigned',
       });
     }
     if (summary.open_tasks > 0) {
       items.push({
-        key: 'open_tasks', label: 'open tasks', value: summary.open_tasks, dotColor: 'bg-blue-500',
+        key: 'open_tasks', label: 'open tasks', value: summary.open_tasks, dot: 'var(--info)',
         filterKey: 'has_open_tasks', filterValue: '1',
       });
     }
     if (summary.tasks_due_today > 0) {
       items.push({
-        key: 'due_today', label: 'due today', value: summary.tasks_due_today, dotColor: 'bg-amber-500',
+        key: 'due_today', label: 'due today', value: summary.tasks_due_today, dot: 'var(--warm)',
         filterKey: 'tasks_due_today', filterValue: '1',
       });
     }
     if (summary.tasks_overdue > 0) {
       items.push({
-        key: 'overdue', label: 'overdue', value: summary.tasks_overdue, dotColor: 'bg-red-500',
+        key: 'overdue', label: 'overdue', value: summary.tasks_overdue, dot: 'var(--hot)',
         filterKey: 'tasks_overdue', filterValue: '1',
       });
     }
     if (summary.confirmed_duplicate_related > 0) {
       items.push({
         key: 'dupes', label: 'in confirmed duplicates', value: summary.confirmed_duplicate_related,
-        dotColor: 'bg-red-500', filterKey: null,
+        dot: 'var(--hot)', filterKey: null,
       });
     }
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-xs sm:text-sm text-gray-500">
+    <span style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
       {items.map((it, i) => {
         const isActive = it.filterKey && activeFilters[it.filterKey] === it.filterValue;
         const clickable = !!it.filterKey;
         const content = (
-          <span className="inline-flex items-center gap-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${it.dotColor}`} />
-            <span className="tabular-nums font-semibold text-gray-700">{it.value.toLocaleString()}</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 6, height: 6, borderRadius: 999, background: it.dot, display: 'inline-block' }}/>
+            <strong style={{ color: 'var(--text-0)' }}>{it.value.toLocaleString()}</strong>
             <span>{it.label}</span>
           </span>
         );
         return (
-          <span key={it.key} className="inline-flex items-center gap-2">
-            {i > 0 && <span className="text-gray-300">·</span>}
+          <span key={it.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {i > 0 && <span style={{ color: 'var(--text-3)' }}>·</span>}
             {clickable ? (
               <button
+                type="button"
                 onClick={() => onToggleFilter(it.filterKey, it.filterValue)}
-                className={`inline-flex items-center rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors ${
-                  isActive
-                    ? 'bg-blue-100 text-blue-800 ring-1 ring-blue-300'
-                    : 'hover:bg-gray-100 hover:text-gray-700'
-                }`}
                 title={isActive ? 'Click to clear this filter' : 'Click to filter'}
+                style={{
+                  background: isActive ? 'var(--bg-2)' : 'transparent',
+                  border: isActive ? '1px solid var(--border-1)' : '1px solid transparent',
+                  padding: '2px 6px',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  color: 'inherit',
+                  font: 'inherit',
+                }}
               >
                 {content}
               </button>
@@ -996,33 +1019,50 @@ function InlineStats({ total, summary, isAdmin, activeFilters, onToggleFilter })
           </span>
         );
       })}
-    </div>
+    </span>
   );
 }
 
-function PillGroup({ label, items, active, onToggle }) {
+// Design-system colors per pill group key — chip dots use raw CSS vars,
+// not Tailwind utility classes, so we map each meta key to a CSS variable.
+const TIER_DOT_VAR = {
+  tier_1: 'var(--tier1)',
+  tier_2: 'var(--tier2)',
+  tier_3: 'var(--tier3)',
+};
+const TEMP_DOT_VAR = {
+  cold: 'var(--cold)',
+  warm: 'var(--warm)',
+  hot: 'var(--hot)',
+  closed: 'var(--success)',
+};
+const STATUS_DOT_VAR = {
+  new: 'var(--info)',
+  callback: 'var(--warm)',
+  interested: 'var(--success)',
+  marketing: 'var(--info)',
+};
+
+function ChipGroup({ label, items, active, onToggle, dotVarMap }) {
   return (
-    <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap">
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mr-1 shrink-0">{label}</span>
+    <>
+      <span className="chip-group-label">{label}</span>
       {items.map((item) => {
         const isActive = active === item.key;
+        const bg = dotVarMap?.[item.key] || 'var(--text-2)';
         return (
-          <button
+          <span
             key={item.key}
+            className={`chip ${isActive ? 'active' : ''}`}
             onClick={() => onToggle(item.key)}
             title={item.hint}
-            className={`inline-flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-medium px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-full border transition-colors ${
-              isActive
-                ? `${item.bg} ${item.text} border-current`
-                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-            }`}
           >
-            <span className={`w-1.5 h-1.5 rounded-full ${item.dot}`} />
+            <span className="chip-dot" style={{ background: bg }}/>
             {item.label}
-          </button>
+          </span>
         );
       })}
-    </div>
+    </>
   );
 }
 
@@ -1031,17 +1071,18 @@ function QuickFilterPills({ tier, temperature, status, onTier, onTemp, onStatus 
     .map((k) => LEAD_STATUSES.find((s) => s.key === k))
     .filter(Boolean);
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
-      <PillGroup label="Tier" items={LEAD_TIERS} active={tier} onToggle={onTier} />
-      <div className="h-4 w-px bg-gray-200 hidden sm:block" />
-      <PillGroup
-        label="Temperature"
+    <div className="chip-row">
+      <ChipGroup label="Tier" items={LEAD_TIERS} active={tier} onToggle={onTier} dotVarMap={TIER_DOT_VAR}/>
+      <span style={{ color: 'var(--border-1)' }}>·</span>
+      <ChipGroup
+        label="Temp"
         items={LEAD_TEMPERATURES.filter((t) => t.key !== 'closed')}
         active={temperature}
         onToggle={onTemp}
+        dotVarMap={TEMP_DOT_VAR}
       />
-      <div className="h-4 w-px bg-gray-200 hidden sm:block" />
-      <PillGroup label="Status" items={statusItems} active={status} onToggle={onStatus} />
+      <span style={{ color: 'var(--border-1)' }}>·</span>
+      <ChipGroup label="Status" items={statusItems} active={status} onToggle={onStatus} dotVarMap={STATUS_DOT_VAR}/>
     </div>
   );
 }
@@ -1049,41 +1090,43 @@ function QuickFilterPills({ tier, temperature, status, onTier, onTemp, onStatus 
 function NumberOfOwnersFilter({ min, max, onChangeMin, onChangeMax }) {
   const opts = ['', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
   return (
-    <label className="block">
-      <span className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">Number of owners</span>
-      <div className="flex items-center gap-2">
+    <div>
+      <label className="field-label">Owners</label>
+      <div className="row" style={{ gap: 6 }}>
         <select
           value={min}
           onChange={(e) => onChangeMin(e.target.value)}
-          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          className="vv-input"
+          style={{ flex: 1 }}
           aria-label="Minimum number of owners"
         >
           {opts.map((n) => <option key={`min-${n}`} value={n}>{n === '' ? 'Min' : n}</option>)}
         </select>
-        <span className="text-xs text-gray-400">to</span>
+        <span style={{ color: 'var(--text-3)' }}>—</span>
         <select
           value={max}
           onChange={(e) => onChangeMax(e.target.value)}
-          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          className="vv-input"
+          style={{ flex: 1 }}
           aria-label="Maximum number of owners"
         >
           {opts.map((n) => <option key={`max-${n}`} value={n}>{n === '' ? 'Max' : n}</option>)}
         </select>
       </div>
-    </label>
+    </div>
   );
 }
 
 function FilterInput({ label, value, onChange, type = 'text' }) {
   return (
-    <label className="block">
-      <span className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">{label}</span>
+    <div>
+      <label className="field-label">{label}</label>
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+        className="vv-input"
       />
-    </label>
+    </div>
   );
 }

@@ -5,8 +5,8 @@ import {
   MARKETING_CHANNELS,
   LEAD_STATUSES, LEAD_PRIORITIES, LEAD_TEMPERATURES, LEAD_TIERS,
 } from '../lib/crm';
+import { Button, Icon, SectionHeader } from '../components/ui';
 
-// The 4 wizard steps, in order. Matches the plan from the architectural proposal.
 const STEPS = [
   { key: 'basics',     label: 'Basics' },
   { key: 'template',   label: 'Template' },
@@ -39,20 +39,17 @@ export default function MarketingComposerPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  // Step 1: basics
   const [name, setName]           = useState('');
   const [channel, setChannel]     = useState('email');
 
-  // Step 2: template
   const [templates, setTemplates] = useState([]);
   const [templateId, setTemplateId] = useState('');
   const [subject, setSubject]     = useState('');
   const [body, setBody]           = useState('');
   const [senderIdentity, setSenderIdentity] = useState('');
 
-  // Step 3: recipients
   const [segment, setSegment]     = useState({ status: 'new' });
-  const [preview, setPreview]     = useState(null); // { total, reachable_by_email, reachable_by_phone }
+  const [preview, setPreview]     = useState(null);
   const [previewing, setPreviewing] = useState(false);
   const [options, setOptions]     = useState({ batches: [], files: [], stages: [], states: [], makes: [], years: [], labels: [] });
 
@@ -60,7 +57,6 @@ export default function MarketingComposerPage() {
     api.get('/lead_filter_options').then((r) => setOptions(r.data)).catch(() => {});
   }, []);
 
-  // Load templates scoped to the chosen channel whenever it changes.
   useEffect(() => {
     api.get('/marketing_templates', { params: { channel, active: 1 } })
       .then((r) => setTemplates(r.data || []))
@@ -74,7 +70,6 @@ export default function MarketingComposerPage() {
     if (tpl) { setSubject(tpl.subject || ''); setBody(tpl.body || ''); }
   };
 
-  // Live preview count for step 3.
   const previewCounts = useCallback(async (currentSegment) => {
     setPreviewing(true);
     try {
@@ -89,7 +84,6 @@ export default function MarketingComposerPage() {
     }
   }, []);
 
-  // Debounce segment changes → preview.
   useEffect(() => {
     if (step !== 'recipients') return;
     const t = setTimeout(() => previewCounts(segment), 350);
@@ -143,174 +137,230 @@ export default function MarketingComposerPage() {
 
   return (
     <div className="page" style={{ maxWidth: 1100 }}>
-      <div className="section-header">
-        <div>
-          <h1 className="section-title">New campaign</h1>
-          <p className="section-subtitle">Send a marketing message to a segment of leads.</p>
-        </div>
-        <div className="section-actions">
-          <button className="vv-btn vv-btn-ghost vv-btn-md" onClick={() => nav('/marketing')}>&larr; Back</button>
-        </div>
-      </div>
+      <SectionHeader
+        title="New campaign"
+        subtitle="Send a marketing message to a segment of leads."
+        actions={
+          <Button variant="ghost" icon="chevronLeft" onClick={() => nav('/marketing')}>
+            Back
+          </Button>
+        }
+      />
 
       {/* Stepper */}
-      <div className="flex items-center gap-0 mb-6">
+      <div className="row" style={{ gap: 0, marginBottom: 24 }}>
         {STEPS.map((s, i) => {
           const idx  = STEPS.findIndex((x) => x.key === step);
           const done = i < idx;
           const cur  = i === idx;
+          const stepColor = cur ? 'var(--accent)' : done ? 'var(--success)' : 'var(--text-3)';
+          const numBg = cur ? 'var(--accent)' : done ? 'var(--success)' : 'var(--bg-3)';
+          const numColor = (cur || done) ? 'var(--accent-fg)' : 'var(--text-2)';
           return (
-            <div key={s.key} className="flex items-center flex-1">
+            <div key={s.key} className="row" style={{ flex: 1, gap: 8 }}>
               <button
+                type="button"
                 onClick={() => i <= idx && setStep(s.key)}
-                className={`flex items-center gap-2 text-xs font-medium ${cur ? 'text-fuchsia-700' : done ? 'text-gray-600' : 'text-gray-300'}`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: i <= idx ? 'pointer' : 'not-allowed',
+                  color: stepColor,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  padding: 0,
+                }}
               >
-                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold ${cur ? 'bg-fuchsia-600 text-white' : done ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                <span
+                  style={{
+                    width: 24, height: 24, borderRadius: '50%',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 11, fontWeight: 700,
+                    background: numBg,
+                    color: numColor,
+                  }}
+                >
                   {done ? '✓' : i + 1}
                 </span>
                 {s.label}
               </button>
-              {i < STEPS.length - 1 && <div className={`flex-1 h-0.5 mx-2 ${i < idx ? 'bg-emerald-300' : 'bg-gray-200'}`} />}
+              {i < STEPS.length - 1 && (
+                <div
+                  style={{
+                    flex: 1,
+                    height: 2,
+                    margin: '0 8px',
+                    background: i < idx ? 'var(--success)' : 'var(--border-0)',
+                  }}
+                />
+              )}
             </div>
           );
         })}
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl mb-4 flex items-center justify-between">
+        <div
+          className="row"
+          style={{
+            background: 'var(--danger-bg)',
+            color: 'var(--danger)',
+            padding: '10px 14px',
+            borderRadius: 'var(--radius-lg)',
+            marginBottom: 16,
+            justifyContent: 'space-between',
+          }}
+        >
           <span>{error}</span>
-          <button onClick={() => setError('')} className="text-red-400 hover:text-red-600 p-1">&times;</button>
+          <button
+            type="button"
+            onClick={() => setError('')}
+            style={{ background: 'transparent', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 18 }}
+          >&times;</button>
         </div>
       )}
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+      <div className="card" style={{ padding: 24 }}>
         {step === 'basics' && (
-          <div className="space-y-5">
-            <LabeledField label="Campaign name">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div>
+              <label className="field-label">Campaign name</label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Q2 nurture — 2015–2018 Camrys"
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-fuchsia-500 focus:border-transparent outline-none"
+                className="vv-input"
               />
-            </LabeledField>
-            <LabeledField label="Channel">
-              <div className="grid grid-cols-3 gap-2">
+            </div>
+            <div>
+              <label className="field-label">Channel</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                 {MARKETING_CHANNELS.map((c) => (
                   <button
                     key={c.key}
+                    type="button"
                     onClick={() => setChannel(c.key)}
-                    className={`flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-medium transition-colors ${
-                      channel === c.key
-                        ? 'bg-fuchsia-50 border-fuchsia-300 text-fuchsia-700'
-                        : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      padding: '12px 16px',
+                      borderRadius: 'var(--radius-lg)',
+                      border: `1px solid ${channel === c.key ? 'var(--accent)' : 'var(--border-1)'}`,
+                      background: channel === c.key ? 'var(--bg-2)' : 'var(--bg-1)',
+                      color: channel === c.key ? 'var(--text-0)' : 'var(--text-2)',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                    }}
                   >
-                    <span className="text-lg">{c.icon}</span>
+                    <span style={{ fontSize: 18 }}>{c.icon}</span>
                     {c.label}
                   </button>
                 ))}
               </div>
               {channel !== 'email' && (
-                <p className="text-[11px] text-amber-700 mt-2">
+                <p className="tiny" style={{ color: 'var(--warn)', marginTop: 8 }}>
                   SMS and WhatsApp are simulated in Phase 1 — sends are logged but not actually delivered until a provider is configured.
                 </p>
               )}
-            </LabeledField>
+            </div>
           </div>
         )}
 
         {step === 'template' && (
-          <div className="space-y-5">
-            <LabeledField label="Start from a saved template (optional)">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div>
+              <label className="field-label">Start from a saved template (optional)</label>
               <select
                 value={templateId}
                 onChange={(e) => applyTemplate(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-fuchsia-500 focus:border-transparent outline-none"
+                className="vv-input"
               >
                 <option value="">— Write from scratch —</option>
                 {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
-            </LabeledField>
+            </div>
             {channel === 'email' && (
-              <LabeledField label="Subject">
+              <div>
+                <label className="field-label">Subject</label>
                 <input
                   type="text"
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
                   placeholder="Quick question about your {{vehicle}}"
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-fuchsia-500 focus:border-transparent outline-none"
+                  className="vv-input"
                 />
-              </LabeledField>
+              </div>
             )}
-            <LabeledField label="Body">
+            <div>
+              <label className="field-label">Body</label>
               <textarea
                 rows={8}
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 placeholder={`Hi {{first_name}},\n\nWe're buying cars like your {{vehicle}} right now…`}
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-fuchsia-500 focus:border-transparent outline-none font-mono text-[13px]"
+                className="vv-input"
+                style={{ fontFamily: 'var(--font-mono)', fontSize: 13, resize: 'vertical' }}
               />
-              <p className="text-[11px] text-gray-500 mt-1.5">
-                Available variables: <code className="text-[11px]">{'{{first_name}} {{last_name}} {{full_name}} {{vehicle}} {{vin}} {{city}} {{state}}'}</code>.
+              <p className="tiny cell-muted" style={{ marginTop: 6 }}>
+                Available variables: <code style={{ fontFamily: 'var(--font-mono)' }}>{'{{first_name}} {{last_name}} {{full_name}} {{vehicle}} {{vin}} {{city}} {{state}}'}</code>.
                 An unsubscribe footer is added automatically.
               </p>
-            </LabeledField>
-            <LabeledField label="Sender identity (optional)">
+            </div>
+            <div>
+              <label className="field-label">Sender identity (optional)</label>
               <input
                 type="text"
                 value={senderIdentity}
                 onChange={(e) => setSenderIdentity(e.target.value)}
                 placeholder={channel === 'email' ? '"Your Name" <you@your-domain.com>' : 'Your SMS sender / WhatsApp number'}
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-fuchsia-500 focus:border-transparent outline-none"
+                className="vv-input"
               />
-            </LabeledField>
-            <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">Preview (sample data)</div>
-              {channel === 'email' && <div className="text-[13px] font-semibold text-gray-900 mb-2">{renderPreview(subject, SAMPLE_VARS) || <span className="text-gray-300">(no subject)</span>}</div>}
-              <div className="whitespace-pre-wrap text-[13px] text-gray-700">{renderPreview(body, SAMPLE_VARS) || <span className="text-gray-300">(no body)</span>}</div>
+            </div>
+            <div className="card" style={{ background: 'var(--bg-2)' }}>
+              <div className="drawer-section-label">Preview (sample data)</div>
+              {channel === 'email' && (
+                <div className="cell-strong" style={{ marginBottom: 8 }}>
+                  {renderPreview(subject, SAMPLE_VARS) || <span className="cell-muted">(no subject)</span>}
+                </div>
+              )}
+              <div style={{ whiteSpace: 'pre-wrap', fontSize: 13, color: 'var(--text-1)' }}>
+                {renderPreview(body, SAMPLE_VARS) || <span className="cell-muted">(no body)</span>}
+              </div>
             </div>
           </div>
         )}
 
         {step === 'recipients' && (
-          <div className="space-y-5">
-            {/* Quick presets — the two workflows we know people want. */}
-            <div className="rounded-xl bg-sky-50 border border-sky-100 p-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-sky-700 mb-2">Quick presets</div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => setSegment({ lead_temperature: 'cold' })}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border border-sky-300 bg-white text-sky-700 hover:bg-sky-100"
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div className="card" style={{ background: 'var(--info-bg)', borderColor: 'transparent' }}>
+              <div className="drawer-section-label" style={{ color: 'var(--info)' }}>Quick presets</div>
+              <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                <span className="chip" onClick={() => setSegment({ lead_temperature: 'cold' })}>
+                  <span className="chip-dot" style={{ background: 'var(--cold)' }}/>
                   Cold leads pool
-                </button>
-                <button
-                  onClick={() => setSegment({ status: 'marketing' })}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border border-fuchsia-300 bg-white text-fuchsia-700 hover:bg-fuchsia-100"
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-500" />
+                </span>
+                <span className="chip" onClick={() => setSegment({ status: 'marketing' })}>
+                  <span className="chip-dot" style={{ background: 'var(--info)' }}/>
                   In "Marketing" status
-                </button>
-                <button
-                  onClick={() => setSegment({ tier: 'tier_3', lead_temperature: 'cold' })}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-100"
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                </span>
+                <span className="chip" onClick={() => setSegment({ tier: 'tier_3', lead_temperature: 'cold' })}>
+                  <span className="chip-dot" style={{ background: 'var(--text-3)' }}/>
                   Tier 3 + Cold
-                </button>
-                <button
-                  onClick={() => setSegment({})}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-500 hover:bg-gray-50"
-                >
+                </span>
+                <span className="chip" onClick={() => setSegment({})}>
                   Reset filters
-                </button>
+                </span>
               </div>
             </div>
-            <p className="text-xs text-gray-500 -mb-1">Or narrow the segment with the filters below.</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+            <p className="tiny cell-muted" style={{ marginBottom: -4 }}>Or narrow the segment with the filters below.</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
               <SegSelect label="Status"       value={segment.status || ''} onChange={(v) => setSegment({ ...segment, status: v })}>
                 <option value="">Any status</option>
                 {LEAD_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
@@ -353,93 +403,96 @@ export default function MarketingComposerPage() {
               </SegSelect>
             </div>
 
-            {/* Live preview */}
-            <div className="rounded-xl bg-gradient-to-br from-fuchsia-50 to-pink-50 border border-fuchsia-100 p-4">
+            <div className="card" style={{ background: 'var(--bg-2)' }}>
               {previewing ? (
-                <div className="text-sm text-gray-500">Counting…</div>
+                <div className="cell-muted">Counting…</div>
               ) : preview ? (
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
                   <div>
-                    <div className="text-2xl font-bold text-gray-900 tabular-nums">
-                      {reachable.toLocaleString()}
+                    <div className="kpi-value" style={{ fontSize: 32 }}>
+                      {(reachable ?? 0).toLocaleString()}
                     </div>
-                    <div className="text-xs text-gray-600">
-                      of {preview.total.toLocaleString()} matching leads are reachable by <span className="font-medium">{channel}</span>
+                    <div className="cell-muted tiny">
+                      of {preview.total.toLocaleString()} matching leads are reachable by <strong>{channel}</strong>
                     </div>
                   </div>
-                  <div className="text-[11px] text-gray-500 space-y-0.5 text-right">
+                  <div className="cell-muted tiny" style={{ textAlign: 'right' }}>
                     <div>Capped at 500 per campaign in Phase 1</div>
                     <div>Opted-out recipients will be skipped automatically</div>
                   </div>
                 </div>
               ) : (
-                <div className="text-sm text-gray-500">Adjust filters to see a count.</div>
+                <div className="cell-muted">Adjust filters to see a count.</div>
               )}
             </div>
           </div>
         )}
 
         {step === 'review' && (
-          <div className="space-y-4">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <Row label="Name">{name}</Row>
             <Row label="Channel">{MARKETING_CHANNELS.find((c) => c.key === channel)?.label}</Row>
-            {channel === 'email' && <Row label="Subject">{renderPreview(subject, SAMPLE_VARS) || <span className="text-gray-300">—</span>}</Row>}
+            {channel === 'email' && <Row label="Subject">{renderPreview(subject, SAMPLE_VARS) || <span className="cell-muted">—</span>}</Row>}
             <Row label="Body">
-              <div className="whitespace-pre-wrap text-[13px] text-gray-700 bg-gray-50 rounded-lg p-3 border border-gray-100">
+              <pre
+                style={{
+                  whiteSpace: 'pre-wrap',
+                  fontSize: 13,
+                  margin: 0,
+                  background: 'var(--bg-2)',
+                  border: '1px solid var(--border-0)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 12,
+                  fontFamily: 'var(--font-mono)',
+                  color: 'var(--text-1)',
+                }}
+              >
                 {renderPreview(body, SAMPLE_VARS)}
-              </div>
+              </pre>
             </Row>
             <Row label="Segment">
-              <div className="flex flex-wrap gap-1.5">
+              <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
                 {Object.entries(segment).filter(([, v]) => v !== '' && v != null).map(([k, v]) => (
-                  <span key={k} className="inline-flex items-center gap-1 bg-fuchsia-50 text-fuchsia-700 text-[11px] font-medium px-2 py-1 rounded-md border border-fuchsia-100">
-                    {k}: <span className="font-semibold">{String(v)}</span>
+                  <span key={k} className="status-badge sb-info">
+                    {k}: <strong style={{ marginLeft: 2 }}>{String(v)}</strong>
                   </span>
                 ))}
-                {Object.values(segment).every((v) => v === '' || v == null) && <span className="text-[11px] text-gray-400">All leads</span>}
+                {Object.values(segment).every((v) => v === '' || v == null) && <span className="cell-muted tiny">All leads</span>}
               </div>
             </Row>
             <Row label="Recipients">
               {preview ? (
-                <span className="text-sm text-gray-700">{(reachable ?? 0).toLocaleString()} reachable / {preview.total.toLocaleString()} matching</span>
-              ) : <span className="text-sm text-gray-400">—</span>}
+                <span>{(reachable ?? 0).toLocaleString()} reachable / {preview.total.toLocaleString()} matching</span>
+              ) : <span className="cell-muted">—</span>}
             </Row>
           </div>
         )}
 
         {/* Footer actions */}
-        <div className="flex items-center justify-between mt-8 pt-5 border-t border-gray-100">
-          <button
-            onClick={() => go(-1)}
-            disabled={step === STEPS[0].key || submitting}
-            className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 disabled:opacity-40"
-          >
-            ← Back
-          </button>
+        <div
+          className="row"
+          style={{
+            justifyContent: 'space-between',
+            marginTop: 28,
+            paddingTop: 20,
+            borderTop: '1px solid var(--border-0)',
+          }}
+        >
+          <Button variant="ghost" onClick={() => go(-1)} disabled={step === STEPS[0].key || submitting} icon="chevronLeft">
+            Back
+          </Button>
           {step !== 'review' ? (
-            <button
-              onClick={() => go(1)}
-              disabled={!canNext}
-              className="px-5 py-2 text-sm font-medium bg-fuchsia-600 text-white rounded-lg hover:bg-fuchsia-700 disabled:opacity-40"
-            >
-              Next →
-            </button>
+            <Button variant="primary" onClick={() => go(1)} disabled={!canNext} iconAfter="arrowRight">
+              Next
+            </Button>
           ) : (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => submit(false)}
-                disabled={submitting}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100 disabled:opacity-40"
-              >
+            <div className="row" style={{ gap: 8 }}>
+              <Button variant="secondary" onClick={() => submit(false)} disabled={submitting}>
                 Save as draft
-              </button>
-              <button
-                onClick={() => submit(true)}
-                disabled={submitting}
-                className="px-5 py-2 text-sm font-medium bg-gradient-to-r from-fuchsia-600 to-pink-500 text-white rounded-lg shadow-lg shadow-fuchsia-500/25 disabled:opacity-40"
-              >
+              </Button>
+              <Button variant="primary" icon="play" onClick={() => submit(true)} disabled={submitting}>
                 {submitting ? 'Creating…' : `Send now${reachable ? ` (${reachable})` : ''}`}
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -448,34 +501,21 @@ export default function MarketingComposerPage() {
   );
 }
 
-function LabeledField({ label, children }) {
-  return (
-    <label className="block">
-      <span className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">{label}</span>
-      {children}
-    </label>
-  );
-}
-
 function SegSelect({ label, value, onChange, children }) {
   return (
-    <label className="block">
-      <span className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-fuchsia-500 focus:border-transparent outline-none"
-      >
+    <div>
+      <label className="field-label">{label}</label>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="vv-input">
         {children}
       </select>
-    </label>
+    </div>
   );
 }
 
 function Row({ label, children }) {
   return (
-    <div className="grid grid-cols-[120px,1fr] gap-3 items-start">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 pt-1">{label}</div>
+    <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 12, alignItems: 'start' }}>
+      <div className="kv-key" style={{ paddingTop: 4 }}>{label}</div>
       <div>{children}</div>
     </div>
   );
