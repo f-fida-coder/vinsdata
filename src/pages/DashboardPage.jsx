@@ -51,18 +51,53 @@ function VVModal({ open, onClose, title, width = 460, children }) {
 
 function ActionDropdown({ file, onMove, onReupload, onEdit, onDelete, onNotify, onView, invalid, next, canReupload }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef(null);
+  const [pos, setPos] = useState(null);
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+
+  // Compute fixed-positioning so the menu can escape `overflow:hidden` parents
+  // and flip above the trigger when there isn't room below.
+  const place = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const menuW = 220;
+    const estH = 260;
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+    const flipUp = r.bottom + estH + 8 > vh && r.top > estH + 8;
+    const top = flipUp ? Math.max(8, r.top - estH - 4) : r.bottom + 4;
+    const left = Math.min(vw - menuW - 8, Math.max(8, r.right - menuW));
+    setPos({ top, left });
+  };
+
   useEffect(() => {
     if (!open) return;
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    place();
+    const handler = (e) => {
+      if (menuRef.current?.contains(e.target)) return;
+      if (btnRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onScroll = () => setOpen(false);
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
   }, [open]);
+
   return (
-    <div className="dropdown-wrap" ref={ref}>
+    <div className="dropdown-wrap" ref={btnRef}>
       <Button variant="ghost" size="sm" icon="moreV" onClick={() => setOpen((o) => !o)}/>
-      {open && (
-        <div className="dropdown-menu align-right">
+      {open && pos && (
+        <div
+          ref={menuRef}
+          className="dropdown-menu"
+          style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: 200, zIndex: 60 }}
+        >
           <button className="dd-item" onClick={() => { setOpen(false); onView(); }}><Icon name="eye" size={14}/><span>View details</span></button>
           {!invalid && next && <button className="dd-item" onClick={() => { setOpen(false); onMove(); }}><Icon name="arrowRight" size={14}/><span>Move to {next}</span></button>}
           {canReupload && <button className="dd-item" onClick={() => { setOpen(false); onReupload(); }}><Icon name="refresh" size={14}/><span>Re-upload {file.current_stage}</span></button>}
