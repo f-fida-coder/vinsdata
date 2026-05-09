@@ -99,7 +99,7 @@ export default function ReportsPage() {
         <KPI label="Tasks overdue" value={data.tasks_overdue ?? 0} dot="var(--hot)"/>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
+      <div className="responsive-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
         <div className="card">
           <div className="card-head">
             <div>
@@ -131,7 +131,7 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 12 }}>
+      <div className="responsive-grid" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 12 }}>
         <div className="card">
           <div className="card-head">
             <div>
@@ -167,7 +167,7 @@ export default function ReportsPage() {
       </div>
 
       {dups && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="responsive-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div className="card">
             <div className="card-head">
               <div>

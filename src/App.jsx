@@ -30,6 +30,7 @@ function DashboardLayout() {
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [qaOpen, setQaOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user } = useAuth();
   const { toggle } = useTheme();
   const navigate = useNavigate();
@@ -62,12 +63,13 @@ function DashboardLayout() {
 
   return (
     <div className="app">
-      <Sidebar />
+      <Sidebar mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
       <main className="main">
         <Topbar
           onSearch={() => setCmdkOpen(true)}
           onQuickAdd={() => setQaOpen((o) => !o)}
           onShortcuts={() => setShortcutsOpen(true)}
+          onMenuToggle={() => setSidebarOpen((o) => !o)}
         />
         <Routes>
           <Route path="/" element={rootElement} />

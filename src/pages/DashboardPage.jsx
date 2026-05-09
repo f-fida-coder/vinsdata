@@ -285,15 +285,15 @@ export default function DashboardPage() {
 
       <div className="filters-row">
         <div className="filters-label"><Icon name="filter" size={14}/> Filters</div>
-        <select className="vv-input" style={{ width: 180 }} value={filters.vehicle_id} onChange={(e) => setFilters({ ...filters, vehicle_id: e.target.value })}>
+        <select className="vv-input" style={{ minWidth: 160, maxWidth: 220 }} value={filters.vehicle_id} onChange={(e) => setFilters({ ...filters, vehicle_id: e.target.value })}>
           <option value="">All Vehicles</option>
           {vehicles.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
         </select>
-        <select className="vv-input" style={{ width: 160 }} value={filters.stage} onChange={(e) => setFilters({ ...filters, stage: e.target.value })}>
+        <select className="vv-input" style={{ minWidth: 140, maxWidth: 200 }} value={filters.stage} onChange={(e) => setFilters({ ...filters, stage: e.target.value })}>
           <option value="">All Stages</option>
           {STAGES.map((s) => <option key={s} value={s}>{STAGE_META[s].label}</option>)}
         </select>
-        <input className="vv-input" type="number" style={{ width: 110 }} placeholder="Year" value={filters.year} onChange={(e) => setFilters({ ...filters, year: e.target.value })}/>
+        <input className="vv-input" type="number" style={{ minWidth: 90, maxWidth: 130 }} placeholder="Year" value={filters.year} onChange={(e) => setFilters({ ...filters, year: e.target.value })}/>
         {(filters.vehicle_id || filters.stage || filters.year) && (
           <Button variant="ghost" size="sm" onClick={() => setFilters({ vehicle_id: '', stage: '', year: '' })}>Clear all</Button>
         )}

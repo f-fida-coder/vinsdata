@@ -128,7 +128,7 @@ export default function MarketingCampaignsPage() {
           value={filters.status}
           onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
           className="vv-input"
-          style={{ width: 160 }}
+          style={{ minWidth: 140, maxWidth: 200 }}
         >
           <option value="">Any status</option>
           {Object.entries(CAMPAIGN_STATUS_META).map(([k, m]) => (
@@ -139,7 +139,7 @@ export default function MarketingCampaignsPage() {
           value={filters.channel}
           onChange={(e) => setFilters((f) => ({ ...f, channel: e.target.value }))}
           className="vv-input"
-          style={{ width: 160 }}
+          style={{ minWidth: 140, maxWidth: 200 }}
         >
           <option value="">Any channel</option>
           {MARKETING_CHANNELS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}

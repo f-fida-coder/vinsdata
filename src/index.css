@@ -1008,20 +1008,383 @@ label.field-label {
 }
 .dl-chip:hover { background: var(--bg-3); }
 
-/* responsive */
-@media (max-width: 1180px) {
-  .kpi-row { grid-template-columns: repeat(3, 1fr); }
-  .mkt-strip { grid-template-columns: 1fr; gap: 12px; }
+/* ============ Mobile menu helpers ============ */
+.sb-backdrop {
+  display: none;
 }
+.sb-close {
+  display: none;
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--sidebar-text-1);
+  padding: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.sb-close:hover { background: rgba(255,255,255,0.08); color: #fff; }
+.tb-menu-toggle { display: none; }
+
+/* ============ Responsive: tablets and below ============ */
+@media (max-width: 1180px) {
+  .kpi-row { grid-template-columns: repeat(3, 1fr) !important; }
+  .mkt-strip { grid-template-columns: 1fr !important; gap: 12px; padding: 14px 16px; }
+  .kanban { grid-template-columns: repeat(3, 1fr) !important; }
+  .page { padding: 20px 24px 56px; }
+}
+
+/* ============ Responsive: small tablets / large phones ============ */
 @media (max-width: 880px) {
-  :root { --sidebar-w: 60px; }
-  .sb-brand-text, .sb-user-info, .sb-bell, .sb-section-label,
-  .sb-link span:not(.sb-link-icon):not(.sb-link-count) { display: none; }
-  .sb-link { justify-content: center; }
-  .kpi-row { grid-template-columns: repeat(2, 1fr); }
-  .kanban { grid-template-columns: 1fr 1fr; }
-  .page { padding: 16px; }
+  :root { --topbar-h: 52px; }
+
+  /* Sidebar becomes an off-canvas drawer */
+  .app {
+    display: block;
+    grid-template-columns: none;
+  }
+  .sidebar {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    width: 260px;
+    height: 100vh;
+    z-index: 95;
+    transform: translateX(-100%);
+    transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: var(--shadow-pop);
+  }
+  .sidebar.is-open { transform: translateX(0); }
+  .sb-backdrop {
+    display: block;
+    position: fixed; inset: 0;
+    background: rgba(10, 10, 11, 0.5);
+    z-index: 90;
+    animation: fadeIn 0.16s;
+  }
+  [data-theme="dark"] .sb-backdrop { background: rgba(0, 0, 0, 0.7); }
+  .sb-close { display: grid; place-items: center; }
+
+  .main { width: 100%; }
+
+  /* Hamburger in topbar */
+  .tb-menu-toggle { display: grid !important; }
+  .topbar { padding: 0 14px; gap: 10px; }
+  .tb-crumb-root, .tb-crumb-sep { display: none; }
+  .tb-crumbs { font-size: 14px; }
+  .tb-search {
+    flex: 0 1 auto;
+    max-width: none;
+    padding: 6px 8px;
+  }
+  .tb-search-text, .tb-search .kbd { display: none; }
+  .tb-actions { gap: 0; }
+
+  /* Page padding */
+  .page { padding: 16px 14px 60px; max-width: 100%; }
+
+  /* Section header stacks */
+  .section-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
   .section-title { font-size: 24px; }
+  .section-actions { flex-wrap: wrap; }
+
+  /* KPI row: 2 cols (override inline gridTemplateColumns) */
+  .kpi-row { grid-template-columns: repeat(2, 1fr) !important; gap: 10px; }
+  .kpi { padding: 12px; }
+  .kpi-value { font-size: 28px; }
+  .kpi-lg .kpi-value { font-size: 32px; }
+
+  /* Kanban: 1 column on mobile */
+  .kanban { grid-template-columns: 1fr !important; }
+  .kanban-col { min-height: auto; }
+
+  /* Filters row scrolls horizontally */
+  .filters-row {
+    padding: 10px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .filters-row > .vv-input,
+  .filters-row > select.vv-input {
+    flex: 1 1 130px;
+    width: auto !important;
+    min-width: 120px;
+  }
+
+  /* Table toolbar stacks */
+  .tbl-toolbar {
+    flex-wrap: wrap;
+    padding: 10px;
+    gap: 8px;
+  }
+  .tbl-search {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+
+  /* Tables become horizontally scrollable */
+  .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tbl { min-width: 720px; }
+  .tbl th, .tbl td { padding: 10px 12px; }
+  .tbl-pagination {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px;
+  }
+
+  /* Drawer takes full width on mobile */
+  .drawer { width: 100vw !important; max-width: 100vw; border-left: none; }
+
+  /* Drawer head/body padding tighter */
+  .drawer-head { padding: 14px 16px 12px; }
+  .drawer-body { padding: 16px; }
+  .drawer-foot { padding: 10px 16px; flex-wrap: wrap; }
+
+  /* Two-column kv grid -> single column */
+  .kv-grid { grid-template-columns: 1fr; }
+
+  /* Generic 2/3-col helper grids stack */
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+
+  /* Command palette pulls from top edge a bit more */
+  .cmdk-overlay { padding-top: 8vh; }
+  .cmdk-input { font-size: 15px; }
+
+  /* Notifications + quick-add popovers align to right of viewport */
+  .popover {
+    position: fixed !important;
+    right: 8px !important;
+    left: 8px !important;
+    top: calc(var(--topbar-h) + 8px) !important;
+    width: auto !important;
+    max-width: none !important;
+  }
+  .qa-menu { right: 8px; left: auto; width: 220px; }
+
+  /* Shortcut grid 1 col */
+  .kbd-grid { grid-template-columns: 1fr; gap: 6px 0; }
+
+  /* Reports bar rows: shrink label column */
+  .bar-row { grid-template-columns: 90px 1fr 28px; gap: 8px; font-size: 11px; }
+
+  /* Cards a bit tighter */
+  .card { padding: 14px; }
+  .card-title { font-size: 13px; }
+
+  /* Topbar bg subtler */
+  .topbar { box-shadow: 0 1px 0 var(--border-0); }
+
+  /* Chip filter row: smaller spacing */
+  .chip-row { gap: 6px 10px; }
+
+  /* Tabs — let them scroll if many */
+  .vv-tabs { overflow-x: auto; flex-wrap: nowrap; }
+  .vv-tab { white-space: nowrap; }
+
+  /* Saved view list scrolls */
+  .saved-view { white-space: nowrap; }
+}
+
+/* ============ Responsive: phones ============ */
+@media (max-width: 560px) {
+  .section-title { font-size: 22px; }
+  .section-subtitle { font-size: 12px; }
+
+  /* KPI: 2 cols still — but tighter */
+  .kpi-row { grid-template-columns: repeat(2, 1fr) !important; gap: 8px; }
+  .kpi { padding: 10px; border-radius: 10px; }
+  .kpi-label { font-size: 9px; }
+  .kpi-value { font-size: 24px; }
+  .kpi-lg .kpi-value { font-size: 28px; }
+
+  /* Hide secondary topbar buttons on the smallest screens to save space */
+  .tb-search { padding: 6px 8px; }
+  .tb-icon-btn { width: 30px; height: 30px; }
+
+  /* Buttons fit on small screens */
+  .vv-btn-md { padding: 7px 10px; font-size: 12px; }
+  .vv-btn-lg { padding: 8px 14px; font-size: 13px; }
+
+  /* Modals (dashboard etc) get more breathing room */
+  .drawer-head h3 { font-size: 18px !important; }
+
+  /* Section actions wrap nicely */
+  .section-actions { gap: 6px; }
+  .section-actions .vv-btn { flex: 1 1 auto; justify-content: center; }
+
+  /* Marketing strip: stack all stats in 2 cols */
+  .mkt-strip { grid-template-columns: repeat(2, 1fr) !important; padding: 12px; gap: 10px; }
+  .mkt-stat-v { font-size: 20px; }
+  .mkt-stat-l { font-size: 9px; }
+
+  /* Dashboard filter inputs full width */
+  .filters-row > .vv-input,
+  .filters-row > select.vv-input { flex: 1 1 100%; }
+
+  /* Smaller table cells */
+  .tbl th, .tbl td { padding: 9px 10px; font-size: 12px; }
+
+  /* Status badges shrink slightly */
+  .status-badge { font-size: 10px; padding: 2px 6px; }
+
+  /* Filters stack pagination */
+  .tbl-pagination { font-size: 11px; }
+
+  /* Reports cards grid (report page uses inline gridTemplateColumns) */
+  [class~="card"] + [class~="card"] { margin-top: 0; }
+}
+
+/* ============ Marketing composer stepper ============ */
+.mc-stepper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 24px;
+}
+.mc-step {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 8px;
+}
+.mc-step-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  min-width: 0;
+}
+.mc-step-btn:disabled { cursor: not-allowed; }
+.mc-step.is-current .mc-step-btn { color: var(--accent); }
+.mc-step.is-done .mc-step-btn { color: var(--success); }
+.mc-step-num {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--bg-3);
+  color: var(--text-2);
+  flex-shrink: 0;
+}
+.mc-step.is-current .mc-step-num { background: var(--accent); color: var(--accent-fg); }
+.mc-step.is-done .mc-step-num { background: var(--success); color: var(--accent-fg); }
+.mc-step-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mc-step-line {
+  flex: 1 1 auto;
+  height: 2px;
+  background: var(--border-0);
+  border-radius: 1px;
+  margin: 0 4px;
+  min-width: 12px;
+}
+.mc-step-line.is-done { background: var(--success); }
+
+@media (max-width: 720px) {
+  .mc-step-label { display: none; }
+  .mc-step { gap: 4px; }
+  .mc-step-line { margin: 0; min-width: 8px; }
+}
+
+/* Leads table — uses Tailwind responsive `hidden sm/md/lg/xl:table-cell` to
+   selectively show columns. We size it tall and let Tailwind hide columns on
+   small screens; on phones the visible column subset fits naturally. */
+.leads-table { min-width: 100%; }
+@media (min-width: 640px)  { .leads-table { min-width: 760px; } }
+@media (min-width: 768px)  { .leads-table { min-width: 980px; } }
+@media (min-width: 1024px) { .leads-table { min-width: 1280px; } }
+@media (min-width: 1280px) { .leads-table { min-width: 1540px; } }
+
+/* Helpers used across pages so inline grid styles can be overridden where
+   appropriate at small screens. */
+@media (max-width: 880px) {
+  /* Any inline-styled grid using gridTemplateColumns inside .page should
+     collapse to 1 column on mobile. We can't target inline styles directly,
+     so authors should add the .responsive-grid class for grids that need
+     auto collapsing. */
+  .responsive-grid { grid-template-columns: 1fr !important; }
+
+  /* Marketing composer specific bits */
+  .mc-channels { grid-template-columns: 1fr !important; }
+  .mc-row { grid-template-columns: 1fr !important; gap: 4px !important; }
+
+  /* Bulk actions bar (Tailwind) — make button labels compact on phones */
+  .sticky.top-0.z-20.bg-blue-50 button { font-size: 11px !important; padding: 6px 8px !important; }
+
+  /* Sticky first column on horizontally scrolled .tbl (custom CSS tables only;
+     Tailwind tables manage their own backgrounds). */
+  .tbl > thead > tr > th:first-child,
+  .tbl > tbody > tr > td:first-child {
+    position: sticky;
+    left: 0;
+    background: var(--bg-1);
+    z-index: 1;
+  }
+  .tbl > thead > tr > th:first-child { z-index: 2; }
+  .tbl > tbody > tr:hover > td:first-child,
+  .tbl > tbody > tr.selected > td:first-child { background: var(--bg-2); }
+
+  /* Larger touch targets on small screens for icon-only buttons */
+  .tb-icon-btn { width: 36px; height: 36px; }
+  .vv-btn-sm { padding: 5px 10px; font-size: 12px; }
+
+  /* Quick filter pill rows: compact + scroll if needed */
+  .chip-row { row-gap: 6px; column-gap: 8px; padding: 8px 0; }
+  .chip { padding: 3px 8px; font-size: 11px; }
+}
+
+@media (max-width: 560px) {
+  /* Compact pagination */
+  .tbl-pagination .row > span:nth-child(3),
+  .tbl-pagination .row > span:nth-child(4) { display: none; }
+  .tbl-pag-controls .vv-btn:first-child,
+  .tbl-pag-controls .vv-btn:last-child { display: none; }
+  .tbl-pagination { font-size: 11px; }
+  .tbl-pagination .vv-btn { padding: 4px 7px; }
+
+  /* Section header buttons */
+  .section-actions { width: 100%; }
+
+  /* Saved view stays compact */
+  .saved-view { padding: 4px 8px; font-size: 11px; }
+
+  /* Smaller drawer header */
+  .section-header { gap: 8px; margin-bottom: 12px; }
+
+  /* Group label hint inline with chips, not above */
+  .chip-group-label { font-size: 9px; }
+
+  /* Section title scales further */
+  .section-title { font-size: 22px; line-height: 1.15; }
+
+  /* Smaller stepper numbers on tiny screens */
+  .mc-step-num { width: 22px; height: 22px; font-size: 10px; }
+}
+
+/* Fine-grained tweaks for very narrow phones */
+@media (max-width: 380px) {
+  .kpi { padding: 10px 8px; }
+  .kpi-value { font-size: 22px; }
+  .vv-btn-md { padding: 6px 9px; font-size: 11px; }
+  .section-title { font-size: 20px; }
+  .topbar { padding: 0 10px; gap: 6px; }
+  .tb-icon-btn { width: 32px; height: 32px; }
 }
 
 @keyframes fadeInScale {

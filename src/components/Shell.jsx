@@ -6,6 +6,21 @@ import { useTheme } from '../context/ThemeContext';
 import { Icon, Avatar, Button, Kbd } from './ui';
 import NotificationBellRaw from './NotificationBell';
 
+// Tailwind's `sm` breakpoint: anything below this is a phone-sized layout that
+// gets the off-canvas sidebar treatment.
+const MOBILE_BREAKPOINT = 880;
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' ? window.innerWidth < MOBILE_BREAKPOINT : false,
+  );
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return isMobile;
+}
+
 // Per-role visibility for sidebar entries.
 const NAV_VISIBILITY = {
   admin:    ['dashboard','vehicles','leads','pipeline','tasks','reports','duplicates','mergePrep','marketing','users'],
@@ -47,62 +62,97 @@ function navItemsForRole(role) {
   return ALL_NAV.filter((i) => allowed.includes(i.key));
 }
 
-export function Sidebar({ onSignOut }) {
+export function Sidebar({ onSignOut, mobileOpen, onMobileClose }) {
   const { user, logout } = useAuth();
   const items = navItemsForRole(user?.role);
+  const location = useLocation();
+
+  // Auto-close on route change (mobile only)
+  useEffect(() => {
+    if (mobileOpen) onMobileClose?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
+  // Lock body scroll when mobile drawer is open
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [mobileOpen]);
 
   return (
-    <aside className="sidebar">
-      <div className="sb-brand">
-        <div className="sb-logo">V</div>
-        <div className="sb-brand-text">
-          <span className="sb-brand-name">VINVAULT</span>
-          <span className="sb-brand-sub">Internal CRM</span>
-        </div>
-      </div>
-      <div className="sb-user">
-        <Avatar name={user?.name || '?'} size={28} color="#fff" style={{ color: '#0a0a0b' }}/>
-        <div className="sb-user-info">
-          <span className="sb-user-name">{user?.name || 'User'}</span>
-          <span className="sb-user-role">{user?.role || ''} · vin.com</span>
-        </div>
-      </div>
-
-      <div className="sb-section-label">Menu</div>
-      <nav className="sb-nav">
-        {items.map((item) => (
-          <NavLink
-            key={item.key}
-            to={item.to}
-            end={item.to === '/'}
-            className={({ isActive }) => `sb-link ${isActive ? 'active' : ''}`}
+    <>
+      {mobileOpen && <div className="sb-backdrop" onClick={onMobileClose}/>}
+      <aside className={`sidebar ${mobileOpen ? 'is-open' : ''}`}>
+        <div className="sb-brand">
+          <div className="sb-logo">V</div>
+          <div className="sb-brand-text">
+            <span className="sb-brand-name">VINVAULT</span>
+            <span className="sb-brand-sub">Internal CRM</span>
+          </div>
+          <button
+            type="button"
+            className="sb-close"
+            aria-label="Close menu"
+            onClick={onMobileClose}
           >
-            <Icon name={item.icon} size={16} className="sb-link-icon"/>
-            <span>{item.label}</span>
-          </NavLink>
-        ))}
-      </nav>
-
-      <div className="sb-footer">
-        <div className="sb-link" onClick={() => (onSignOut ? onSignOut() : logout())}>
-          <Icon name="logout" size={16} className="sb-link-icon"/>
-          <span>Sign Out</span>
+            <Icon name="x" size={18}/>
+          </button>
         </div>
-      </div>
-    </aside>
+        <div className="sb-user">
+          <Avatar name={user?.name || '?'} size={28} color="#fff" style={{ color: '#0a0a0b' }}/>
+          <div className="sb-user-info">
+            <span className="sb-user-name">{user?.name || 'User'}</span>
+            <span className="sb-user-role">{user?.role || ''} · vin.com</span>
+          </div>
+        </div>
+
+        <div className="sb-section-label">Menu</div>
+        <nav className="sb-nav">
+          {items.map((item) => (
+            <NavLink
+              key={item.key}
+              to={item.to}
+              end={item.to === '/'}
+              className={({ isActive }) => `sb-link ${isActive ? 'active' : ''}`}
+            >
+              <Icon name={item.icon} size={16} className="sb-link-icon"/>
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+        </nav>
+
+        <div className="sb-footer">
+          <div className="sb-link" onClick={() => (onSignOut ? onSignOut() : logout())}>
+            <Icon name="logout" size={16} className="sb-link-icon"/>
+            <span>Sign Out</span>
+          </div>
+        </div>
+      </aside>
+    </>
   );
 }
 
-export function Topbar({ onSearch, onQuickAdd, onShortcuts }) {
+export function Topbar({ onSearch, onQuickAdd, onShortcuts, onMenuToggle }) {
   const { theme, toggle } = useTheme();
   const location = useLocation();
+  const isMobile = useIsMobile();
   const label = ROUTE_LABEL_BY_PATH[location.pathname]
     || (location.pathname.startsWith('/marketing/') ? 'Campaign' : 'VINVAULT');
 
   return (
     <div className="topbar">
+      <button
+        type="button"
+        className="tb-icon-btn tb-menu-toggle"
+        onClick={onMenuToggle}
+        aria-label="Open menu"
+      >
+        <Icon name="list" size={18}/>
+      </button>
       <div className="tb-crumbs">
-        <span>VINVAULT</span>
+        <span className="tb-crumb-root">VINVAULT</span>
         <Icon name="chevronRight" size={12} className="tb-crumb-sep"/>
         <span className="crumb-current">{label}</span>
       </div>
@@ -112,12 +162,16 @@ export function Topbar({ onSearch, onQuickAdd, onShortcuts }) {
         <Kbd>⌘K</Kbd>
       </div>
       <div className="tb-actions">
-        <button className="tb-icon-btn" onClick={toggle} title="Toggle theme">
-          <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16}/>
-        </button>
-        <button className="tb-icon-btn" onClick={onShortcuts} title="Keyboard shortcuts">
-          <Icon name="keyboard" size={16}/>
-        </button>
+        {!isMobile && (
+          <button className="tb-icon-btn" onClick={toggle} title="Toggle theme">
+            <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16}/>
+          </button>
+        )}
+        {!isMobile && (
+          <button className="tb-icon-btn" onClick={onShortcuts} title="Keyboard shortcuts">
+            <Icon name="keyboard" size={16}/>
+          </button>
+        )}
         <NotificationBellRaw tone="topbar" />
         <button className="tb-icon-btn" onClick={onQuickAdd} title="Quick add">
           <Icon name="plus" size={18}/>

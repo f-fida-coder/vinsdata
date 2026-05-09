@@ -148,9 +148,9 @@ export default function MarketingDetailPage() {
       </div>
 
       <div className="section-header">
-        <div>
-          <div className="row" style={{ gap: 8, marginBottom: 4 }}>
-            <h1 className="section-title">{campaign.name}</h1>
+        <div style={{ minWidth: 0 }}>
+          <div className="row" style={{ gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+            <h1 className="section-title" style={{ wordBreak: 'break-word' }}>{campaign.name}</h1>
             <span className={`status-badge sb-${statusVariant}`}>{statusMeta.label}</span>
           </div>
           <p className="section-subtitle">
@@ -203,7 +203,7 @@ export default function MarketingDetailPage() {
 
       <div className="tbl-wrap">
         <div style={{ padding: '0 16px', borderBottom: '1px solid var(--border-0)' }}>
-          <div className="tabs" style={{ marginBottom: 0 }}>
+          <div className="vv-tabs" style={{ marginBottom: 0, borderBottom: 'none' }}>
             {[
               { key: 'recipients', label: 'Recipients' },
               { key: 'message',    label: 'Message' },
@@ -211,7 +211,7 @@ export default function MarketingDetailPage() {
             ].map((t) => (
               <span
                 key={t.key}
-                className={`tab ${tab === t.key ? 'active' : ''}`}
+                className={`vv-tab ${tab === t.key ? 'active' : ''}`}
                 onClick={() => setTab(t.key)}
               >
                 {t.label}

@@ -148,54 +148,24 @@ export default function MarketingComposerPage() {
       />
 
       {/* Stepper */}
-      <div className="row" style={{ gap: 0, marginBottom: 24 }}>
+      <div className="mc-stepper">
         {STEPS.map((s, i) => {
           const idx  = STEPS.findIndex((x) => x.key === step);
           const done = i < idx;
           const cur  = i === idx;
-          const stepColor = cur ? 'var(--accent)' : done ? 'var(--success)' : 'var(--text-3)';
-          const numBg = cur ? 'var(--accent)' : done ? 'var(--success)' : 'var(--bg-3)';
-          const numColor = (cur || done) ? 'var(--accent-fg)' : 'var(--text-2)';
           return (
-            <div key={s.key} className="row" style={{ flex: 1, gap: 8 }}>
+            <div key={s.key} className={`mc-step ${cur ? 'is-current' : ''} ${done ? 'is-done' : ''}`}>
               <button
                 type="button"
                 onClick={() => i <= idx && setStep(s.key)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: i <= idx ? 'pointer' : 'not-allowed',
-                  color: stepColor,
-                  fontSize: 12,
-                  fontWeight: 500,
-                  padding: 0,
-                }}
+                disabled={i > idx}
+                className="mc-step-btn"
               >
-                <span
-                  style={{
-                    width: 24, height: 24, borderRadius: '50%',
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 11, fontWeight: 700,
-                    background: numBg,
-                    color: numColor,
-                  }}
-                >
-                  {done ? '✓' : i + 1}
-                </span>
-                {s.label}
+                <span className="mc-step-num">{done ? '✓' : i + 1}</span>
+                <span className="mc-step-label">{s.label}</span>
               </button>
               {i < STEPS.length - 1 && (
-                <div
-                  style={{
-                    flex: 1,
-                    height: 2,
-                    margin: '0 8px',
-                    background: i < idx ? 'var(--success)' : 'var(--border-0)',
-                  }}
-                />
+                <span className={`mc-step-line ${done ? 'is-done' : ''}`}/>
               )}
             </div>
           );
@@ -238,7 +208,7 @@ export default function MarketingComposerPage() {
             </div>
             <div>
               <label className="field-label">Channel</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              <div className="mc-channels" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                 {MARKETING_CHANNELS.map((c) => (
                   <button
                     key={c.key}
@@ -514,7 +484,7 @@ function SegSelect({ label, value, onChange, children }) {
 
 function Row({ label, children }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 12, alignItems: 'start' }}>
+    <div className="mc-row" style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 12, alignItems: 'start' }}>
       <div className="kv-key" style={{ paddingTop: 4 }}>{label}</div>
       <div>{children}</div>
     </div>
