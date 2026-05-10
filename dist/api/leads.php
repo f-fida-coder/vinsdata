@@ -295,58 +295,56 @@ if (isset($_GET['number_of_owners_max']) && $_GET['number_of_owners_max'] !== ''
 }
 
 // Partial normalized fields (LIKE) — inline JSON_UNQUOTE because they aren't
-// indexed. JSON_UNQUOTE returns utf8mb4_bin, which is case-sensitive, so we
-// lowercase both sides for predictable name/city matching.
+// indexed. JSON_UNQUOTE returns utf8mb4_bin (case-sensitive), so apply an
+// explicit case-insensitive collation for predictable name/city matching.
+$jsonCi = fn($field) => "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$." . $field . "')) COLLATE utf8mb4_general_ci";
 $likeCols = [
-    'first_name'  => "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.first_name')))",
-    'last_name'   => "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.last_name')))",
-    'full_name'   => "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.full_name')))",
-    'city'        => "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.city')))",
-    'zip_code'    => "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.zip_code'))",
+    'first_name'  => $jsonCi('first_name'),
+    'last_name'   => $jsonCi('last_name'),
+    'full_name'   => $jsonCi('full_name'),
+    'city'        => $jsonCi('city'),
+    'zip_code'    => $jsonCi('zip_code'),
 ];
 foreach ($likeCols as $q => $expr) {
     if (isset($_GET[$q]) && $_GET[$q] !== '') {
-        $val = $q === 'zip_code' ? $_GET[$q] : strtolower((string) $_GET[$q]);
         $where[] = "$expr LIKE :$q";
-        $params[":$q"] = '%' . $val . '%';
+        $params[":$q"] = '%' . $_GET[$q] . '%';
     }
 }
 
-// Global search across the most useful normalized fields. Most JSON-extracted
-// text comes back as utf8mb4_bin (case-sensitive), so we lowercase both sides.
+// Global search across the most useful normalized fields. JSON-extracted text
+// is utf8mb4_bin (case-sensitive); apply utf8mb4_general_ci so "john" matches
+// "John Smith". The norm_* columns inherit the table's case-insensitive
+// collation already, so they don't need an explicit COLLATE.
 // Phones get a digit-only variant so "(555) 123-4567" matches "5551234567".
 if (isset($_GET['q']) && $_GET['q'] !== '') {
     $qRaw    = (string) $_GET['q'];
-    $qLower  = strtolower($qRaw);
     $qDigits = preg_replace('/[^0-9]/', '', $qRaw);
 
     $textCols = [
-        'LOWER(r.norm_vin)',
-        "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.first_name')))",
-        "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.last_name')))",
-        "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.full_name')))",
-        'LOWER(r.norm_email_primary)',
-        "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.full_address')))",
-        "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.city')))",
-        "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.zip_code')))",
-        'LOWER(r.norm_state)',
-        'LOWER(r.norm_make)',
-        'LOWER(r.norm_model)',
+        'r.norm_vin',
+        $jsonCi('first_name'),
+        $jsonCi('last_name'),
+        $jsonCi('full_name'),
+        'r.norm_email_primary',
+        $jsonCi('full_address'),
+        $jsonCi('city'),
+        $jsonCi('zip_code'),
+        'r.norm_state',
+        'r.norm_make',
+        'r.norm_model',
+        'r.norm_phone_primary',
         'CAST(r.norm_year AS CHAR)',
     ];
     $ors = array_map(fn($c) => "$c LIKE :q", $textCols);
 
     if ($qDigits !== '') {
         $ors[] = "REGEXP_REPLACE(r.norm_phone_primary, '[^0-9]', '') LIKE :q_digits";
-        $ors[] = "REGEXP_REPLACE(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.phone_secondary')), '[^0-9]', '') LIKE :q_digits";
         $params[':q_digits'] = '%' . $qDigits . '%';
-    } else {
-        // Still cover phone columns for "555" plain-text input.
-        $ors[] = 'LOWER(r.norm_phone_primary) LIKE :q';
     }
 
     $where[] = '(' . implode(' OR ', $ors) . ')';
-    $params[':q'] = '%' . $qLower . '%';
+    $params[':q'] = '%' . $qRaw . '%';
 }
 
 $whereSql = implode(' AND ', $where);
@@ -367,9 +365,13 @@ unset($needsLabelJoin); // reserved for future use
 
 // Total count
 $countSql = "SELECT COUNT(*) $baseFrom WHERE $whereSql";
-$stmt = $db->prepare($countSql);
-$stmt->execute($params);
-$total = (int) $stmt->fetchColumn();
+try {
+    $stmt = $db->prepare($countSql);
+    $stmt->execute($params);
+    $total = (int) $stmt->fetchColumn();
+} catch (PDOException $e) {
+    pipelineFail(500, 'Leads query failed: ' . $e->getMessage(), 'leads_query_failed');
+}
 
 // Preview-count mode: used by the marketing composer to show a live recipient
 // estimate without paying to fetch full rows. Also returns quick per-channel
