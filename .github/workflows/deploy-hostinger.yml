@@ -46,36 +46,45 @@ jobs:
         env:
           KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
           HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
-          PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
+          PORT_RAW: ${{ secrets.HOSTINGER_SSH_PORT }}
         run: |
           set -e
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          # Strip Windows line endings + trim trailing whitespace
+
+          # Strip whitespace + non-digit chars from PORT — GitHub secrets often
+          # carry trailing newlines/spaces from pasting which break ssh tools.
+          PORT=$(echo "$PORT_RAW" | tr -dc '0-9')
+          if [ -z "$PORT" ]; then
+            echo "::error::HOSTINGER_SSH_PORT secret is empty or contains no digits. Set it to a number like 65002."
+            exit 1
+          fi
+          # Same trim for HOST in case there's stray whitespace
+          HOST_TRIMMED=$(echo "$HOST" | tr -d '[:space:]')
+
+          # Strip Windows line endings from key
           printf '%s\n' "$KEY" | sed 's/\r$//' > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          # Sanity-check the key looks valid
+
           if ! ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null 2>&1; then
-            echo "::error::HOSTINGER_SSH_KEY is malformed. The secret must contain the entire private key file, including BEGIN/END lines and a trailing newline. Re-copy the output of 'cat ~/.ssh/hostinger_vinvault' and re-save the secret."
-            echo "First line of stored key:"
+            echo "::error::HOSTINGER_SSH_KEY is malformed. Re-copy the output of 'cat ~/.ssh/hostinger_vinvault' and re-save the secret."
             head -1 ~/.ssh/id_ed25519
-            echo "Last line of stored key:"
             tail -1 ~/.ssh/id_ed25519
-            echo "Line count:"
-            wc -l ~/.ssh/id_ed25519
             exit 1
           fi
           echo "Key parsed OK. Public counterpart:"
           ssh-keygen -y -f ~/.ssh/id_ed25519
           echo ""
-          echo "Adding $HOST:$PORT to known_hosts..."
-          ssh-keyscan -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts
+          echo "Adding $HOST_TRIMMED:$PORT to known_hosts..."
+          ssh-keyscan -p "$PORT" -H "$HOST_TRIMMED" >> ~/.ssh/known_hosts
+
+          # Persist the cleaned values for later steps
+          echo "PORT=$PORT" >> "$GITHUB_ENV"
+          echo "HOST=$HOST_TRIMMED" >> "$GITHUB_ENV"
 
       - name: Test SSH connection
         env:
-          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
           USER: ${{ secrets.HOSTINGER_SSH_USER }}
-          PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
           DEPLOY_DIR: ${{ secrets.HOSTINGER_DEPLOY_DIR }}
         run: |
           echo "Connecting to $USER@$HOST:$PORT..."
@@ -85,14 +94,10 @@ jobs:
 
       - name: Rsync api/ to Hostinger
         env:
-          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
           USER: ${{ secrets.HOSTINGER_SSH_USER }}
-          PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
           DEPLOY_DIR: ${{ secrets.HOSTINGER_DEPLOY_DIR }}
         run: |
           echo "Syncing $(pwd)/api/ → $USER@$HOST:$DEPLOY_DIR/api/"
-          # --delete makes the server folder match the repo exactly
-          # --exclude=uploads/ preserves user-uploaded files on the server
           rsync -avz --delete \
             --exclude="uploads/" \
             -e "ssh -p $PORT -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
@@ -101,9 +106,7 @@ jobs:
 
       - name: Verify deployment
         env:
-          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
           USER: ${{ secrets.HOSTINGER_SSH_USER }}
-          PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
           DEPLOY_DIR: ${{ secrets.HOSTINGER_DEPLOY_DIR }}
         run: |
           ssh -p "$PORT" -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
