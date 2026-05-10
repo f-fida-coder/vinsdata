@@ -1,0 +1,79 @@
+name: One-shot sync of api/uploads/ to Hostinger
+
+# Why this exists:
+# The regular deploy workflow excludes api/uploads/ on purpose, so files
+# uploaded directly on production never get clobbered. But during early
+# development, files were uploaded via `npm run dev` (which writes to the
+# local Mac's filesystem while still hitting the production DB), leaving
+# orphaned artifact rows that point at files only present locally.
+#
+# This workflow does NOT have --delete and does NOT exclude uploads/ —
+# it just pushes ./api/uploads/ → server:.../api/uploads/ and merges
+# into whatever's already there. Trigger it manually from the Actions
+# tab when you need to reconcile.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  sync-uploads:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup SSH key
+        env:
+          KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+          HOST_RAW: ${{ secrets.HOSTINGER_SSH_HOST }}
+          PORT_RAW: ${{ secrets.HOSTINGER_SSH_PORT }}
+          USER_RAW: ${{ secrets.HOSTINGER_SSH_USER }}
+          DEPLOY_DIR_RAW: ${{ secrets.HOSTINGER_DEPLOY_DIR }}
+        run: |
+          set -e
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          PORT=$(printf '%s' "$PORT_RAW" | tr -dc '0-9')
+          HOST=$(printf '%s' "$HOST_RAW" | tr -d '[:space:]')
+          USER=$(printf '%s' "$USER_RAW" | tr -d '[:space:]')
+          DEPLOY_DIR=$(printf '%s' "$DEPLOY_DIR_RAW" | tr -d '\r\n' | sed 's/[[:space:]]*$//' | sed 's/^[[:space:]]*//')
+
+          for v in PORT HOST USER DEPLOY_DIR; do
+            eval "val=\$$v"
+            if [ -z "$val" ]; then
+              echo "::error::$v secret is empty after trimming"; exit 1
+            fi
+          done
+
+          printf '%s\n' "$KEY" | sed 's/\r$//' > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+          if ! ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null 2>&1; then
+            echo "::error::HOSTINGER_SSH_KEY is malformed"
+            exit 1
+          fi
+
+          echo "PORT=$PORT" >> "$GITHUB_ENV"
+          echo "HOST=$HOST" >> "$GITHUB_ENV"
+          echo "USER=$USER" >> "$GITHUB_ENV"
+          echo "DEPLOY_DIR=$DEPLOY_DIR" >> "$GITHUB_ENV"
+
+      - name: List local uploads being synced
+        run: |
+          ls -la api/uploads/ || true
+          echo "Total files: $(find api/uploads/ -maxdepth 1 -type f | wc -l)"
+
+      - name: Rsync api/uploads/ to Hostinger (no --delete)
+        run: |
+          echo "Merging $(pwd)/api/uploads/ → server:$DEPLOY_DIR/api/uploads/"
+          rsync -avz \
+            -e "ssh -p $PORT -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
+            ./api/uploads/ \
+            "$USER@$HOST:$DEPLOY_DIR/api/uploads/"
+
+      - name: Verify on server
+        run: |
+          ssh -p "$PORT" -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
+              "$USER@$HOST" \
+              "ls -la \"$DEPLOY_DIR/api/uploads/\" | head -30 && echo '---' && echo 'File count: '\$(find \"$DEPLOY_DIR/api/uploads/\" -maxdepth 1 -type f | wc -l)"
