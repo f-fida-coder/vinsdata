@@ -417,6 +417,39 @@ export default function LeadsPage() {
   const clearAll = () => { setFilters(EMPTY_FILTERS); setSearchInput(''); setPage(1); setActiveViewId(null); };
   const updateFilter = (key, value) => { setFilters((prev) => ({ ...prev, [key]: value })); setPage(1); setActiveViewId(null); };
 
+  const [deletingBatch, setDeletingBatch] = useState(false);
+  const deleteCurrentBatch = async () => {
+    const batchId = filters.batch_id;
+    if (!batchId || !isAdmin) return;
+    const label = batchLabel(batchId);
+    const ok = window.confirm(
+      `Delete batch "${label}" and all its leads?\n\n` +
+      `This permanently removes the imported leads from this batch and all attached CRM data ` +
+      `(notes, tasks, contact logs, labels, marketing recipients). The uploaded source file is kept.\n\n` +
+      `This cannot be undone.`
+    );
+    if (!ok) return;
+    setDeletingBatch(true);
+    try {
+      const res = await api.delete('/lead_imports', { data: { id: Number(batchId) } });
+      window.alert(`Deleted batch "${res.data.batch_name}" and ${res.data.deleted_leads} lead${res.data.deleted_leads === 1 ? '' : 's'}.`);
+      // Drop the now-stale filter and refresh.
+      setFilters((prev) => ({ ...prev, batch_id: '' }));
+      setPage(1);
+      setActiveViewId(null);
+      // Refresh batch options so the deleted batch disappears from the dropdown.
+      try {
+        const opts = await api.get('/lead_filter_options');
+        setOptions(opts.data);
+      } catch { /* non-blocking */ }
+      fetchLeads();
+    } catch (err) {
+      window.alert(extractApiError(err, 'Failed to delete batch'));
+    } finally {
+      setDeletingBatch(false);
+    }
+  };
+
   const batchLabel = (id) => {
     const b = options.batches.find((x) => String(x.id) === String(id));
     return b ? b.batch_name : id;
@@ -673,6 +706,28 @@ export default function LeadsPage() {
                 >&times;</button>
               </span>
             ))}
+            {isAdmin && filters.batch_id !== '' && (
+              <button
+                type="button"
+                onClick={deleteCurrentBatch}
+                disabled={deletingBatch}
+                style={{
+                  marginLeft: 'auto',
+                  background: 'transparent',
+                  border: '1px solid #fca5a5',
+                  color: '#b91c1c',
+                  cursor: deletingBatch ? 'not-allowed' : 'pointer',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  opacity: deletingBatch ? 0.6 : 1,
+                }}
+                title="Permanently delete this batch and all its imported leads"
+              >
+                {deletingBatch ? 'Deleting…' : 'Delete this batch'}
+              </button>
+            )}
           </div>
         )}
 
