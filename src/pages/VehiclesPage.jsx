@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import api from '../api';
+import { useState, useEffect, useRef } from 'react';
+import api, { extractApiError } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { SectionHeader, KPI, Button, Icon, Input, EmptyState } from '../components/ui';
 
@@ -26,6 +26,30 @@ export default function VehiclesPage() {
     try { await api.post('/vehicles', { name }); setShowModal(false); setName(''); fetchVehicles(); }
     catch { setError('Failed to add vehicle'); }
     finally { setSubmitting(false); }
+  };
+
+  const handleRename = async (v) => {
+    const next = window.prompt('New name for this vehicle:', v.name);
+    if (next === null) return;
+    const trimmed = next.trim();
+    if (trimmed === '' || trimmed === v.name) return;
+    try {
+      await api.put('/vehicles', { id: v.id, name: trimmed });
+      fetchVehicles();
+    } catch (err) {
+      window.alert(extractApiError(err, 'Failed to rename vehicle'));
+    }
+  };
+
+  const handleDelete = async (v) => {
+    const ok = window.confirm(`Delete vehicle "${v.name}"?\n\nThis only works if no files are attached to it.`);
+    if (!ok) return;
+    try {
+      await api.delete('/vehicles', { data: { id: v.id } });
+      fetchVehicles();
+    } catch (err) {
+      window.alert(extractApiError(err, 'Failed to delete vehicle'));
+    }
   };
 
   return (
@@ -70,7 +94,12 @@ export default function VehiclesPage() {
                   <td className="cell-strong">{v.name}</td>
                   <td className="cell-muted">{(v.created_at || '').slice(0, 10) || '—'}</td>
                   <td onClick={(e) => e.stopPropagation()}>
-                    <Button variant="ghost" size="sm" icon="moreV"/>
+                    {user.role === 'admin' ? (
+                      <RowMenu
+                        onRename={() => handleRename(v)}
+                        onDelete={() => handleDelete(v)}
+                      />
+                    ) : null}
                   </td>
                 </tr>
               ))}
@@ -114,5 +143,78 @@ export default function VehiclesPage() {
         </>
       )}
     </div>
+  );
+}
+
+function RowMenu({ onRename, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  return (
+    <span ref={wrapRef} style={{ position: 'relative', display: 'inline-block' }}>
+      <Button
+        variant="ghost"
+        size="sm"
+        icon="moreV"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      />
+      {open && (
+        <div
+          role="menu"
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: 'calc(100% + 4px)',
+            background: 'var(--surface, #fff)',
+            border: '1px solid var(--border-0, #e5e7eb)',
+            borderRadius: 8,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+            minWidth: 140,
+            zIndex: 20,
+            padding: 4,
+          }}
+        >
+          <MenuItem onClick={() => { setOpen(false); onRename(); }}>Rename</MenuItem>
+          <MenuItem onClick={() => { setOpen(false); onDelete(); }} danger>Delete</MenuItem>
+        </div>
+      )}
+    </span>
+  );
+}
+
+function MenuItem({ children, onClick, danger }) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      style={{
+        display: 'block',
+        width: '100%',
+        textAlign: 'left',
+        padding: '6px 10px',
+        background: 'transparent',
+        border: 'none',
+        cursor: 'pointer',
+        fontSize: 13,
+        color: danger ? '#b91c1c' : 'inherit',
+        borderRadius: 6,
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = danger ? '#fee2e2' : 'rgba(0,0,0,0.05)')}
+      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+    >
+      {children}
+    </button>
   );
 }

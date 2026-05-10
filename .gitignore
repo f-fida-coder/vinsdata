@@ -11,6 +11,11 @@ node_modules
 dist-ssr
 *.local
 
+# Local secrets — never commit (DB credentials live here for local dev)
+.env
+.env.*
+!.env.example
+
 
 
 # Editor directories and files
