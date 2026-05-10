@@ -294,40 +294,59 @@ if (isset($_GET['number_of_owners_max']) && $_GET['number_of_owners_max'] !== ''
     $params[':noo_max'] = (int) $_GET['number_of_owners_max'];
 }
 
-// Partial normalized fields (LIKE) — inline JSON_UNQUOTE because they aren't indexed.
+// Partial normalized fields (LIKE) — inline JSON_UNQUOTE because they aren't
+// indexed. JSON_UNQUOTE returns utf8mb4_bin, which is case-sensitive, so we
+// lowercase both sides for predictable name/city matching.
 $likeCols = [
-    'first_name'  => "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.first_name'))",
-    'last_name'   => "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.last_name'))",
-    'full_name'   => "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.full_name'))",
-    'city'        => "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.city'))",
+    'first_name'  => "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.first_name')))",
+    'last_name'   => "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.last_name')))",
+    'full_name'   => "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.full_name')))",
+    'city'        => "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.city')))",
     'zip_code'    => "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.zip_code'))",
 ];
 foreach ($likeCols as $q => $expr) {
     if (isset($_GET[$q]) && $_GET[$q] !== '') {
+        $val = $q === 'zip_code' ? $_GET[$q] : strtolower((string) $_GET[$q]);
         $where[] = "$expr LIKE :$q";
-        $params[":$q"] = '%' . $_GET[$q] . '%';
+        $params[":$q"] = '%' . $val . '%';
     }
 }
 
-// Global search across the most useful normalized fields
+// Global search across the most useful normalized fields. Most JSON-extracted
+// text comes back as utf8mb4_bin (case-sensitive), so we lowercase both sides.
+// Phones get a digit-only variant so "(555) 123-4567" matches "5551234567".
 if (isset($_GET['q']) && $_GET['q'] !== '') {
-    $q = '%' . $_GET['q'] . '%';
-    $searchCols = [
-        'r.norm_vin',
-        "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.first_name'))",
-        "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.last_name'))",
-        "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.full_name'))",
-        'r.norm_phone_primary',
-        'r.norm_email_primary',
-        "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.full_address'))",
-        "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.city'))",
-        'r.norm_state',
-        'r.norm_make',
-        'r.norm_model',
+    $qRaw    = (string) $_GET['q'];
+    $qLower  = strtolower($qRaw);
+    $qDigits = preg_replace('/[^0-9]/', '', $qRaw);
+
+    $textCols = [
+        'LOWER(r.norm_vin)',
+        "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.first_name')))",
+        "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.last_name')))",
+        "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.full_name')))",
+        'LOWER(r.norm_email_primary)',
+        "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.full_address')))",
+        "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.city')))",
+        "LOWER(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.zip_code')))",
+        'LOWER(r.norm_state)',
+        'LOWER(r.norm_make)',
+        'LOWER(r.norm_model)',
         'CAST(r.norm_year AS CHAR)',
     ];
-    $where[] = '(' . implode(' OR ', array_map(fn($c) => "$c LIKE :q", $searchCols)) . ')';
-    $params[':q'] = $q;
+    $ors = array_map(fn($c) => "$c LIKE :q", $textCols);
+
+    if ($qDigits !== '') {
+        $ors[] = "REGEXP_REPLACE(r.norm_phone_primary, '[^0-9]', '') LIKE :q_digits";
+        $ors[] = "REGEXP_REPLACE(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.phone_secondary')), '[^0-9]', '') LIKE :q_digits";
+        $params[':q_digits'] = '%' . $qDigits . '%';
+    } else {
+        // Still cover phone columns for "555" plain-text input.
+        $ors[] = 'LOWER(r.norm_phone_primary) LIKE :q';
+    }
+
+    $where[] = '(' . implode(' OR ', $ors) . ')';
+    $params[':q'] = '%' . $qLower . '%';
 }
 
 $whereSql = implode(' AND ', $where);
