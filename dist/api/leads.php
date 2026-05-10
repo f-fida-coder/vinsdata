@@ -336,7 +336,17 @@ if (isset($_GET['q']) && $_GET['q'] !== '') {
         'r.norm_phone_primary',
         'CAST(r.norm_year AS CHAR)',
     ];
-    $ors = array_map(fn($c) => "$c LIKE :q", $textCols);
+    // Use a unique placeholder per OR clause. PDO with native prepares
+    // (ATTR_EMULATE_PREPARES=false) treats each placeholder occurrence as a
+    // distinct bind point — reusing the same `:q` produced HY093 here even
+    // though it works for some queries.
+    $ors = [];
+    $like = '%' . $qRaw . '%';
+    foreach ($textCols as $i => $col) {
+        $ph = ":q$i";
+        $ors[] = "$col LIKE $ph";
+        $params[$ph] = $like;
+    }
 
     if ($qDigits !== '') {
         $ors[] = "REGEXP_REPLACE(r.norm_phone_primary, '[^0-9]', '') LIKE :q_digits";
@@ -344,7 +354,6 @@ if (isset($_GET['q']) && $_GET['q'] !== '') {
     }
 
     $where[] = '(' . implode(' OR ', $ors) . ')';
-    $params[':q'] = '%' . $qRaw . '%';
 }
 
 $whereSql = implode(' AND ', $where);
