@@ -35,7 +35,26 @@ function getDBConnection(): PDO
         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES   => false,
+        PDO::ATTR_TIMEOUT            => 5,
     ];
 
-    return new PDO($dsn, DB_USER, DB_PASS, $options);
+    try {
+        return new PDO($dsn, DB_USER, DB_PASS, $options);
+    } catch (PDOException $e) {
+        // Without this, a DB outage manifests as a silent 500 with empty body
+        // (display_errors is off in production). Catch and emit a clean JSON
+        // error so the frontend can show something useful instead of just
+        // "Sign in failed. Please try again."
+        if (!headers_sent()) {
+            http_response_code(503);
+            header('Content-Type: application/json; charset=UTF-8');
+        }
+        echo json_encode([
+            'success' => false,
+            'message' => 'Database is unreachable. Try again in a minute.',
+            'code'    => 'db_unreachable',
+            'detail'  => $e->getMessage(),
+        ]);
+        exit();
+    }
 }
