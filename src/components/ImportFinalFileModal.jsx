@@ -129,7 +129,20 @@ export default function ImportFinalFileModal({ file, onClose, onImported }) {
         setPhase('mapping');
       } catch (err) {
         if (!cancelled) {
-          setParseError(err?.message || 'Failed to parse spreadsheet');
+          // The download is fetched as arraybuffer, so axios can't auto-decode
+          // a JSON error body. Pull it out manually so the user sees the real
+          // reason ("File missing on disk", "Artifact not found", etc.) instead
+          // of just "Request failed with status code 404".
+          let detail = '';
+          const buf = err?.response?.data;
+          if (buf instanceof ArrayBuffer) {
+            try {
+              const text = new TextDecoder().decode(buf);
+              const json = JSON.parse(text);
+              if (json?.message) detail = json.message + (json.code ? ` (${json.code})` : '');
+            } catch { /* not JSON or empty */ }
+          }
+          setParseError(detail || err?.message || 'Failed to parse spreadsheet');
           setPhase('error');
         }
       }
