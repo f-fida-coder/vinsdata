@@ -22,6 +22,25 @@ $out = [
     'db' => null,
 ];
 
+// Uploads directory inspection (no filenames leaked, just counts/sizes).
+$uploadsDir = __DIR__ . '/uploads/';
+if (is_dir($uploadsDir)) {
+    $count = 0; $totalBytes = 0;
+    foreach (scandir($uploadsDir) ?: [] as $f) {
+        if ($f === '.' || $f === '..' || $f === '.htaccess') continue;
+        $count++;
+        $totalBytes += @filesize($uploadsDir . $f) ?: 0;
+    }
+    $out['uploads'] = [
+        'path_resolves' => realpath($uploadsDir) ?: null,
+        'writable'      => is_writable($uploadsDir),
+        'file_count'    => $count,
+        'total_bytes'   => $totalBytes,
+    ];
+} else {
+    $out['uploads'] = ['error' => 'uploads dir missing or not a directory'];
+}
+
 if (isset($_GET['db']) && extension_loaded('pdo_mysql')) {
     // Attempt the same kind of connection config.php's getDBConnection() makes.
     // We DON'T trust config.php here in case it's the broken file; we read the
