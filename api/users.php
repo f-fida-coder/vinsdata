@@ -80,6 +80,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         assertValidUserRole($input['role']);
         $fields[] = "role = :role"; $params[':role'] = $input['role'];
     }
+    // Optional password reset on PATCH. Admins can rotate any user's password
+    // without the user being signed in. Empty / missing => password is left alone.
+    if (!empty($input['password'])) {
+        if (strlen($input['password']) < 6) {
+            http_response_code(400);
+            echo json_encode(["success" => false, "message" => "Password must be at least 6 characters"]);
+            exit();
+        }
+        $fields[] = "password = :password";
+        $params[':password'] = password_hash($input['password'], PASSWORD_BCRYPT);
+    }
 
     if (empty($fields)) {
         http_response_code(400);
@@ -90,6 +101,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $sql = "UPDATE users SET " . implode(', ', $fields) . " WHERE id = :id";
     $stmt = $db->prepare($sql);
     $stmt->execute($params);
+
+    echo json_encode(["success" => true]);
+
+} elseif ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
+    // Admin-only deletion. Prevent self-deletion as a safety rail — an admin
+    // shouldn't be able to lock themselves out of their own panel.
+    $input = json_decode(file_get_contents("php://input"), true) ?: [];
+    $userId = $input['id'] ?? ($_GET['id'] ?? null);
+
+    if (empty($userId)) {
+        http_response_code(400);
+        echo json_encode(["success" => false, "message" => "User id is required"]);
+        exit();
+    }
+    if ((int) $userId === (int) $_SESSION['user_id']) {
+        http_response_code(400);
+        echo json_encode(["success" => false, "message" => "You cannot delete your own account"]);
+        exit();
+    }
+
+    $stmt = $db->prepare("DELETE FROM users WHERE id = :id");
+    $stmt->execute([':id' => $userId]);
 
     echo json_encode(["success" => true]);
 

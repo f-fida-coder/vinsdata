@@ -11,8 +11,7 @@ node_modules
 dist-ssr
 *.local
 
-# API - user uploads must never be tracked (git pulls would wipe them).
-api/uploads/
+
 
 # Editor directories and files
 .vscode/*

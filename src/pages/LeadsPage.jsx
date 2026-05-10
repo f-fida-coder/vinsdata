@@ -89,6 +89,16 @@ function formatDate(s) {
   return d.toLocaleDateString();
 }
 
+// Title-case a vehicle string while leaving year numbers alone:
+// "2002 TOYOTA LAND CRUISER" -> "2002 Toyota Land Cruiser"
+function formatVehicle(s) {
+  if (!s) return s;
+  return String(s)
+    .split(' ')
+    .map((w) => /^\d/.test(w) ? w : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
 function normValue(lead, key) {
   return lead?.normalized_payload?.[key] ?? '';
 }
@@ -157,6 +167,32 @@ const HARDCODED_PAYLOAD_KEYS = new Set([
   'make', 'model', 'year', 'mileage',
 ]);
 
+// User-toggleable built-in table columns. "name" is always visible (the row anchor).
+// Each entry: [key, label, defaultHidden]
+const BUILTIN_COLUMNS = [
+  ['tier',        'Tier',        false],
+  ['status',      'Status',      false],
+  ['priority',    'Priority',    true],
+  ['temperature', 'Temperature', true],
+  ['agent',       'Agent',       true],
+  ['labels',      'Labels',      true],
+  ['wanted',      'Wanted',      true],
+  ['offered',     'Offered',     true],
+  ['vin',         'VIN',         true],
+  ['phone',       'Phone',       false],
+  ['email',       'Email',       false],
+  ['location',    'Location',    true],
+  ['vehicle',     'Vehicle',     false],
+  ['source_file', 'Source file', true],
+  ['batch',       'Batch',       true],
+  ['stage',       'Stage',       true],
+  ['row_number',  'Row #',       true],
+  ['imported',    'Imported',    true],
+];
+const BUILTIN_COLUMN_KEYS = BUILTIN_COLUMNS.map(([k]) => k);
+const BUILTIN_COLUMN_LABELS = Object.fromEntries(BUILTIN_COLUMNS.map(([k, l]) => [k, l]));
+const DEFAULT_HIDDEN_BUILTINS = BUILTIN_COLUMNS.filter(([, , h]) => h).map(([k]) => k);
+
 export default function LeadsPage() {
   const { user } = useAuth();
   // Marketers see the full unscoped view (same as admins) because they need
@@ -189,8 +225,9 @@ export default function LeadsPage() {
   const [hiddenColumns, setHiddenColumns] = useState(() => {
     try {
       const stored = localStorage.getItem('lead_hidden_columns');
-      return stored ? new Set(JSON.parse(stored)) : new Set();
-    } catch { return new Set(); }
+      if (stored) return new Set(JSON.parse(stored));
+    } catch { /* fall through */ }
+    return new Set(DEFAULT_HIDDEN_BUILTINS);
   });
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
@@ -419,23 +456,21 @@ export default function LeadsPage() {
   };
 
   return (
-    <div className="page">
-      <div className="section-header">
-        <div>
-          <h1 className="section-title">{isAdmin ? 'CRM Leads' : 'My Leads'}</h1>
-          <p className="section-subtitle">
-            <InlineStats
-              total={data.total}
-              summary={summary}
-              isAdmin={isAdmin}
-              activeFilters={filters}
-              onToggleFilter={(key, value) => updateFilter(
-                key,
-                filters[key] === value ? '' : value,
-              )}
-            />
-          </p>
-        </div>
+    <div className="page leads-page">
+      <div className="leads-header">
+        <h1 className="section-title">{isAdmin ? 'CRM Leads' : 'My Leads'}</h1>
+        <span className="leads-header-stats">
+          <InlineStats
+            total={data.total}
+            summary={summary}
+            isAdmin={isAdmin}
+            activeFilters={filters}
+            onToggleFilter={(key, value) => updateFilter(
+              key,
+              filters[key] === value ? '' : value,
+            )}
+          />
+        </span>
       </div>
 
       {error && (
@@ -447,7 +482,7 @@ export default function LeadsPage() {
             color: 'var(--danger)',
             padding: '10px 14px',
             borderRadius: 'var(--radius-lg)',
-            marginBottom: 16,
+            marginBottom: 12,
             justifyContent: 'space-between',
           }}
         >
@@ -459,16 +494,6 @@ export default function LeadsPage() {
           >&times;</button>
         </div>
       )}
-
-      {/* Quick-filter pills — one-click access to the things people actually filter by */}
-      <QuickFilterPills
-        tier={filters.tier}
-        temperature={filters.lead_temperature}
-        status={filters.status}
-        onTier={(v) => updateFilter('tier', v === filters.tier ? '' : v)}
-        onTemp={(v) => updateFilter('lead_temperature', v === filters.lead_temperature ? '' : v)}
-        onStatus={(v) => updateFilter('status', v === filters.status ? '' : v)}
-      />
 
       <div className="tbl-wrap" style={{ marginBottom: 16 }}>
         {/* Toolbar: search + filter toggle + saved views + columns + export */}
@@ -525,7 +550,7 @@ export default function LeadsPage() {
             hiddenColumns={hiddenColumns}
             onToggle={toggleColumn}
             onShowAll={() => setHiddenColumns(new Set())}
-            onHideAll={() => setHiddenColumns(new Set(customColumns))}
+            onHideAll={() => setHiddenColumns(new Set([...BUILTIN_COLUMN_KEYS, ...customColumns]))}
           />
           <a
             href={exportCsvUrl}
@@ -536,6 +561,16 @@ export default function LeadsPage() {
             <Icon name="download" size={16}/>
           </a>
         </div>
+
+        {/* Quick-filter pills — single compact row, horizontally scrollable on narrow screens */}
+        <QuickFilterPills
+          tier={filters.tier}
+          temperature={filters.lead_temperature}
+          status={filters.status}
+          onTier={(v) => updateFilter('tier', v === filters.tier ? '' : v)}
+          onTemp={(v) => updateFilter('lead_temperature', v === filters.lead_temperature ? '' : v)}
+          onStatus={(v) => updateFilter('status', v === filters.status ? '' : v)}
+        />
 
         {showFilters && (
           <div
@@ -554,6 +589,10 @@ export default function LeadsPage() {
                 marginBottom: 14,
               }}
             >
+              <FilterSelect label="Vehicle" value={filters.vehicle_id} onChange={(v) => updateFilter('vehicle_id', v)}>
+                <option value="">Any vehicle</option>
+                {options.vehicles.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+              </FilterSelect>
               <FilterSelect label="Vehicle · Make" value={filters.make} onChange={(v) => updateFilter('make', v)}>
                 <option value="">Any make</option>
                 {options.makes.map((m) => <option key={m} value={m}>{m}</option>)}
@@ -653,8 +692,8 @@ export default function LeadsPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full leads-table" style={{ minWidth: undefined }}>
-              <thead className="bg-gray-50/70 sticky top-0 z-10">
-                <tr className="border-b border-gray-200">
+              <thead className="leads-thead sticky top-0 z-10">
+                <tr>
                   <th className="pl-5 pr-1 py-2 w-8">
                     <input
                       type="checkbox"
@@ -666,24 +705,24 @@ export default function LeadsPage() {
                     />
                   </th>
                   <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Name</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Tier</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="hidden sm:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Priority</th>
-                  <th className="hidden sm:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Temperature</th>
-                  <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Agent</th>
-                  <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Labels</th>
-                  <th className="hidden xl:table-cell px-3 py-2 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Wanted</th>
-                  <th className="hidden xl:table-cell px-3 py-2 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Offered</th>
-                  <th className="hidden lg:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">VIN</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Phone</th>
-                  <th className="hidden lg:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Email</th>
-                  <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Location</th>
-                  <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Vehicle</th>
-                  <th className="hidden lg:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Source file</th>
-                  <th className="hidden lg:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Batch</th>
-                  <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Stage</th>
-                  <th className="hidden xl:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Row #</th>
-                  <th className="hidden lg:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Imported</th>
+                  {!hiddenColumns.has('tier')        && <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Tier</th>}
+                  {!hiddenColumns.has('status')      && <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>}
+                  {!hiddenColumns.has('priority')    && <th className="hidden sm:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Priority</th>}
+                  {!hiddenColumns.has('temperature') && <th className="hidden sm:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Temperature</th>}
+                  {!hiddenColumns.has('agent')       && <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Agent</th>}
+                  {!hiddenColumns.has('labels')      && <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Labels</th>}
+                  {!hiddenColumns.has('wanted')      && <th className="hidden xl:table-cell px-3 py-2 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Wanted</th>}
+                  {!hiddenColumns.has('offered')     && <th className="hidden xl:table-cell px-3 py-2 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Offered</th>}
+                  {!hiddenColumns.has('vin')         && <th className="hidden lg:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">VIN</th>}
+                  {!hiddenColumns.has('phone')       && <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Phone</th>}
+                  {!hiddenColumns.has('email')       && <th className="hidden lg:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Email</th>}
+                  {!hiddenColumns.has('location')    && <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Location</th>}
+                  {!hiddenColumns.has('vehicle')     && <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Vehicle</th>}
+                  {!hiddenColumns.has('source_file') && <th className="hidden lg:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Source file</th>}
+                  {!hiddenColumns.has('batch')       && <th className="hidden lg:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Batch</th>}
+                  {!hiddenColumns.has('stage')       && <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Stage</th>}
+                  {!hiddenColumns.has('row_number')  && <th className="hidden xl:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Row #</th>}
+                  {!hiddenColumns.has('imported')    && <th className="hidden lg:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Imported</th>}
                   {visibleCustomColumns.map((k) => (
                     <th key={`h-${k}`} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap truncate max-w-[200px]" title={k}>
                       {k}
@@ -694,7 +733,7 @@ export default function LeadsPage() {
               <tbody>
                 {data.leads.length === 0 ? (
                   <tr>
-                    <td colSpan={20 + visibleCustomColumns.length} className="py-16 text-center">
+                    <td colSpan={2 + BUILTIN_COLUMN_KEYS.filter((k) => !hiddenColumns.has(k)).length + visibleCustomColumns.length} className="py-16 text-center">
                       <p className="text-sm text-gray-400">No leads match these filters.</p>
                       {activeChips.length > 0 && (
                         <button onClick={clearAll} className="text-sm text-blue-600 hover:text-blue-700 font-medium mt-2">Clear all filters</button>
@@ -718,7 +757,7 @@ export default function LeadsPage() {
                     <tr
                       key={lead.id}
                       onClick={() => setDetailId(lead.id)}
-                      className={`border-b border-gray-100 transition-colors cursor-pointer ${isSelected ? 'bg-blue-50/60' : 'hover:bg-blue-50/20'}`}
+                      className={`leads-row ${isSelected ? 'is-selected' : ''}`}
                     >
                       <td className="pl-5 pr-1 py-2 w-8" onClick={(e) => { e.stopPropagation(); toggleRow(lead.id); }}>
                         <input
@@ -730,79 +769,115 @@ export default function LeadsPage() {
                           aria-label={`Select lead ${lead.id}`}
                         />
                       </td>
-                      <td className="px-2 py-2.5">
+                      <td className="px-2 py-2">
                         <div className="text-sm font-semibold text-gray-900 truncate max-w-[220px]" title={name}>{name}</div>
                       </td>
-                      <td className="px-3 py-2.5">
-                        <span
-                          title={tierMeta.hint}
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${tierMeta.bg} ${tierMeta.text}`}
-                        >
-                          <span className={`w-1.5 h-1.5 rounded-full ${tierMeta.dot}`} />{tierMeta.short}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${statusMeta.bg} ${statusMeta.text}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dot}`} />{statusMeta.label}
-                        </span>
-                      </td>
-                      <td className="hidden sm:table-cell px-3 py-2.5">
-                        <PriorityCell priorityKey={crm.priority} />
-                      </td>
-                      <td className="hidden sm:table-cell px-3 py-2.5">
-                        {temperatureMeta ? (
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${temperatureMeta.bg} ${temperatureMeta.text}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${temperatureMeta.dot}`} />{temperatureMeta.label}
+                      {!hiddenColumns.has('tier') && (
+                        <td className="px-3 py-2">
+                          <span
+                            title={tierMeta.hint}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${tierMeta.bg} ${tierMeta.text}`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full ${tierMeta.dot}`} />{tierMeta.short}
                           </span>
-                        ) : <EmDash />}
-                      </td>
-                      <td className="hidden md:table-cell px-3 py-2.5">
-                        <AgentCell name={crm.assigned_user_name} />
-                      </td>
-                      <td className="hidden md:table-cell px-3 py-2.5">
-                        {labels.length === 0 ? <EmDash /> : (
-                          <div className="flex flex-wrap items-center gap-1 max-w-[220px]">
-                            {labels.slice(0, 3).map((l) => (
-                              <span key={l.id} className="inline-flex items-center text-[10px] font-medium text-white px-1.5 py-0.5 rounded" style={{ backgroundColor: l.color }}>
-                                {l.name}
-                              </span>
-                            ))}
-                            {labels.length > 3 && (
-                              <span className="text-[10px] text-gray-500">+{labels.length - 3}</span>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td className="hidden xl:table-cell px-3 py-2.5 text-[13px] text-gray-700 text-right tabular-nums">
-                        {crm.price_wanted != null ? formatPrice(crm.price_wanted) : <EmDash />}
-                      </td>
-                      <td className="hidden xl:table-cell px-3 py-2.5 text-[13px] text-gray-700 text-right tabular-nums">
-                        {crm.price_offered != null ? formatPrice(crm.price_offered) : <EmDash />}
-                      </td>
-                      <td className="hidden lg:table-cell px-3 py-2.5"><VinCell vin={normValue(lead, 'vin')} /></td>
-                      <td className="px-3 py-2.5 text-[13px] text-gray-700 tabular-nums">
-                        {normValue(lead, 'phone_primary') ? formatPhone(normValue(lead, 'phone_primary')) : <EmDash />}
-                      </td>
-                      <td className="hidden lg:table-cell px-3 py-2.5 text-[13px] text-gray-700 truncate max-w-[180px]" title={normValue(lead, 'email_primary') || ''}>
-                        {normValue(lead, 'email_primary') || <EmDash />}
-                      </td>
-                      <td className="hidden md:table-cell px-3 py-2.5 text-[13px] text-gray-600">
-                        {location && location !== '—' ? location : <EmDash />}
-                      </td>
-                      <td className="hidden md:table-cell px-3 py-2.5 text-[13px] text-gray-700">
-                        {vehicle && vehicle !== '—' ? vehicle : <EmDash />}
-                      </td>
-                      <td className="hidden lg:table-cell px-3 py-2.5 text-[12px] text-gray-500 truncate max-w-[180px]" title={lead.file_display_name || lead.file_name || ''}>
-                        {lead.file_display_name || lead.file_name || <EmDash />}
-                      </td>
-                      <td className="hidden lg:table-cell px-3 py-2.5 text-[12px] text-gray-500 truncate max-w-[180px]" title={lead.batch_name || ''}>
-                        {lead.batch_name || <EmDash />}
-                      </td>
-                      <td className="hidden md:table-cell px-3 py-2.5">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 uppercase tracking-wide">{lead.source_stage}</span>
-                      </td>
-                      <td className="hidden xl:table-cell px-3 py-2.5 text-[11px] text-gray-400 tabular-nums">{lead.source_row_number}</td>
-                      <td className="hidden lg:table-cell px-3 py-2.5 text-[11px] text-gray-400">{formatDate(lead.imported_at)}</td>
+                        </td>
+                      )}
+                      {!hiddenColumns.has('status') && (
+                        <td className="px-3 py-2">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${statusMeta.bg} ${statusMeta.text}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dot}`} />{statusMeta.label}
+                          </span>
+                        </td>
+                      )}
+                      {!hiddenColumns.has('priority') && (
+                        <td className="hidden sm:table-cell px-3 py-2">
+                          <PriorityCell priorityKey={crm.priority} />
+                        </td>
+                      )}
+                      {!hiddenColumns.has('temperature') && (
+                        <td className="hidden sm:table-cell px-3 py-2">
+                          {temperatureMeta ? (
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${temperatureMeta.bg} ${temperatureMeta.text}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${temperatureMeta.dot}`} />{temperatureMeta.label}
+                            </span>
+                          ) : <EmDash />}
+                        </td>
+                      )}
+                      {!hiddenColumns.has('agent') && (
+                        <td className="hidden md:table-cell px-3 py-2">
+                          <AgentCell name={crm.assigned_user_name} />
+                        </td>
+                      )}
+                      {!hiddenColumns.has('labels') && (
+                        <td className="hidden md:table-cell px-3 py-2">
+                          {labels.length === 0 ? <EmDash /> : (
+                            <div className="flex flex-wrap items-center gap-1 max-w-[220px]">
+                              {labels.slice(0, 3).map((l) => (
+                                <span key={l.id} className="inline-flex items-center text-[10px] font-medium text-white px-1.5 py-0.5 rounded" style={{ backgroundColor: l.color }}>
+                                  {l.name}
+                                </span>
+                              ))}
+                              {labels.length > 3 && (
+                                <span className="text-[10px] text-gray-500">+{labels.length - 3}</span>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      )}
+                      {!hiddenColumns.has('wanted') && (
+                        <td className="hidden xl:table-cell px-3 py-2 text-[13px] text-gray-700 text-right tabular-nums">
+                          {crm.price_wanted != null ? formatPrice(crm.price_wanted) : <EmDash />}
+                        </td>
+                      )}
+                      {!hiddenColumns.has('offered') && (
+                        <td className="hidden xl:table-cell px-3 py-2 text-[13px] text-gray-700 text-right tabular-nums">
+                          {crm.price_offered != null ? formatPrice(crm.price_offered) : <EmDash />}
+                        </td>
+                      )}
+                      {!hiddenColumns.has('vin') && (
+                        <td className="hidden lg:table-cell px-3 py-2"><VinCell vin={normValue(lead, 'vin')} /></td>
+                      )}
+                      {!hiddenColumns.has('phone') && (
+                        <td className="px-3 py-2 text-[13px] text-gray-700 tabular-nums whitespace-nowrap">
+                          {normValue(lead, 'phone_primary') ? formatPhone(normValue(lead, 'phone_primary')) : <EmDash />}
+                        </td>
+                      )}
+                      {!hiddenColumns.has('email') && (
+                        <td className="hidden lg:table-cell px-3 py-2 text-[13px] text-gray-700 truncate max-w-[180px]" title={normValue(lead, 'email_primary') || ''}>
+                          {normValue(lead, 'email_primary') || <EmDash />}
+                        </td>
+                      )}
+                      {!hiddenColumns.has('location') && (
+                        <td className="hidden md:table-cell px-3 py-2 text-[13px] text-gray-600 whitespace-nowrap">
+                          {location && location !== '—' ? location : <EmDash />}
+                        </td>
+                      )}
+                      {!hiddenColumns.has('vehicle') && (
+                        <td className="hidden md:table-cell px-3 py-2 text-[13px] text-gray-700 whitespace-nowrap truncate max-w-[200px]" title={vehicle}>
+                          {vehicle && vehicle !== '—' ? formatVehicle(vehicle) : <EmDash />}
+                        </td>
+                      )}
+                      {!hiddenColumns.has('source_file') && (
+                        <td className="hidden lg:table-cell px-3 py-2 text-[12px] text-gray-500 truncate max-w-[180px]" title={lead.file_display_name || lead.file_name || ''}>
+                          {lead.file_display_name || lead.file_name || <EmDash />}
+                        </td>
+                      )}
+                      {!hiddenColumns.has('batch') && (
+                        <td className="hidden lg:table-cell px-3 py-2 text-[12px] text-gray-500 truncate max-w-[180px]" title={lead.batch_name || ''}>
+                          {lead.batch_name || <EmDash />}
+                        </td>
+                      )}
+                      {!hiddenColumns.has('stage') && (
+                        <td className="hidden md:table-cell px-3 py-2">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 uppercase tracking-wide">{lead.source_stage}</span>
+                        </td>
+                      )}
+                      {!hiddenColumns.has('row_number') && (
+                        <td className="hidden xl:table-cell px-3 py-2 text-[11px] text-gray-400 tabular-nums">{lead.source_row_number}</td>
+                      )}
+                      {!hiddenColumns.has('imported') && (
+                        <td className="hidden lg:table-cell px-3 py-2 text-[11px] text-gray-400 whitespace-nowrap">{formatDate(lead.imported_at)}</td>
+                      )}
                       {visibleCustomColumns.map((k) => {
                         const v = np[k];
                         const display = v === undefined || v === null || v === '' ? null : String(v);
@@ -871,50 +946,70 @@ export default function LeadsPage() {
 }
 
 function ColumnsMenu({ open, onOpenChange, customColumns, hiddenColumns, onToggle, onShowAll, onHideAll }) {
+  const visibleBuiltins = BUILTIN_COLUMN_KEYS.filter((k) => !hiddenColumns.has(k)).length;
+  const hiddenBuiltins = BUILTIN_COLUMN_KEYS.length - visibleBuiltins;
   const visibleCount = customColumns.filter((k) => !hiddenColumns.has(k)).length;
   const totalCount = customColumns.length;
-  const hasHidden = totalCount > 0 && visibleCount < totalCount;
+  const hasHidden = hiddenBuiltins > 0 || (totalCount > 0 && visibleCount < totalCount);
   return (
-    <div className="relative">
+    <div className="cm-wrap">
       <button
+        type="button"
         onClick={() => onOpenChange(!open)}
-        className="relative inline-flex items-center justify-center w-9 h-9 rounded-lg border bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-700"
-        title={totalCount > 0 ? `Columns (${visibleCount}/${totalCount} shown)` : 'Columns'}
+        className="vv-btn vv-btn-secondary vv-btn-icon cm-trigger"
+        title={`Columns (${visibleBuiltins + visibleCount}/${BUILTIN_COLUMN_KEYS.length + totalCount} shown)`}
         aria-label="Columns"
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="4" width="6" height="16" rx="1"/>
+          <rect x="11" y="4" width="4" height="16" rx="1"/>
+          <rect x="17" y="4" width="4" height="16" rx="1"/>
         </svg>
-        {hasHidden && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-white" />}
+        {hasHidden && <span className="cm-trigger-dot"/>}
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-20" onClick={() => onOpenChange(false)} />
-          <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-gray-100 z-30 max-h-[70vh] flex flex-col">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Imported columns</span>
-              <div className="flex items-center gap-2 text-[11px]">
-                <button onClick={onShowAll} className="text-blue-600 hover:text-blue-800 font-medium">Show all</button>
-                <span className="text-gray-300">·</span>
-                <button onClick={onHideAll} className="text-gray-500 hover:text-gray-700 font-medium">Hide all</button>
+          <div className="cm-overlay" onClick={() => onOpenChange(false)} />
+          <div className="cm-panel">
+            <div className="cm-head">
+              <span className="cm-head-title">Columns</span>
+              <div className="cm-head-actions">
+                <button type="button" onClick={onShowAll} className="cm-link cm-link-accent">Show all</button>
+                <span className="cm-head-sep">·</span>
+                <button type="button" onClick={onHideAll} className="cm-link">Hide all</button>
               </div>
             </div>
-            <div className="overflow-y-auto py-1">
-              {totalCount === 0 ? (
-                <p className="px-3 py-3 text-xs text-gray-500">
-                  No imported columns yet. Columns from your next import will appear here.
-                </p>
-              ) : customColumns.map((k) => (
-                <label key={k} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-gray-50 cursor-pointer">
+            <div className="cm-body">
+              <div className="cm-section-label">
+                Built-in {hiddenBuiltins > 0 && <span className="cm-section-count">· {hiddenBuiltins} hidden</span>}
+              </div>
+              {BUILTIN_COLUMN_KEYS.map((k) => (
+                <label key={`b-${k}`} className="cm-item">
                   <input
                     type="checkbox"
                     checked={!hiddenColumns.has(k)}
                     onChange={() => onToggle(k)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
-                  <span className="text-gray-700 truncate" title={k}>{k}</span>
+                  <span className="cm-item-label">{BUILTIN_COLUMN_LABELS[k]}</span>
                 </label>
               ))}
+              {totalCount > 0 && (
+                <>
+                  <div className="cm-section-label cm-section-label-divider">
+                    Imported {totalCount - visibleCount > 0 && <span className="cm-section-count">· {totalCount - visibleCount} hidden</span>}
+                  </div>
+                  {customColumns.map((k) => (
+                    <label key={`c-${k}`} className="cm-item">
+                      <input
+                        type="checkbox"
+                        checked={!hiddenColumns.has(k)}
+                        onChange={() => onToggle(k)}
+                      />
+                      <span className="cm-item-label" title={k}>{k}</span>
+                    </label>
+                  ))}
+                </>
+              )}
             </div>
           </div>
         </>
@@ -1057,6 +1152,7 @@ function ChipGroup({ label, items, active, onToggle, dotVarMap }) {
             className={`chip ${isActive ? 'active' : ''}`}
             onClick={() => onToggle(item.key)}
             title={item.hint}
+            style={{ '--chip-color': bg }}
           >
             <span className="chip-dot" style={{ background: bg }}/>
             {item.label}
@@ -1072,9 +1168,9 @@ function QuickFilterPills({ tier, temperature, status, onTier, onTemp, onStatus 
     .map((k) => LEAD_STATUSES.find((s) => s.key === k))
     .filter(Boolean);
   return (
-    <div className="chip-row">
+    <div className="leads-quickfilters">
       <ChipGroup label="Tier" items={LEAD_TIERS} active={tier} onToggle={onTier} dotVarMap={TIER_DOT_VAR}/>
-      <span style={{ color: 'var(--border-1)' }}>·</span>
+      <span className="leads-qf-sep"/>
       <ChipGroup
         label="Temp"
         items={LEAD_TEMPERATURES.filter((t) => t.key !== 'closed')}
@@ -1082,7 +1178,7 @@ function QuickFilterPills({ tier, temperature, status, onTier, onTemp, onStatus 
         onToggle={onTemp}
         dotVarMap={TEMP_DOT_VAR}
       />
-      <span style={{ color: 'var(--border-1)' }}>·</span>
+      <span className="leads-qf-sep"/>
       <ChipGroup label="Status" items={statusItems} active={status} onToggle={onStatus} dotVarMap={STATUS_DOT_VAR}/>
     </div>
   );

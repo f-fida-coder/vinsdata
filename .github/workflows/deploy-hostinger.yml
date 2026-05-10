@@ -1,0 +1,69 @@
+name: Deploy to Hostinger
+
+# Pushes the built frontend (dist/) and the PHP backend (api/, .htaccess)
+# to Hostinger over FTP after every push to main.
+#
+# Required GitHub Secrets (Settings → Secrets and variables → Actions):
+#   HOSTINGER_FTP_SERVER    - e.g. "ftp.yourdomain.com" or the IP from hPanel → Files → FTP Accounts
+#   HOSTINGER_FTP_USERNAME  - the FTP username (often "u123456789.yourdomain.com")
+#   HOSTINGER_FTP_PASSWORD  - the FTP password
+#   HOSTINGER_FTP_PATH      - target dir on the server, e.g. "/public_html/" or "/public_html/vin-dashboard/"
+#                             (must end with a slash)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}  # allow manual run from the Actions tab
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Sync to Hostinger via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.HOSTINGER_FTP_SERVER }}
+          username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
+          password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
+          server-dir: ${{ secrets.HOSTINGER_FTP_PATH }}
+          # Ship everything except local-only / build-input files.
+          # api/ and dist/ are explicitly NOT excluded so every file gets pushed.
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            src/**
+            vins_dashbaord_design/**
+            scripts/**
+            api/uploads/**
+            DEPLOY.md
+            README.md
+            package.json
+            package-lock.json
+            vite.config.js
+            tailwind.config.js
+            postcss.config.js
+            eslint.config.js
+            /index.html
+          # Use lftp-style state file so only changed files transfer on subsequent runs.
+          state-name: .ftp-deploy-sync-state.json
+          # Don't dangle on broken connections.
+          timeout: 60000
+          # Verify file size after upload, retry on failures.
+          dry-run: false
+          log-level: standard

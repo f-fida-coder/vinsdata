@@ -5,24 +5,14 @@ import { TASK_TYPES } from '../lib/tasks';
 // ---------- Action catalog ----------
 
 const ACTIONS = [
-  { key: 'set_status',         label: 'Change status',     tone: 'blue',    adminOnly: false },
-  { key: 'set_priority',       label: 'Change priority',   tone: 'amber',   adminOnly: false },
-  { key: 'assign',             label: 'Assign agent',      tone: 'emerald', adminOnly: true },
-  { key: 'add_label',          label: 'Add label',         tone: 'violet',  adminOnly: false },
-  { key: 'remove_label',       label: 'Remove label',      tone: 'gray',    adminOnly: false },
-  { key: 'create_task',        label: 'Create task',       tone: 'indigo',  adminOnly: false },
-  { key: 'send_to_marketing',  label: 'Send to marketing', tone: 'fuchsia', adminOnly: false },
+  { key: 'set_status',         label: 'Change status',     adminOnly: false },
+  { key: 'set_priority',       label: 'Change priority',   adminOnly: false },
+  { key: 'assign',             label: 'Assign agent',      adminOnly: true  },
+  { key: 'add_label',          label: 'Add label',         adminOnly: false },
+  { key: 'remove_label',       label: 'Remove label',      adminOnly: false },
+  { key: 'create_task',        label: 'Create task',       adminOnly: false },
+  { key: 'send_to_marketing',  label: 'Send to marketing', adminOnly: false },
 ];
-
-const BUTTON_TONE = {
-  blue:    'text-blue-700 bg-blue-50 hover:bg-blue-100 border-blue-100',
-  amber:   'text-amber-700 bg-amber-50 hover:bg-amber-100 border-amber-100',
-  emerald: 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-100',
-  violet:  'text-violet-700 bg-violet-50 hover:bg-violet-100 border-violet-100',
-  indigo:  'text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border-indigo-100',
-  gray:    'text-gray-700 bg-gray-50 hover:bg-gray-100 border-gray-200',
-  fuchsia: 'text-fuchsia-700 bg-fuchsia-50 hover:bg-fuchsia-100 border-fuchsia-100',
-};
 
 // ---------- Sticky selection bar ----------
 
@@ -32,27 +22,29 @@ export function BulkActionsBar({ selection, onClear, onAction, user }) {
   const isAdmin = user?.role === 'admin';
 
   return (
-    <div className="sticky top-0 z-20 bg-blue-50 border border-blue-100 rounded-xl px-3 sm:px-4 py-2.5 mb-3 flex flex-wrap items-center gap-2 shadow-sm">
-      <div className="flex items-center gap-2 mr-1">
-        <div className="w-6 h-6 rounded-md bg-blue-600 text-white flex items-center justify-center text-[11px] font-bold">{count}</div>
-        <span className="text-sm font-medium text-blue-800">selected</span>
+    <div className="leads-bulk-bar">
+      <div className="leads-bulk-count">
+        <span className="leads-bulk-num">{count}</span>
+        <span>selected</span>
       </div>
-      <div className="h-5 w-px bg-blue-200" />
-      {ACTIONS.map((a) => {
-        const disabled = a.adminOnly && !isAdmin;
-        return (
-          <button
-            key={a.key}
-            disabled={disabled}
-            title={disabled ? 'Admin only' : undefined}
-            onClick={() => onAction(a.key)}
-            className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-md border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${BUTTON_TONE[a.tone]}`}
-          >
-            {a.label}
-          </button>
-        );
-      })}
-      <button onClick={onClear} className="text-xs text-blue-500 hover:text-blue-700 ml-auto">Clear selection</button>
+      <span className="leads-bulk-divider"/>
+      <div className="leads-bulk-actions">
+        {ACTIONS.map((a) => {
+          const disabled = a.adminOnly && !isAdmin;
+          return (
+            <button
+              key={a.key}
+              disabled={disabled}
+              title={disabled ? 'Admin only' : undefined}
+              onClick={() => onAction(a.key)}
+              className="leads-bulk-btn"
+            >
+              {a.label}
+            </button>
+          );
+        })}
+      </div>
+      <button onClick={onClear} className="leads-bulk-clear">Clear</button>
     </div>
   );
 }
