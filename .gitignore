@@ -11,8 +11,8 @@ node_modules
 dist-ssr
 *.local
 
-# Local secrets — never commit (DB credentials live here for local dev)
-.env
+# .env IS tracked at user request (deploy workflow ships it to server).
+# Local-only variants (.env.local etc.) stay ignored.
 .env.*
 !.env.example
 

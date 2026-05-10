@@ -126,6 +126,21 @@ jobs:
             ./api/ \
             "$USER@$HOST:$DEPLOY_DIR/api/"
 
+      - name: Push .env to server (one level above public_html)
+        run: |
+          # config.php searches for .env at <domain root>/.env, which on
+          # Hostinger is the parent of public_html. DEPLOY_DIR points at
+          # public_html, so the destination is "$DEPLOY_DIR/../.env".
+          if [ -f .env ]; then
+            echo "Uploading .env → server:$DEPLOY_DIR/../.env"
+            rsync -avz \
+              -e "ssh -p $PORT -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
+              .env \
+              "$USER@$HOST:$DEPLOY_DIR/../.env"
+          else
+            echo "No .env in repo; skipping. config.php will 503 with env_missing."
+          fi
+
       - name: Verify deployment
         run: |
           ssh -p "$PORT" -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
