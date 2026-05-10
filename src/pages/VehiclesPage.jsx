@@ -148,40 +148,75 @@ export default function VehiclesPage() {
 
 function RowMenu({ onRename, onDelete }) {
   const [open, setOpen] = useState(false);
-  const wrapRef = useRef(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+
+  const MENU_WIDTH = 160;
+  const MENU_HEIGHT = 76;
+
+  const placeMenu = () => {
+    const btn = btnRef.current;
+    if (!btn) return;
+    const r = btn.getBoundingClientRect();
+    const margin = 6;
+    let top = r.bottom + 4;
+    if (top + MENU_HEIGHT > window.innerHeight - margin) {
+      top = Math.max(margin, r.top - MENU_HEIGHT - 4);
+    }
+    let left = r.right - MENU_WIDTH;
+    if (left < margin) left = margin;
+    if (left + MENU_WIDTH > window.innerWidth - margin) {
+      left = window.innerWidth - MENU_WIDTH - margin;
+    }
+    setPos({ top, left });
+  };
 
   useEffect(() => {
     if (!open) return;
+    placeMenu();
     const onDoc = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+      if (menuRef.current && menuRef.current.contains(e.target)) return;
+      if (btnRef.current && btnRef.current.contains(e.target)) return;
+      setOpen(false);
     };
+    const onScroll = () => setOpen(false);
     document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
   }, [open]);
 
   return (
-    <span ref={wrapRef} style={{ position: 'relative', display: 'inline-block' }}>
-      <Button
-        variant="ghost"
-        size="sm"
-        icon="moreV"
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-      />
+    <>
+      <span ref={btnRef} style={{ display: 'inline-block' }}>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon="moreV"
+          onClick={() => setOpen((v) => !v)}
+          aria-haspopup="menu"
+          aria-expanded={open}
+        />
+      </span>
       {open && (
         <div
+          ref={menuRef}
           role="menu"
           style={{
-            position: 'absolute',
-            right: 0,
-            top: 'calc(100% + 4px)',
-            background: 'var(--surface, #fff)',
+            position: 'fixed',
+            top: pos.top,
+            left: pos.left,
+            width: MENU_WIDTH,
+            background: 'var(--bg-1, #fff)',
             border: '1px solid var(--border-0, #e5e7eb)',
             borderRadius: 8,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-            minWidth: 140,
-            zIndex: 20,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+            zIndex: 1000,
             padding: 4,
           }}
         >
@@ -189,7 +224,7 @@ function RowMenu({ onRename, onDelete }) {
           <MenuItem onClick={() => { setOpen(false); onDelete(); }} danger>Delete</MenuItem>
         </div>
       )}
-    </span>
+    </>
   );
 }
 
