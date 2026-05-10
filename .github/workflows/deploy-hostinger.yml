@@ -43,12 +43,33 @@ jobs:
           echo "All required secrets are set."
 
       - name: Setup SSH key
+        env:
+          KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
         run: |
+          set -e
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          printf '%s\n' "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/id_ed25519
+          # Strip Windows line endings + trim trailing whitespace
+          printf '%s\n' "$KEY" | sed 's/\r$//' > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -p "${{ secrets.HOSTINGER_SSH_PORT }}" -H "${{ secrets.HOSTINGER_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          # Sanity-check the key looks valid
+          if ! ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null 2>&1; then
+            echo "::error::HOSTINGER_SSH_KEY is malformed. The secret must contain the entire private key file, including BEGIN/END lines and a trailing newline. Re-copy the output of 'cat ~/.ssh/hostinger_vinvault' and re-save the secret."
+            echo "First line of stored key:"
+            head -1 ~/.ssh/id_ed25519
+            echo "Last line of stored key:"
+            tail -1 ~/.ssh/id_ed25519
+            echo "Line count:"
+            wc -l ~/.ssh/id_ed25519
+            exit 1
+          fi
+          echo "Key parsed OK. Public counterpart:"
+          ssh-keygen -y -f ~/.ssh/id_ed25519
+          echo ""
+          echo "Adding $HOST:$PORT to known_hosts..."
+          ssh-keyscan -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts
 
       - name: Test SSH connection
         env:
