@@ -45,29 +45,53 @@ jobs:
       - name: Setup SSH key
         env:
           KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
-          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          HOST_RAW: ${{ secrets.HOSTINGER_SSH_HOST }}
           PORT_RAW: ${{ secrets.HOSTINGER_SSH_PORT }}
+          USER_RAW: ${{ secrets.HOSTINGER_SSH_USER }}
+          DEPLOY_DIR_RAW: ${{ secrets.HOSTINGER_DEPLOY_DIR }}
         run: |
           set -e
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
-          # Strip whitespace + non-digit chars from PORT — GitHub secrets often
-          # carry trailing newlines/spaces from pasting which break ssh tools.
-          PORT=$(echo "$PORT_RAW" | tr -dc '0-9')
+          # Aggressive whitespace stripping. GitHub-pasted secrets routinely
+          # carry trailing newlines / spaces / CR chars that break ssh tools.
+          PORT=$(printf '%s' "$PORT_RAW" | tr -dc '0-9')
+          HOST=$(printf '%s' "$HOST_RAW" | tr -d '[:space:]')
+          USER=$(printf '%s' "$USER_RAW" | tr -d '[:space:]')
+          # Deploy dir keeps slashes but loses any whitespace incl. newlines.
+          DEPLOY_DIR=$(printf '%s' "$DEPLOY_DIR_RAW" | tr -d '\r\n' | sed 's/[[:space:]]*$//' | sed 's/^[[:space:]]*//')
+
           if [ -z "$PORT" ]; then
-            echo "::error::HOSTINGER_SSH_PORT secret is empty or contains no digits. Set it to a number like 65002."
+            echo "::error::HOSTINGER_SSH_PORT secret is empty or contains no digits."
             exit 1
           fi
-          # Same trim for HOST in case there's stray whitespace
-          HOST_TRIMMED=$(echo "$HOST" | tr -d '[:space:]')
+          if [ -z "$HOST" ]; then
+            echo "::error::HOSTINGER_SSH_HOST secret is empty after trimming."
+            exit 1
+          fi
+          if [ -z "$USER" ]; then
+            echo "::error::HOSTINGER_SSH_USER secret is empty after trimming."
+            exit 1
+          fi
+          if [ -z "$DEPLOY_DIR" ]; then
+            echo "::error::HOSTINGER_DEPLOY_DIR secret is empty after trimming."
+            exit 1
+          fi
+
+          # Show character counts (not values, since values are masked) so we
+          # can detect zero-width / invisible chars without leaking secrets.
+          echo "PORT length: $(echo -n "$PORT" | wc -c)"
+          echo "HOST length: $(echo -n "$HOST" | wc -c)"
+          echo "USER length: $(echo -n "$USER" | wc -c)"
+          echo "DEPLOY_DIR length: $(echo -n "$DEPLOY_DIR" | wc -c)"
 
           # Strip Windows line endings from key
           printf '%s\n' "$KEY" | sed 's/\r$//' > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
 
           if ! ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null 2>&1; then
-            echo "::error::HOSTINGER_SSH_KEY is malformed. Re-copy the output of 'cat ~/.ssh/hostinger_vinvault' and re-save the secret."
+            echo "::error::HOSTINGER_SSH_KEY is malformed. Re-copy 'cat ~/.ssh/hostinger_vinvault' and re-save the secret."
             head -1 ~/.ssh/id_ed25519
             tail -1 ~/.ssh/id_ed25519
             exit 1
@@ -75,29 +99,27 @@ jobs:
           echo "Key parsed OK. Public counterpart:"
           ssh-keygen -y -f ~/.ssh/id_ed25519
           echo ""
-          echo "Adding $HOST_TRIMMED:$PORT to known_hosts..."
-          ssh-keyscan -p "$PORT" -H "$HOST_TRIMMED" >> ~/.ssh/known_hosts
+          echo "Adding host to known_hosts..."
+          ssh-keyscan -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts
 
           # Persist the cleaned values for later steps
-          echo "PORT=$PORT" >> "$GITHUB_ENV"
-          echo "HOST=$HOST_TRIMMED" >> "$GITHUB_ENV"
+          {
+            echo "PORT=$PORT"
+            echo "HOST=$HOST"
+            echo "USER=$USER"
+            echo "DEPLOY_DIR=$DEPLOY_DIR"
+          } >> "$GITHUB_ENV"
 
       - name: Test SSH connection
-        env:
-          USER: ${{ secrets.HOSTINGER_SSH_USER }}
-          DEPLOY_DIR: ${{ secrets.HOSTINGER_DEPLOY_DIR }}
         run: |
-          echo "Connecting to $USER@$HOST:$PORT..."
+          echo "Connecting (host/user/port masked)..."
           ssh -p "$PORT" -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
               "$USER@$HOST" \
               "echo OK from \$(hostname); ls -la \"$DEPLOY_DIR\" | head -5"
 
       - name: Rsync api/ to Hostinger
-        env:
-          USER: ${{ secrets.HOSTINGER_SSH_USER }}
-          DEPLOY_DIR: ${{ secrets.HOSTINGER_DEPLOY_DIR }}
         run: |
-          echo "Syncing $(pwd)/api/ → $USER@$HOST:$DEPLOY_DIR/api/"
+          echo "Syncing $(pwd)/api/ → server:$DEPLOY_DIR/api/"
           rsync -avz --delete \
             --exclude="uploads/" \
             -e "ssh -p $PORT -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
@@ -105,9 +127,6 @@ jobs:
             "$USER@$HOST:$DEPLOY_DIR/api/"
 
       - name: Verify deployment
-        env:
-          USER: ${{ secrets.HOSTINGER_SSH_USER }}
-          DEPLOY_DIR: ${{ secrets.HOSTINGER_DEPLOY_DIR }}
         run: |
           ssh -p "$PORT" -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
               "$USER@$HOST" \
