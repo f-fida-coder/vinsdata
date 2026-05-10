@@ -8,6 +8,56 @@ $user = requireAuth();
 $db   = getDBConnection();
 $uploadDir = __DIR__ . '/uploads/';
 
+/**
+ * Send the artifact's content to the client. Prefers the inline DB blob
+ * (file_bytes) — that's the source of truth and works regardless of which
+ * filesystem actually wrote the original upload. Falls back to disk for
+ * legacy artifacts uploaded before migration 012, and 404s if neither has
+ * the bytes.
+ *
+ * On disk-fallback hit, the bytes are also persisted back into the DB so
+ * subsequent reads don't have to re-touch disk.
+ */
+function serveArtifactBody(array $artifact, string $uploadDir): void
+{
+    // Make sure JSON content-type from config.php doesn't leak into a binary
+    // download — explicitly clear and re-set.
+    if (function_exists('header_remove')) header_remove('Content-Type');
+
+    $bytes = $artifact['file_bytes'] ?? null;
+
+    if ($bytes !== null && $bytes !== '') {
+        header('Content-Type: ' . ($artifact['file_type'] ?: 'application/octet-stream'));
+        header('Content-Disposition: attachment; filename="' . $artifact['original_filename'] . '"');
+        header('Content-Length: ' . strlen($bytes));
+        echo $bytes;
+        return;
+    }
+
+    // Legacy fallback: bytes column is null because the row predates 012.
+    $path = $uploadDir . $artifact['stored_filename'];
+    if (is_file($path)) {
+        header('Content-Type: ' . ($artifact['file_type'] ?: 'application/octet-stream'));
+        header('Content-Disposition: attachment; filename="' . $artifact['original_filename'] . '"');
+        header('Content-Length: ' . filesize($path));
+        readfile($path);
+
+        // Opportunistically backfill the blob so next read skips the disk hop.
+        $diskBytes = @file_get_contents($path);
+        if ($diskBytes !== false && isset($artifact['id'])) {
+            try {
+                $upd = getDBConnection()->prepare('UPDATE file_artifacts SET file_bytes = :b WHERE id = :id');
+                $upd->bindValue(':b',  $diskBytes, PDO::PARAM_LOB);
+                $upd->bindValue(':id', (int) $artifact['id'], PDO::PARAM_INT);
+                $upd->execute();
+            } catch (Throwable $_) { /* non-fatal; main response already sent */ }
+        }
+        return;
+    }
+
+    pipelineFail(404, 'File missing on disk and DB blob is empty', 'file_missing');
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $fileId = (int) ($_POST['file_id'] ?? 0);
     $stage  = assertStage($_POST['stage'] ?? null);
@@ -37,25 +87,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $stored = storeUploadedFile($uploadDir, $_FILES['file']);
 
+    // Read the bytes off disk so we can store them inline in the DB. The DB is
+    // the source of truth — disk is just a cache that any environment can
+    // re-hydrate. This is what makes dev (local PHP) and prod (Hostinger PHP)
+    // share artifact contents through the shared MySQL host without manual
+    // file syncing.
+    $bytes = @file_get_contents($stored['destination']);
+    if ($bytes === false) {
+        @unlink($stored['destination']);
+        pipelineFail(500, 'Failed to read uploaded file for DB storage', 'read_failed');
+    }
+
     try {
         $db->beginTransaction();
 
         $stmt = $db->prepare(
             'INSERT INTO file_artifacts
-               (file_id, stage, original_filename, stored_filename, file_path, file_type, file_size, uploaded_by, notes)
-             VALUES (:file_id, :stage, :original_filename, :stored_filename, :file_path, :file_type, :file_size, :uploaded_by, :notes)'
+               (file_id, stage, original_filename, stored_filename, file_path, file_type, file_size, file_bytes, uploaded_by, notes)
+             VALUES (:file_id, :stage, :original_filename, :stored_filename, :file_path, :file_type, :file_size, :file_bytes, :uploaded_by, :notes)'
         );
-        $stmt->execute([
-            ':file_id'           => $fileId,
-            ':stage'             => $stage,
-            ':original_filename' => $_FILES['file']['name'],
-            ':stored_filename'   => $stored['stored_name'],
-            ':file_path'         => $stored['relative_path'],
-            ':file_type'         => $_FILES['file']['type'] ?: 'application/octet-stream',
-            ':file_size'         => $_FILES['file']['size'],
-            ':uploaded_by'       => $user['id'],
-            ':notes'             => $notes,
-        ]);
+        $stmt->bindValue(':file_id',           $fileId,                                            PDO::PARAM_INT);
+        $stmt->bindValue(':stage',             $stage,                                             PDO::PARAM_STR);
+        $stmt->bindValue(':original_filename', $_FILES['file']['name'],                            PDO::PARAM_STR);
+        $stmt->bindValue(':stored_filename',   $stored['stored_name'],                             PDO::PARAM_STR);
+        $stmt->bindValue(':file_path',         $stored['relative_path'],                           PDO::PARAM_STR);
+        $stmt->bindValue(':file_type',         $_FILES['file']['type'] ?: 'application/octet-stream', PDO::PARAM_STR);
+        $stmt->bindValue(':file_size',         (int) $_FILES['file']['size'],                      PDO::PARAM_INT);
+        $stmt->bindValue(':file_bytes',        $bytes,                                             PDO::PARAM_LOB);
+        $stmt->bindValue(':uploaded_by',       (int) $user['id'],                                  PDO::PARAM_INT);
+        $stmt->bindValue(':notes',             $notes,                                             $notes === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+        $stmt->execute();
         $artifactId = (int) $db->lastInsertId();
 
         $stmt = $db->prepare('UPDATE files SET latest_artifact_id = :aid, updated_at = NOW() WHERE id = :id');
@@ -85,20 +146,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     // Download by explicit artifact id (preserves access to historical versions)
     if ($artifactId) {
-        $stmt = $db->prepare('SELECT original_filename, stored_filename, file_type, file_size FROM file_artifacts WHERE id = :id');
+        $stmt = $db->prepare('SELECT id, original_filename, stored_filename, file_type, file_size, file_bytes FROM file_artifacts WHERE id = :id');
         $stmt->execute([':id' => $artifactId]);
         $artifact = $stmt->fetch();
         if (!$artifact) {
             pipelineFail(404, 'Artifact not found', 'artifact_not_found');
         }
-        $path = $uploadDir . $artifact['stored_filename'];
-        if (!file_exists($path)) {
-            pipelineFail(404, 'File missing on disk', 'file_missing');
-        }
-        header('Content-Type: ' . $artifact['file_type']);
-        header('Content-Disposition: attachment; filename="' . $artifact['original_filename'] . '"');
-        header('Content-Length: ' . $artifact['file_size']);
-        readfile($path);
+        serveArtifactBody($artifact, $uploadDir);
         exit();
     }
 
@@ -110,7 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     if ($stage) {
         assertStage($stage);
         $stmt = $db->prepare(
-            'SELECT original_filename, stored_filename, file_type, file_size
+            'SELECT id, original_filename, stored_filename, file_type, file_size, file_bytes
                FROM file_artifacts
               WHERE file_id = :fid AND stage = :stage
               ORDER BY id DESC LIMIT 1'
@@ -120,14 +174,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         if (!$artifact) {
             pipelineFail(404, 'No artifact for this stage', 'artifact_not_found');
         }
-        $path = $uploadDir . $artifact['stored_filename'];
-        if (!file_exists($path)) {
-            pipelineFail(404, 'File missing on disk', 'file_missing');
-        }
-        header('Content-Type: ' . $artifact['file_type']);
-        header('Content-Disposition: attachment; filename="' . $artifact['original_filename'] . '"');
-        header('Content-Length: ' . $artifact['file_size']);
-        readfile($path);
+        serveArtifactBody($artifact, $uploadDir);
         exit();
     }
 
