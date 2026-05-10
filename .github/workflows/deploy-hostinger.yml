@@ -1,24 +1,19 @@
 name: Sync api/ to Hostinger
 
-# Why this exists:
-# Hostinger's native Git auto-deploy is connected to this repo, but its
-# .builds/ → public_html/ copy step is unreliable for the api/ folder —
-# files inside api/ frequently fail to update after a push. This workflow
-# SSHs into the server after each push and force-copies the api/ folder
-# from Hostinger's own freshly-pulled git working copy in .builds/ over
-# to public_html/api/ — guaranteeing every PHP file is in sync.
+# What this does:
+# Checks out the repo on the GitHub runner, opens an SSH connection to
+# Hostinger, and rsyncs the api/ folder from the runner directly to the
+# server. This bypasses Hostinger's flaky git deploy entirely — we send
+# the files ourselves over SSH.
 #
 # Required GitHub Secrets (Settings → Secrets and variables → Actions):
-#   HOSTINGER_SSH_HOST   - the SSH host (shown in hPanel → Advanced → SSH Access),
-#                          e.g. "srv2052.hstgr.io"
+#   HOSTINGER_SSH_HOST   - your SSH host (e.g. "srv2052.hstgr.io")
 #   HOSTINGER_SSH_USER   - your SSH username (e.g. "u487877829")
-#   HOSTINGER_SSH_PORT   - the SSH port (Hostinger uses 65002 by default)
-#   HOSTINGER_SSH_KEY    - the PRIVATE SSH key (whole file contents, including
-#                          BEGIN/END lines). Generate with `ssh-keygen -t ed25519`,
-#                          paste the .pub side into hPanel → SSH Access → Manage
-#                          SSH Keys, paste the private side into this secret.
-#   HOSTINGER_DEPLOY_DIR - absolute path to the deploy folder, e.g.
-#                          "/home/u487877829/domains/yourdomain.com/public_html"
+#   HOSTINGER_SSH_PORT   - your SSH port (Hostinger default: 65002)
+#   HOSTINGER_SSH_KEY    - your PRIVATE ed25519 key (full file contents,
+#                          including BEGIN/END lines)
+#   HOSTINGER_DEPLOY_DIR - absolute path to public_html on the server,
+#                          e.g. "/home/u487877829/domains/yoursite.com/public_html"
 
 on:
   push:
@@ -29,46 +24,67 @@ jobs:
   sync-api:
     runs-on: ubuntu-latest
     steps:
-      - name: Setup SSH
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Verify required secrets exist
+        run: |
+          missing=""
+          [ -z "${{ secrets.HOSTINGER_SSH_HOST }}" ]   && missing="$missing HOSTINGER_SSH_HOST"
+          [ -z "${{ secrets.HOSTINGER_SSH_USER }}" ]   && missing="$missing HOSTINGER_SSH_USER"
+          [ -z "${{ secrets.HOSTINGER_SSH_PORT }}" ]   && missing="$missing HOSTINGER_SSH_PORT"
+          [ -z "${{ secrets.HOSTINGER_SSH_KEY }}" ]    && missing="$missing HOSTINGER_SSH_KEY"
+          [ -z "${{ secrets.HOSTINGER_DEPLOY_DIR }}" ] && missing="$missing HOSTINGER_DEPLOY_DIR"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required secrets:$missing"
+            echo "Add them at: https://github.com/${{ github.repository }}/settings/secrets/actions"
+            exit 1
+          fi
+          echo "All required secrets are set."
+
+      - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -p "${{ secrets.HOSTINGER_SSH_PORT }}" -H "${{ secrets.HOSTINGER_SSH_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -p "${{ secrets.HOSTINGER_SSH_PORT }}" -H "${{ secrets.HOSTINGER_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Force-sync api/ from .builds/ → public_html/api/
+      - name: Test SSH connection
         env:
           HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
           USER: ${{ secrets.HOSTINGER_SSH_USER }}
           PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
           DEPLOY_DIR: ${{ secrets.HOSTINGER_DEPLOY_DIR }}
         run: |
-          ssh -p "$PORT" -i ~/.ssh/id_ed25519 "$USER@$HOST" bash <<'EOF'
-            set -euo pipefail
-            DEPLOY_DIR="${{ secrets.HOSTINGER_DEPLOY_DIR }}"
+          echo "Connecting to $USER@$HOST:$PORT..."
+          ssh -p "$PORT" -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
+              "$USER@$HOST" \
+              "echo OK from \$(hostname); ls -la \"$DEPLOY_DIR\" | head -5"
 
-            # Hostinger's git working copy lives under .builds/<some-hash>/
-            BUILDS_DIR=$(ls -dt "$DEPLOY_DIR/.builds"/*/ 2>/dev/null | head -n 1 || true)
-            if [ -z "$BUILDS_DIR" ] || [ ! -d "$BUILDS_DIR/api" ]; then
-              echo "ERROR: could not find .builds/*/api on the server"
-              echo "Looked in: $DEPLOY_DIR/.builds"
-              ls -la "$DEPLOY_DIR/.builds" || true
-              exit 1
-            fi
+      - name: Rsync api/ to Hostinger
+        env:
+          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
+          DEPLOY_DIR: ${{ secrets.HOSTINGER_DEPLOY_DIR }}
+        run: |
+          echo "Syncing $(pwd)/api/ → $USER@$HOST:$DEPLOY_DIR/api/"
+          # --delete makes the server folder match the repo exactly
+          # --exclude=uploads/ preserves user-uploaded files on the server
+          rsync -avz --delete \
+            --exclude="uploads/" \
+            -e "ssh -p $PORT -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
+            ./api/ \
+            "$USER@$HOST:$DEPLOY_DIR/api/"
 
-            echo "Syncing $BUILDS_DIR/api/ → $DEPLOY_DIR/api/"
-
-            # Use rsync to mirror api/ exactly — including deletions and
-            # preserving permissions Hostinger's git uses. Excludes uploads/
-            # so user-uploaded files on the server aren't wiped.
-            rsync -av --delete \
-              --exclude="uploads/" \
-              "$BUILDS_DIR/api/" "$DEPLOY_DIR/api/"
-
-            # Make sure config.php is readable by PHP.
-            chmod 644 "$DEPLOY_DIR/api/"*.php 2>/dev/null || true
-            chmod 755 "$DEPLOY_DIR/api/" 2>/dev/null || true
-
-            echo "Done. api/ is now in sync with the latest commit."
-            ls -la "$DEPLOY_DIR/api/" | head -20
-          EOF
+      - name: Verify deployment
+        env:
+          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
+          DEPLOY_DIR: ${{ secrets.HOSTINGER_DEPLOY_DIR }}
+        run: |
+          ssh -p "$PORT" -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
+              "$USER@$HOST" \
+              "ls -la \"$DEPLOY_DIR/api/\" | head -20 && echo '---' && echo 'PHP files: '\$(ls \"$DEPLOY_DIR/api/\"*.php 2>/dev/null | wc -l)"
