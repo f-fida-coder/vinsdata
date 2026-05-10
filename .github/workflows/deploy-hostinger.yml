@@ -1,69 +1,74 @@
-name: Deploy to Hostinger
+name: Sync api/ to Hostinger
 
-# Pushes the built frontend (dist/) and the PHP backend (api/, .htaccess)
-# to Hostinger over FTP after every push to main.
+# Why this exists:
+# Hostinger's native Git auto-deploy is connected to this repo, but its
+# .builds/ → public_html/ copy step is unreliable for the api/ folder —
+# files inside api/ frequently fail to update after a push. This workflow
+# SSHs into the server after each push and force-copies the api/ folder
+# from Hostinger's own freshly-pulled git working copy in .builds/ over
+# to public_html/api/ — guaranteeing every PHP file is in sync.
 #
 # Required GitHub Secrets (Settings → Secrets and variables → Actions):
-#   HOSTINGER_FTP_SERVER    - e.g. "ftp.yourdomain.com" or the IP from hPanel → Files → FTP Accounts
-#   HOSTINGER_FTP_USERNAME  - the FTP username (often "u123456789.yourdomain.com")
-#   HOSTINGER_FTP_PASSWORD  - the FTP password
-#   HOSTINGER_FTP_PATH      - target dir on the server, e.g. "/public_html/" or "/public_html/vin-dashboard/"
-#                             (must end with a slash)
+#   HOSTINGER_SSH_HOST   - the SSH host (shown in hPanel → Advanced → SSH Access),
+#                          e.g. "srv2052.hstgr.io"
+#   HOSTINGER_SSH_USER   - your SSH username (e.g. "u487877829")
+#   HOSTINGER_SSH_PORT   - the SSH port (Hostinger uses 65002 by default)
+#   HOSTINGER_SSH_KEY    - the PRIVATE SSH key (whole file contents, including
+#                          BEGIN/END lines). Generate with `ssh-keygen -t ed25519`,
+#                          paste the .pub side into hPanel → SSH Access → Manage
+#                          SSH Keys, paste the private side into this secret.
+#   HOSTINGER_DEPLOY_DIR - absolute path to the deploy folder, e.g.
+#                          "/home/u487877829/domains/yourdomain.com/public_html"
 
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}  # allow manual run from the Actions tab
+  workflow_dispatch: {}
 
 jobs:
-  deploy:
+  sync-api:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "${{ secrets.HOSTINGER_SSH_PORT }}" -H "${{ secrets.HOSTINGER_SSH_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
+      - name: Force-sync api/ from .builds/ → public_html/api/
+        env:
+          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
+          DEPLOY_DIR: ${{ secrets.HOSTINGER_DEPLOY_DIR }}
+        run: |
+          ssh -p "$PORT" -i ~/.ssh/id_ed25519 "$USER@$HOST" bash <<'EOF'
+            set -euo pipefail
+            DEPLOY_DIR="${{ secrets.HOSTINGER_DEPLOY_DIR }}"
 
-      - name: Install dependencies
-        run: npm ci
+            # Hostinger's git working copy lives under .builds/<some-hash>/
+            BUILDS_DIR=$(ls -dt "$DEPLOY_DIR/.builds"/*/ 2>/dev/null | head -n 1 || true)
+            if [ -z "$BUILDS_DIR" ] || [ ! -d "$BUILDS_DIR/api" ]; then
+              echo "ERROR: could not find .builds/*/api on the server"
+              echo "Looked in: $DEPLOY_DIR/.builds"
+              ls -la "$DEPLOY_DIR/.builds" || true
+              exit 1
+            fi
 
-      - name: Build frontend
-        run: npm run build
+            echo "Syncing $BUILDS_DIR/api/ → $DEPLOY_DIR/api/"
 
-      - name: Sync to Hostinger via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.HOSTINGER_FTP_SERVER }}
-          username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
-          password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
-          server-dir: ${{ secrets.HOSTINGER_FTP_PATH }}
-          # Ship everything except local-only / build-input files.
-          # api/ and dist/ are explicitly NOT excluded so every file gets pushed.
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
-            src/**
-            vins_dashbaord_design/**
-            scripts/**
-            api/uploads/**
-            DEPLOY.md
-            README.md
-            package.json
-            package-lock.json
-            vite.config.js
-            tailwind.config.js
-            postcss.config.js
-            eslint.config.js
-            /index.html
-          # Use lftp-style state file so only changed files transfer on subsequent runs.
-          state-name: .ftp-deploy-sync-state.json
-          # Don't dangle on broken connections.
-          timeout: 60000
-          # Verify file size after upload, retry on failures.
-          dry-run: false
-          log-level: standard
+            # Use rsync to mirror api/ exactly — including deletions and
+            # preserving permissions Hostinger's git uses. Excludes uploads/
+            # so user-uploaded files on the server aren't wiped.
+            rsync -av --delete \
+              --exclude="uploads/" \
+              "$BUILDS_DIR/api/" "$DEPLOY_DIR/api/"
+
+            # Make sure config.php is readable by PHP.
+            chmod 644 "$DEPLOY_DIR/api/"*.php 2>/dev/null || true
+            chmod 755 "$DEPLOY_DIR/api/" 2>/dev/null || true
+
+            echo "Done. api/ is now in sync with the latest commit."
+            ls -la "$DEPLOY_DIR/api/" | head -20
+          EOF
