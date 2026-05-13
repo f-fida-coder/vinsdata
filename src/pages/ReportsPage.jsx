@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import api, { extractApiError } from '../api';
 import { Button, Icon } from '../components/ui';
-import { LEAD_STATUSES, LEAD_PRIORITIES, LEAD_TEMPERATURES, STATUS_BY_KEY, PRIORITY_BY_KEY, TEMPERATURE_BY_KEY } from '../lib/crm';
+import { LEAD_STATUSES, LEAD_PRIORITIES, LEAD_TEMPERATURES, STATUS_BY_KEY, PRIORITY_BY_KEY, TEMPERATURE_BY_KEY, TRANSPORT_STATUSES, TRANSPORT_STATUS_BY_KEY } from '../lib/crm';
 
 const DUP_STATUS_META = {
   pending:                     { label: 'Pending',           color: 'var(--warm)' },
@@ -123,21 +123,57 @@ function leadingItem(rows) {
   return rows.reduce((max, r) => (r.count || 0) > (max.count || 0) ? r : max, rows[0]);
 }
 
+function ExportMenu() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const linkCls = 'flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full text-left';
+
+  return (
+    <div className="relative" ref={ref}>
+      <Button variant="primary" icon="download" onClick={() => setOpen((v) => !v)}>Export</Button>
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-gray-100 rounded-xl shadow-lg z-10 overflow-hidden">
+          <a href="/api/reports_export?type=all&format=pdf"     target="_blank" rel="noreferrer" className={linkCls}><Icon name="file"/>Full report — PDF</a>
+          <a href="/api/reports_export?type=all&format=csv"                                       className={linkCls}><Icon name="file"/>Full report — CSV</a>
+          <div className="border-t border-gray-100" />
+          <a href="/api/reports_export?type=leads&format=csv"                                     className={linkCls}><Icon name="users"/>Leads summary — CSV</a>
+          <a href="/api/reports_export?type=dispatch&format=csv"                                  className={linkCls}><Icon name="truck"/>Bill of Sale summary — CSV</a>
+          <a href="/api/reports_export?type=duplicates&format=csv"                                className={linkCls}><Icon name="duplicate"/>Duplicates summary — CSV</a>
+          <div className="border-t border-gray-100" />
+          <a href="/api/leads?format=csv"                                                         className={linkCls}><Icon name="download"/>All leads (rows) — CSV</a>
+          <a href="/api/dispatch_calendar?format=csv&start=2000-01-01&end=2099-12-31"             className={linkCls}><Icon name="download"/>All sales / deliveries — CSV</a>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ReportsPage() {
   const [data, setData] = useState(null);
   const [dups, setDups] = useState(null);
+  const [dispatch, setDispatch] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const load = async () => {
     setLoading(true); setError('');
     try {
-      const [a, b] = await Promise.all([
+      const [a, b, c] = await Promise.all([
         api.get('/reports', { params: { type: 'leads' } }),
         api.get('/reports', { params: { type: 'duplicates' } }).catch(() => ({ data: { duplicates: null } })),
+        api.get('/reports', { params: { type: 'dispatch' } }).catch(() => ({ data: { dispatch: null } })),
       ]);
       setData(a.data?.leads || null);
       setDups(b.data?.duplicates || null);
+      setDispatch(c.data?.dispatch || null);
     } catch (err) {
       setError(extractApiError(err, 'Failed to load reports'));
     } finally {
@@ -174,7 +210,6 @@ export default function ReportsPage() {
   }
   if (!data) return null;
 
-  const totalLeads = data.total ?? 0;
   const sumOf = (rows) => (rows || []).reduce((s, r) => s + (r.count || 0), 0);
 
   // ---- Status ----
@@ -224,7 +259,10 @@ export default function ReportsPage() {
           <h1 className="section-title">Reports</h1>
           <p className="section-subtitle">Live snapshot of the CRM · refresh anytime</p>
         </div>
-        <Button variant="secondary" icon="refresh" onClick={load}>Refresh</Button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button variant="secondary" icon="refresh" onClick={load}>Refresh</Button>
+          <ExportMenu/>
+        </div>
       </div>
 
       {/* Hero KPI tiles */}
@@ -315,6 +353,72 @@ export default function ReportsPage() {
           </div>
         </ReportCard>
       </div>
+
+      {/* Bill of Sale — sales/deliveries across the CRM */}
+      {dispatch && (
+        <div className="rp-grid rp-grid-2">
+          <ReportCard
+            icon="truck"
+            iconColor="var(--info)"
+            title="Bill of Sale"
+            subtitle={`${(dispatch.total ?? 0).toLocaleString()} sales total · ${dispatch.scheduled_7d ?? 0} this week`}
+            headline={<HeadlineStat value={dispatch.scheduled_today ?? 0} label="today" color="var(--info)"/>}
+          >
+            <div className="rp-stats-row" style={{ marginBottom: 14 }}>
+              <StatTile label="Today"       value={dispatch.scheduled_today}    tone="accent"/>
+              <StatTile label="Next 7d"     value={dispatch.scheduled_7d}       tone="info"/>
+              <StatTile label="Delivered (30d)" value={dispatch.delivered_30d}  tone="success"/>
+              <StatTile label="Overdue"     value={dispatch.overdue}            tone="danger"/>
+              <StatTile label="Unassigned"  value={dispatch.unassigned_active}  tone="warm"/>
+            </div>
+            {(dispatch.by_status || []).map((r) => {
+              const meta = TRANSPORT_STATUS_BY_KEY[r.key] || {};
+              const total = (dispatch.by_status || []).reduce((s, x) => s + (x.count || 0), 0);
+              return (
+                <BarItem
+                  key={r.key}
+                  label={meta.label || r.key}
+                  count={r.count}
+                  total={total}
+                  color={meta.hex || 'var(--text-2)'}
+                />
+              );
+            })}
+          </ReportCard>
+
+          <ReportCard
+            icon="users"
+            iconColor="var(--accent)"
+            title="By transporter"
+            subtitle="Workload across active carriers"
+          >
+            {(dispatch.by_transporter || []).length === 0 ? <EmptyBars/> : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', color: 'var(--text-3)', fontSize: 12 }}>
+                      <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-0)' }}>Transporter</th>
+                      <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-0)', textAlign: 'right' }}>Active</th>
+                      <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-0)', textAlign: 'right' }}>Delivered</th>
+                      <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-0)', textAlign: 'right' }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dispatch.by_transporter.map((r) => (
+                      <tr key={r.id}>
+                        <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-0)' }}>{r.name}</td>
+                        <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-0)', textAlign: 'right' }}>{r.active}</td>
+                        <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-0)', textAlign: 'right' }}>{r.delivered}</td>
+                        <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-0)', textAlign: 'right', fontWeight: 600 }}>{r.total}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </ReportCard>
+        </div>
+      )}
 
       {/* Duplicates + Match types */}
       {dups && (

@@ -23,11 +23,11 @@ function useIsMobile() {
 
 // Per-role visibility for sidebar entries.
 const NAV_VISIBILITY = {
-  admin:    ['dashboard','vehicles','leads','pipeline','tasks','reports','duplicates','mergePrep','marketing','users'],
+  admin:    ['dashboard','vehicles','leads','pipeline','tasks','reports','duplicates','mergePrep','marketing','billOfSale','users','company'],
   marketer: ['dashboard','leads','pipeline','marketing','reports'],
-  carfax:   ['dashboard','leads','pipeline','tasks'],
-  filter:   ['dashboard','leads','pipeline','tasks'],
-  tlo:      ['dashboard','leads','pipeline','tasks'],
+  carfax:   ['dashboard','leads','pipeline','tasks','billOfSale'],
+  filter:   ['dashboard','leads','pipeline','tasks','billOfSale'],
+  tlo:      ['dashboard','leads','pipeline','tasks','billOfSale'],
 };
 const ALL_NAV = [
   { key: 'dashboard',  label: 'Dashboard',         icon: 'home',      to: '/' },
@@ -39,22 +39,26 @@ const ALL_NAV = [
   { key: 'duplicates', label: 'Duplicate Review',  icon: 'duplicate', to: '/duplicates' },
   { key: 'mergePrep',  label: 'Merge Prep',        icon: 'merge',     to: '/merge-prep' },
   { key: 'marketing',  label: 'Marketing',         icon: 'sparkles',  to: '/marketing' },
+  { key: 'billOfSale', label: 'Bill of Sale',      icon: 'truck',     to: '/bill-of-sale' },
   { key: 'users',      label: 'Users',             icon: 'user',      to: '/users' },
+  { key: 'company',    label: 'Company',           icon: 'building',  to: '/company-settings' },
 ];
 
 const ROUTE_LABEL_BY_PATH = {
-  '/':              'Dashboard',
-  '/vehicles':      'Vehicles',
-  '/leads':         'CRM Leads',
-  '/pipeline':      'Pipeline',
-  '/reports':       'Reports',
-  '/tasks':         'Tasks',
-  '/duplicates':    'Duplicate Review',
-  '/merge-prep':    'Merge Prep',
-  '/marketing':     'Marketing',
-  '/marketing/new': 'New Campaign',
-  '/users':         'Users',
-  '/logs':          'Activity Logs',
+  '/':                 'Dashboard',
+  '/vehicles':         'Vehicles',
+  '/leads':            'CRM Leads',
+  '/pipeline':         'Pipeline',
+  '/reports':          'Reports',
+  '/tasks':            'Tasks',
+  '/duplicates':       'Duplicate Review',
+  '/merge-prep':       'Merge Prep',
+  '/marketing':        'Marketing',
+  '/marketing/new':    'New Campaign',
+  '/bill-of-sale':     'Bill of Sale',
+  '/users':            'Users',
+  '/company-settings': 'Company Settings',
+  '/logs':             'Activity Logs',
 };
 
 function navItemsForRole(role) {

@@ -22,6 +22,24 @@ $out = [
     'db' => null,
 ];
 
+// Did the deploy land .env at the expected location? Don't expose contents,
+// just whether it's readable + size. Helps debug scanner-ate-config.php
+// scenarios where everything else is in place.
+$envCandidates = [
+    __DIR__ . '/../../.env' => 'domain_root',
+    __DIR__ . '/../.env'    => 'public_html',
+];
+$envInfo = [];
+foreach ($envCandidates as $path => $label) {
+    $envInfo[$label] = [
+        'path'      => $path,
+        'resolved'  => realpath($path) ?: null,
+        'readable'  => is_readable($path),
+        'size'      => is_readable($path) ? filesize($path) : null,
+    ];
+}
+$out['env'] = $envInfo;
+
 // Uploads directory inspection (no filenames leaked, just counts/sizes).
 $uploadsDir = __DIR__ . '/uploads/';
 if (is_dir($uploadsDir)) {

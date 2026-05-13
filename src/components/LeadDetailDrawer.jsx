@@ -14,6 +14,8 @@ import {
   CONTACT_CHANNELS, CONTACT_OUTCOMES, CHANNEL_BY_KEY, OUTCOME_BY_KEY,
   relativeDue, isOverdue,
 } from '../lib/tasks';
+import LeadTransportSection from './LeadTransportSection';
+import LeadBillOfSaleSection from './LeadBillOfSaleSection';
 
 const FIELD_LABELS = Object.fromEntries(NORMALIZED_FIELDS.map((f) => [f.key, f.label]));
 const FIELD_ORDER = [
@@ -1231,6 +1233,85 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
                 onChanged={handleChildChanged}
               />
 
+              <CollapsibleSection title="Bill of Sale" defaultOpen>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Delivery schedule</p>
+                    <LeadTransportSection
+                      leadId={detail.id}
+                      normalizedPayload={detail.normalized_payload}
+                      onChanged={handleChildChanged}
+                    />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Sale document</p>
+                    <LeadBillOfSaleSection
+                      leadId={detail.id}
+                      onChanged={handleChildChanged}
+                    />
+                  </div>
+                </div>
+              </CollapsibleSection>
+
+              <CollapsibleSection title="Lead details" defaultOpen>
+                {(() => {
+                  const np = detail.normalized_payload || {};
+                  const raw = detail.raw_payload || {};
+                  const mapping = detail.mapping || {};
+
+                  // Reverse mapping: normalized field key → original spreadsheet header.
+                  // Used so a normalized value (e.g. year=2015) keeps a sensible label
+                  // and so we can skip showing the same column twice as a "raw" extra.
+                  const fieldToHeader = {};
+                  for (const [header, field] of Object.entries(mapping)) {
+                    if (field && field !== '_ignore' && !fieldToHeader[field]) {
+                      fieldToHeader[field] = header;
+                    }
+                  }
+
+                  const coreRows = FIELD_ORDER
+                    .filter((k) => np[k] !== undefined && np[k] !== '' && np[k] !== null)
+                    .map((k) => [FIELD_LABELS[k] || k, np[k]]);
+
+                  // Extra normalized fields that aren't in FIELD_ORDER (rare).
+                  const extraNormalized = Object.entries(np)
+                    .filter(([k, v]) => !FIELD_ORDER.includes(k) && v !== '' && v !== null && v !== undefined)
+                    .map(([k, v]) => [FIELD_LABELS[k] || k, v]);
+
+                  // Everything from the raw spreadsheet row that isn't already
+                  // surfaced through a normalized field above.
+                  const shownHeaders = new Set(
+                    [...FIELD_ORDER, ...Object.keys(np)]
+                      .map((f) => fieldToHeader[f])
+                      .filter(Boolean)
+                  );
+                  const rawExtras = Object.entries(raw)
+                    .filter(([h, v]) => !shownHeaders.has(h) && v !== '' && v !== null && v !== undefined)
+                    .map(([h, v]) => [h, v]);
+
+                  return (
+                    <>
+                      {coreRows.length > 0 && <KeyValueTable rows={coreRows} />}
+                      {extraNormalized.length > 0 && (
+                        <div className="mt-3">
+                          <p className="text-[11px] text-gray-400 mb-1">Other normalized fields:</p>
+                          <KeyValueTable rows={extraNormalized} />
+                        </div>
+                      )}
+                      {rawExtras.length > 0 && (
+                        <div className="mt-3">
+                          <p className="text-[11px] text-gray-400 mb-1">From spreadsheet:</p>
+                          <KeyValueTable rows={rawExtras} />
+                        </div>
+                      )}
+                      {coreRows.length === 0 && extraNormalized.length === 0 && rawExtras.length === 0 && (
+                        <p className="text-xs text-gray-400 italic">No data captured for this lead.</p>
+                      )}
+                    </>
+                  );
+                })()}
+              </CollapsibleSection>
+
               <LabelsSection
                 leadId={detail.id}
                 initialLabels={detail.labels || []}
@@ -1267,24 +1348,6 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
 
               <ActivitySection leadId={detail.id} reloadKey={activityReloadKey} />
 
-              <CollapsibleSection title="Lead data" defaultOpen={!isAgent}>
-                <KeyValueTable
-                  rows={FIELD_ORDER
-                    .filter((k) => detail.normalized_payload && detail.normalized_payload[k] !== undefined && detail.normalized_payload[k] !== '')
-                    .map((k) => [FIELD_LABELS[k] || k, detail.normalized_payload[k]])}
-                />
-                {Object.keys(detail.normalized_payload || {}).filter((k) => !FIELD_ORDER.includes(k)).length > 0 && (
-                  <div className="mt-2">
-                    <p className="text-[11px] text-gray-400 mb-1">Other normalized fields:</p>
-                    <KeyValueTable
-                      rows={Object.entries(detail.normalized_payload)
-                        .filter(([k]) => !FIELD_ORDER.includes(k))
-                        .map(([k, v]) => [FIELD_LABELS[k] || k, v])}
-                    />
-                  </div>
-                )}
-              </CollapsibleSection>
-
               <CollapsibleSection title="Source">
                 <KeyValueTable rows={[
                   ['Batch',            detail.batch_name],
@@ -1304,16 +1367,6 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
                   ['Mapping template', detail.template_name || '(inline mapping)'],
                   ['Batch notes',      detail.batch_notes || '—'],
                 ]} />
-              </CollapsibleSection>
-
-              <CollapsibleSection title="Mapping snapshot" count={detail.mapping ? Object.keys(detail.mapping).length : 0}>
-                <p className="text-[11px] text-gray-400 mb-2">Header → normalized field used when this batch was imported.</p>
-                <KeyValueTable rows={Object.entries(detail.mapping || {}).map(([h, f]) => [h, f])} />
-              </CollapsibleSection>
-
-              <CollapsibleSection title="Raw row" count={detail.raw_payload ? Object.keys(detail.raw_payload).length : 0}>
-                <p className="text-[11px] text-gray-400 mb-2">Exact spreadsheet row as captured at import.</p>
-                <KeyValueTable monospaceValue rows={Object.entries(detail.raw_payload || {}).map(([h, v]) => [h, v])} />
               </CollapsibleSection>
             </>
             );

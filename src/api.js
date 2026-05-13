@@ -27,6 +27,10 @@ export function getArtifactDownloadUrl(artifactId) {
   return `/api/upload?artifact_id=${artifactId}`;
 }
 
+export function getBillOfSalePdfUrl(leadId) {
+  return `/api/bill_of_sale?lead_id=${leadId}&format=pdf`;
+}
+
 export function extractApiError(err, fallback = 'Something went wrong') {
   const data = err?.response?.data;
   if (data?.message) return data.code ? `${data.message}` : data.message;

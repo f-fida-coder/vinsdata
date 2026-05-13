@@ -27,6 +27,20 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Install PHP + composer (for mPDF / Bill of Sale PDF)
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer:v2
+          coverage: none
+
+      - name: composer install (api/vendor)
+        # api/vendor is gitignored; install deps on the runner so the rsync
+        # step uploads them. Without this the Bill of Sale PDF endpoint 500s
+        # in production because vendor/autoload.php is missing.
+        working-directory: api
+        run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+
       - name: Verify required secrets exist
         run: |
           missing=""

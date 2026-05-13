@@ -16,6 +16,8 @@ import MarketingComposerPage from './pages/MarketingComposerPage';
 import MarketingDetailPage from './pages/MarketingDetailPage';
 import PipelinePage from './pages/PipelinePage';
 import ReportsPage from './pages/ReportsPage';
+import BillOfSalePage from './pages/BillOfSalePage';
+import CompanySettingsPage from './pages/CompanySettingsPage';
 import { Sidebar, Topbar, CommandPalette, QuickAddMenu, ShortcutsOverlay } from './components/Shell';
 
 const LANDING_BY_ROLE = {
@@ -83,6 +85,9 @@ function DashboardLayout() {
           <Route path="/marketing" element={<MarketingCampaignsPage />} />
           <Route path="/marketing/new" element={<MarketingComposerPage />} />
           <Route path="/marketing/:id" element={<MarketingDetailPage />} />
+          <Route path="/bill-of-sale" element={<BillOfSalePage />} />
+          <Route path="/dispatch" element={<Navigate to="/bill-of-sale" replace />} />
+          <Route path="/company-settings" element={<CompanySettingsPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/logs" element={<LogsPage />} />
           <Route path="*" element={<Navigate to={landing} replace />} />

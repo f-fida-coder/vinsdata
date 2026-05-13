@@ -117,8 +117,19 @@ export default function DashboardPage() {
   const [vehicles, setVehicles] = useState([]);
   const [filters, setFilters] = useState({ vehicle_id: '', stage: '', year: '' });
   const [showModal, setShowModal] = useState(false);
-  const [newFile, setNewFile] = useState({ vehicle_id: '', file_name: '', year: '', version: '' });
-  const [selectedFile, setSelectedFile] = useState(null);
+  // Multi-row Add File modal: each entry is one upload. status is per-entry
+  // so we can show ✓ / × per row when the bulk submit runs.
+  const makeEmptyEntry = () => ({
+    rid: `r${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    vehicle_id: '',
+    file_name:  '',
+    year:       '',
+    version:    'v1',
+    file:       null,
+    status:     'pending',
+    error:      null,
+  });
+  const [entries, setEntries] = useState(() => [makeEmptyEntry()]);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -214,23 +225,104 @@ export default function DashboardPage() {
     finally { setUploading(false); }
   };
 
-  const handleAddFile = async (e) => {
-    e.preventDefault(); setSubmitting(true); setError('');
-    try {
-      const res = await api.post('/files', {
-        vehicle_id: Number(newFile.vehicle_id),
-        file_name: newFile.file_name,
-        year: newFile.year ? Number(newFile.year) : null,
-        version: newFile.version || null,
-      });
-      if (selectedFile && res.data.id) await uploadFile(res.data.id, 'generated', selectedFile);
-      setShowModal(false);
-      setNewFile({ vehicle_id: '', file_name: '', year: '', version: '' });
-      setSelectedFile(null);
-      fetchFiles();
-    } catch (err) { setError(extractApiError(err, 'Failed to add file')); }
-    finally { setSubmitting(false); }
+  const updateEntry = (rid, patch) => setEntries((list) => list.map((e) => e.rid === rid ? { ...e, ...patch } : e));
+  const removeEntry = (rid) => setEntries((list) => list.length <= 1 ? list : list.filter((e) => e.rid !== rid));
+  const addEntry    = ()    => setEntries((list) => [...list, makeEmptyEntry()]);
+
+  // Multi-file picker: drop N files into N rows (filling empty rows first, then appending).
+  const handlePickMultiple = (fileList) => {
+    const picked = Array.from(fileList || []);
+    if (picked.length === 0) return;
+    setEntries((list) => {
+      const next = [...list];
+      let i = 0;
+      // Fill any entry whose file slot is empty first.
+      for (let r = 0; r < next.length && i < picked.length; r++) {
+        if (!next[r].file) {
+          const f = picked[i++];
+          next[r] = {
+            ...next[r],
+            file: f,
+            file_name: next[r].file_name || f.name.replace(/\.[^/.]+$/, ''),
+          };
+        }
+      }
+      // Any remaining picked files become new rows.
+      while (i < picked.length) {
+        const f = picked[i++];
+        next.push({
+          ...makeEmptyEntry(),
+          file: f,
+          file_name: f.name.replace(/\.[^/.]+$/, ''),
+        });
+      }
+      return next;
+    });
   };
+
+  const handleAddFile = async (e) => {
+    e.preventDefault();
+    setError('');
+
+    // Validate first — surface row-level errors without starting any uploads.
+    const validation = entries.map((entry) => {
+      if (!entry.vehicle_id) return 'Vehicle is required';
+      if (!entry.file_name || !entry.file_name.trim()) return 'File name is required';
+      return null;
+    });
+    if (validation.some((v) => v)) {
+      setEntries((list) => list.map((entry, i) => ({
+        ...entry,
+        status: validation[i] ? 'error' : entry.status,
+        error:  validation[i] || entry.error,
+      })));
+      setError('Fix the highlighted rows before submitting.');
+      return;
+    }
+
+    setSubmitting(true);
+    setEntries((list) => list.map((entry) => ({ ...entry, status: 'uploading', error: null })));
+
+    let okCount = 0;
+    let failCount = 0;
+    for (const entry of entries) {
+      try {
+        const res = await api.post('/files', {
+          vehicle_id: Number(entry.vehicle_id),
+          file_name:  entry.file_name.trim(),
+          year:       entry.year ? Number(entry.year) : null,
+          version:    entry.version || null,
+        });
+        if (entry.file && res.data?.id) {
+          await uploadFile(res.data.id, 'generated', entry.file);
+        }
+        okCount++;
+        updateEntry(entry.rid, { status: 'success', error: null });
+      } catch (err) {
+        failCount++;
+        updateEntry(entry.rid, { status: 'error', error: extractApiError(err, 'Failed') });
+      }
+    }
+
+    setSubmitting(false);
+    fetchFiles();
+
+    if (failCount === 0) {
+      // Everything uploaded — close & reset.
+      setShowModal(false);
+      setEntries([makeEmptyEntry()]);
+    } else {
+      // Keep the modal open. Successful rows can be cleared away by the user.
+      setError(`${okCount} added · ${failCount} failed. Fix the rows marked in red and try again.`);
+    }
+  };
+
+  // After a partial-success submit, the user may want to remove the green rows
+  // so only the failed ones remain for retry.
+  const clearSucceeded = () => setEntries((list) => {
+    const remaining = list.filter((e) => e.status !== 'success');
+    return remaining.length === 0 ? [makeEmptyEntry()] : remaining;
+  });
 
   const handleDelete = async (fileId, fileName) => {
     if (!window.confirm(`Delete "${fileName}"?`)) return;
@@ -450,53 +542,206 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <VVModal open={showModal} onClose={() => { setShowModal(false); setSelectedFile(null); }} title="Add New File">
-        <form onSubmit={handleAddFile} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <label className="field-label">Vehicle</label>
-            <select className="vv-input" value={newFile.vehicle_id} onChange={(e) => setNewFile({ ...newFile, vehicle_id: e.target.value })} required>
-              <option value="">Select vehicle</option>
-              {vehicles.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-            </select>
+      <VVModal
+        open={showModal}
+        onClose={() => { if (!submitting) { setShowModal(false); setEntries([makeEmptyEntry()]); setError(''); } }}
+        title={entries.length > 1 ? `Add ${entries.length} files` : 'Add New File'}
+      >
+        <form onSubmit={handleAddFile} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="row" style={{ justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+            <p style={{ fontSize: 12, color: 'var(--text-2)', margin: 0 }}>
+              Each row becomes one file. Pick multiple at once to fill rows in bulk.
+            </p>
+            <label
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                fontSize: 12, fontWeight: 500, color: 'var(--text-1)',
+                cursor: 'pointer', padding: '6px 10px',
+                border: '1px solid var(--border-1)', borderRadius: 8, background: 'var(--bg-1)',
+              }}
+            >
+              <Icon name="upload" size={13}/> Pick multiple files
+              <input
+                type="file"
+                multiple
+                onChange={(e) => { handlePickMultiple(e.target.files); e.target.value = ''; }}
+                style={{ display: 'none' }}
+              />
+            </label>
           </div>
-          <div>
-            <label className="field-label">File Name</label>
-            <Input value={newFile.file_name} onChange={(e) => setNewFile({ ...newFile, file_name: e.target.value })} required placeholder="LandCruiser_2003_VIN_v1"/>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '52vh', overflowY: 'auto' }}>
+            {entries.map((entry, idx) => {
+              const isError   = entry.status === 'error';
+              const isSuccess = entry.status === 'success';
+              const isUploading = entry.status === 'uploading';
+              const borderColor = isError ? 'var(--danger)' : isSuccess ? 'var(--success)' : 'var(--border-1)';
+              const bgColor     = isError ? 'rgba(239, 68, 68, 0.04)'
+                                : isSuccess ? 'rgba(16, 185, 129, 0.04)'
+                                : 'var(--bg-1)';
+              return (
+                <div
+                  key={entry.rid}
+                  style={{
+                    border: `1px solid ${borderColor}`,
+                    borderRadius: 10,
+                    padding: 12,
+                    background: bgColor,
+                    display: 'flex', flexDirection: 'column', gap: 10,
+                  }}
+                >
+                  <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: 'var(--text-3)', textTransform: 'uppercase' }}>
+                        File {idx + 1}
+                      </span>
+                      {isUploading && <span style={{ fontSize: 11, color: 'var(--info)' }}>Uploading…</span>}
+                      {isSuccess   && <span style={{ fontSize: 11, color: 'var(--success)', fontWeight: 600 }}>✓ Added</span>}
+                      {isError     && <span style={{ fontSize: 11, color: 'var(--danger)', fontWeight: 600 }}>× {entry.error || 'Failed'}</span>}
+                    </div>
+                    {entries.length > 1 && !submitting && (
+                      <button
+                        type="button"
+                        onClick={() => removeEntry(entry.rid)}
+                        title="Remove this row"
+                        style={{
+                          background: 'transparent', border: 'none', cursor: 'pointer',
+                          color: 'var(--text-3)', padding: 4, display: 'flex',
+                        }}
+                      >
+                        <Icon name="x" size={14}/>
+                      </button>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="field-label">Vehicle</label>
+                    <select
+                      className="vv-input"
+                      value={entry.vehicle_id}
+                      onChange={(e) => updateEntry(entry.rid, { vehicle_id: e.target.value, status: 'pending', error: null })}
+                      disabled={isUploading || isSuccess}
+                      required
+                    >
+                      <option value="">Select vehicle</option>
+                      {vehicles.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="field-label">File Name</label>
+                    <Input
+                      value={entry.file_name}
+                      onChange={(e) => updateEntry(entry.rid, { file_name: e.target.value, status: 'pending', error: null })}
+                      disabled={isUploading || isSuccess}
+                      placeholder="LandCruiser_2003_VIN_v1"
+                      required
+                    />
+                  </div>
+
+                  <div className="grid-2">
+                    <div>
+                      <label className="field-label">Year</label>
+                      <Input
+                        type="number"
+                        value={entry.year}
+                        onChange={(e) => updateEntry(entry.rid, { year: e.target.value })}
+                        disabled={isUploading || isSuccess}
+                        placeholder="2003"
+                      />
+                    </div>
+                    <div>
+                      <label className="field-label">Version</label>
+                      <Input
+                        value={entry.version}
+                        onChange={(e) => updateEntry(entry.rid, { version: e.target.value })}
+                        disabled={isUploading || isSuccess}
+                        placeholder="v1"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="field-label">Upload File</label>
+                    <div style={{
+                      border: '2px dashed var(--border-1)',
+                      borderRadius: 10,
+                      padding: 12,
+                      textAlign: 'center',
+                      cursor: (isUploading || isSuccess) ? 'default' : 'pointer',
+                      background: 'var(--bg-2)',
+                      opacity: (isUploading || isSuccess) ? 0.7 : 1,
+                    }}>
+                      <input
+                        type="file"
+                        id={`af-${entry.rid}`}
+                        onChange={(e) => {
+                          const f = e.target.files[0] || null;
+                          updateEntry(entry.rid, {
+                            file: f,
+                            file_name: entry.file_name || (f ? f.name.replace(/\.[^/.]+$/, '') : ''),
+                            status: 'pending',
+                            error: null,
+                          });
+                        }}
+                        disabled={isUploading || isSuccess}
+                        style={{ display: 'none' }}
+                      />
+                      <label
+                        htmlFor={`af-${entry.rid}`}
+                        style={{ cursor: (isUploading || isSuccess) ? 'default' : 'pointer', color: 'var(--text-2)', fontSize: 13 }}
+                      >
+                        <Icon name="upload" size={22} style={{ display: 'block', margin: '0 auto 4px', color: 'var(--text-3)' }}/>
+                        {entry.file ? entry.file.name : 'Click to upload or drag and drop'}
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <div className="grid-2">
-            <div>
-              <label className="field-label">Year</label>
-              <Input type="number" value={newFile.year} onChange={(e) => setNewFile({ ...newFile, year: e.target.value })} placeholder="2003"/>
-            </div>
-            <div>
-              <label className="field-label">Version</label>
-              <Input value={newFile.version} onChange={(e) => setNewFile({ ...newFile, version: e.target.value })} placeholder="v1"/>
-            </div>
+
+          <div className="row" style={{ justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={addEntry}
+              disabled={submitting}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                background: 'transparent', border: '1px dashed var(--border-1)',
+                color: 'var(--text-1)', padding: '8px 12px',
+                borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500,
+              }}
+            >
+              <Icon name="plus" size={13}/> Add another file
+            </button>
+
+            {entries.some((e) => e.status === 'success') && (
+              <button
+                type="button"
+                onClick={clearSucceeded}
+                disabled={submitting}
+                style={{
+                  background: 'transparent', border: 'none', color: 'var(--text-2)',
+                  fontSize: 12, cursor: 'pointer', textDecoration: 'underline',
+                }}
+              >
+                Clear completed rows
+              </button>
+            )}
           </div>
-          <div>
-            <label className="field-label">Upload File</label>
-            <div style={{
-              border: '2px dashed var(--border-1)',
-              borderRadius: 10,
-              padding: 18,
-              textAlign: 'center',
-              cursor: 'pointer',
-              background: 'var(--bg-2)',
-            }}>
-              <input type="file" id="add-file-input" onChange={(e) => {
-                const f = e.target.files[0] || null;
-                setSelectedFile(f);
-                if (f) setNewFile((p) => ({ ...p, file_name: p.file_name || f.name.replace(/\.[^/.]+$/, '') }));
-              }} style={{ display: 'none' }}/>
-              <label htmlFor="add-file-input" style={{ cursor: 'pointer', color: 'var(--text-2)', fontSize: 13 }}>
-                <Icon name="upload" size={28} style={{ display: 'block', margin: '0 auto 6px', color: 'var(--text-3)' }}/>
-                {selectedFile ? selectedFile.name : 'Click to upload or drag and drop'}
-              </label>
-            </div>
-          </div>
-          <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-            <Button variant="ghost" onClick={() => { setShowModal(false); setSelectedFile(null); }}>Cancel</Button>
-            <Button variant="primary" type="submit" disabled={submitting}>{submitting ? 'Adding…' : 'Add File'}</Button>
+
+          <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+            <Button
+              variant="ghost"
+              onClick={() => { if (!submitting) { setShowModal(false); setEntries([makeEmptyEntry()]); setError(''); } }}
+              disabled={submitting}
+            >
+              {entries.some((e) => e.status === 'success') ? 'Done' : 'Cancel'}
+            </Button>
+            <Button variant="primary" type="submit" disabled={submitting || entries.every((e) => e.status === 'success')}>
+              {submitting ? 'Uploading…' : entries.length > 1 ? `Add ${entries.filter((e) => e.status !== 'success').length} files` : 'Add File'}
+            </Button>
           </div>
         </form>
       </VVModal>

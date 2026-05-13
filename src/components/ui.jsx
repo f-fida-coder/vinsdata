@@ -61,6 +61,8 @@ export const Icon = ({ name, size = 16, stroke = 1.6, className = '', style }) =
     eye: <><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></>,
     tag: <><path d="M3 12V4h8l10 10-8 8z"/><circle cx="8" cy="8" r="1.5"/></>,
     calendar: <><rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 9h18M8 3v4M16 3v4"/></>,
+    truck: <><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.5"/><circle cx="17" cy="18" r="1.5"/></>,
+    building: <><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10 21v-3h4v3"/></>,
     clock: <><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></>,
     info: <><circle cx="12" cy="12" r="9"/><path d="M12 8v0M12 11v5"/></>,
     target: <><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1" fill="currentColor"/></>,

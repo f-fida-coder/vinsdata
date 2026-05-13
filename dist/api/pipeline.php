@@ -271,7 +271,22 @@ const LEAD_ACTIVITY_TYPES = [
     'merge_prep_updated',
     'moved_to_marketing','campaign_sent','campaign_opened','campaign_clicked',
     'campaign_replied','campaign_bounced','opted_out',
+    'transport_scheduled','transport_updated','transport_cancelled',
+    'transport_notified','transport_assigned','transport_status_changed',
+    'bill_of_sale_generated','bill_of_sale_updated',
 ];
+
+const TRANSPORT_STATUSES = ['new','notified','assigned','in_transit','delivered','cancelled'];
+const TRANSPORT_NOTIFY_CHANNELS = ['email','sms','manual'];
+const BOS_PAYMENT_TYPES = ['cash','trade','gift','other'];
+const BOS_TAXES_PAID_BY = ['buyer','seller'];
+
+function assertTransportStatus(string $s): void
+{
+    if (!in_array($s, TRANSPORT_STATUSES, true)) {
+        pipelineFail(400, "Invalid transport status '$s'", 'invalid_status');
+    }
+}
 
 const MARKETING_CHANNELS          = ['email','sms','whatsapp'];
 const MARKETING_CAMPAIGN_STATUSES = ['draft','queued','sending','sent','partially_failed','cancelled'];

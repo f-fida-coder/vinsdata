@@ -72,6 +72,25 @@ export const LEAD_TIERS = [
 
 export const TIER_BY_KEY = Object.fromEntries(LEAD_TIERS.map((t) => [t.key, t]));
 
+// Transport / dispatch — mirror of TRANSPORT_STATUSES in api/pipeline.php.
+export const TRANSPORT_STATUSES = [
+  { key: 'new',        label: 'New',        bg: 'bg-gray-100',   text: 'text-gray-700',    dot: 'bg-gray-500',    hex: '#6b7280' },
+  { key: 'notified',   label: 'Notified',   bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500',   hex: '#f59e0b' },
+  { key: 'assigned',   label: 'Assigned',   bg: 'bg-blue-50',    text: 'text-blue-700',    dot: 'bg-blue-500',    hex: '#3b82f6' },
+  { key: 'in_transit', label: 'In transit', bg: 'bg-violet-50',  text: 'text-violet-700',  dot: 'bg-violet-500',  hex: '#8b5cf6' },
+  { key: 'delivered',  label: 'Delivered',  bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500', hex: '#10b981' },
+  { key: 'cancelled',  label: 'Cancelled',  bg: 'bg-rose-50',    text: 'text-rose-700',    dot: 'bg-rose-400',    hex: '#f43f5e' },
+];
+
+export const TRANSPORT_STATUS_BY_KEY = Object.fromEntries(TRANSPORT_STATUSES.map((s) => [s.key, s]));
+
+export const BOS_PAYMENT_TYPES = [
+  { key: 'cash',  label: 'Cash Payment' },
+  { key: 'trade', label: 'Trade' },
+  { key: 'gift',  label: 'As a Gift' },
+  { key: 'other', label: 'Other' },
+];
+
 const TIER_THRESHOLDS = [
   { key: 'tier_1', maxOwners: 1, maxMiles: 100000 },
   { key: 'tier_2', maxOwners: 2, maxMiles: 150000 },
