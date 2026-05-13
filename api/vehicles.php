@@ -48,15 +48,36 @@ if ($method === 'GET') {
     }
 
     $includeInactive = !empty($_GET['include_inactive']);
+    // file_count = files attached directly. vin_count = DISTINCT VINs across
+    // imported leads in those files' batches (norm_vin is a generated/indexed
+    // column from migration 003 so this stays fast). lead_count = total
+    // imported lead rows.
     $sql = "SELECT v.id, v.name, v.make, v.model, v.year, v.body_type, v.`trim`, v.notes, v.is_active,
                    v.created_at, v.updated_at,
-                   (SELECT COUNT(*) FROM files f WHERE f.vehicle_id = v.id) AS file_count
+                   (SELECT COUNT(*) FROM files f WHERE f.vehicle_id = v.id) AS file_count,
+                   (SELECT COUNT(*)
+                      FROM imported_leads_raw r
+                      JOIN lead_import_batches b ON b.id = r.batch_id
+                      JOIN files f ON f.id = b.file_id
+                     WHERE f.vehicle_id = v.id AND r.import_status = 'imported'
+                   ) AS lead_count,
+                   (SELECT COUNT(DISTINCT r.norm_vin)
+                      FROM imported_leads_raw r
+                      JOIN lead_import_batches b ON b.id = r.batch_id
+                      JOIN files f ON f.id = b.file_id
+                     WHERE f.vehicle_id = v.id
+                       AND r.import_status = 'imported'
+                       AND r.norm_vin IS NOT NULL
+                       AND r.norm_vin <> ''
+                   ) AS vin_count
               FROM vehicles v";
     if (!$includeInactive) $sql .= " WHERE v.is_active = 1";
     $sql .= " ORDER BY v.is_active DESC, v.name";
     $rows = $db->query($sql)->fetchAll(PDO::FETCH_ASSOC);
     echo json_encode(array_map(function ($r) {
         $r['file_count'] = (int) $r['file_count'];
+        $r['lead_count'] = (int) $r['lead_count'];
+        $r['vin_count']  = (int) $r['vin_count'];
         return castVehicle($r);
     }, $rows));
     exit();

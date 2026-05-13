@@ -64,6 +64,7 @@ export default function VehiclesPage() {
 
   const activeCount = vehicles.filter((v) => v.is_active).length;
   const fileCount   = vehicles.reduce((s, v) => s + (v.file_count || 0), 0);
+  const vinCount    = vehicles.reduce((s, v) => s + (v.vin_count  || 0), 0);
   const newestActive = [...vehicles].filter((v) => v.is_active).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))[0];
 
   const openAdd  = () => { setDraft(emptyDraft());        setModalError(''); setModal('add'); };
@@ -132,10 +133,11 @@ export default function VehiclesPage() {
         <div className="card" style={{ marginBottom: 16, color: 'var(--danger)', borderColor: 'var(--danger)' }}>{error}</div>
       )}
 
-      <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+      <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
         <KPI label="Vehicles"  value={vehicles.length}/>
         <KPI label="Active"    value={activeCount}/>
-        <KPI label="Files attached" value={fileCount} hint={newestActive ? `Newest: ${newestActive.name}` : ''}/>
+        <KPI label="Files attached" value={fileCount}/>
+        <KPI label="Unique VINs" value={vinCount} hint={newestActive ? `Newest vehicle: ${newestActive.name}` : ''}/>
       </div>
 
       {/* Toolbar */}
@@ -175,6 +177,7 @@ export default function VehiclesPage() {
                 <th>Make / Model</th>
                 <th>Body / Trim</th>
                 <th>Files</th>
+                <th>VINs</th>
                 <th>Status</th>
                 <th></th>
               </tr>
@@ -204,6 +207,26 @@ export default function VehiclesPage() {
                     ) : <span className="cell-muted">—</span>}
                   </td>
                   <td className="cell-mono">{v.file_count || 0}</td>
+                  <td className="cell-mono">
+                    {v.vin_count > 0 ? (
+                      <a
+                        href={`/leads?vehicle_id=${v.id}`}
+                        title={`${v.lead_count || 0} leads · ${v.vin_count} unique VINs`}
+                        style={{ color: 'var(--text-1)', fontWeight: 600, textDecoration: 'none' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
+                        onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+                      >
+                        {v.vin_count.toLocaleString()}
+                        {v.lead_count > v.vin_count && (
+                          <span className="cell-muted" style={{ fontSize: 11, fontWeight: 400, marginLeft: 4 }}>
+                            / {v.lead_count.toLocaleString()}
+                          </span>
+                        )}
+                      </a>
+                    ) : (
+                      <span className="cell-muted">0</span>
+                    )}
+                  </td>
                   <td>
                     {v.is_active ? (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '2px 8px', borderRadius: 999, background: 'rgba(16,185,129,0.12)', color: 'var(--success)', fontWeight: 600 }}>
