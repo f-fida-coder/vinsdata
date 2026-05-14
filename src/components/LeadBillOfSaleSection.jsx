@@ -257,9 +257,9 @@ export default function LeadBillOfSaleSection({ leadId, onChanged }) {
               <button
                 onClick={() => setSignOpen(true)}
                 className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg"
-                title="Send to buyer for e-signature (v2 — coming soon)"
+                title="Email the PDF to the buyer. They sign and reply with a signed copy. (OpenSign embedded signing comes in v2.)"
               >
-                Send for signature
+                Email to buyer
               </button>
             )}
           </div>
@@ -277,40 +277,124 @@ export default function LeadBillOfSaleSection({ leadId, onChanged }) {
       )}
 
       {signOpen && (
-        <SignatureV2Modal onClose={() => setSignOpen(false)} buyerName={bos?.buyer_name} />
+        <EmailBoSModal
+          bos={bos}
+          defaultTo={''}
+          onClose={() => setSignOpen(false)}
+          onSent={() => { onChanged?.(); load(); }}
+        />
       )}
     </>
   );
 }
 
 /**
- * E-signature stub — v2 will wire this to OpenSign (self-hosted). For
- * now it just explains the plan so operators know to download + send
- * the PDF manually in the meantime.
+ * EmailBoSModal — sends the BoS PDF as an Outreach email attachment.
+ * Bridge to OpenSign v2: the buyer gets the PDF in their inbox, signs
+ * offline, emails it back. When OpenSign self-hosting lands the modal
+ * gets swapped to an embedded-signing flow without operator-facing
+ * UX changes.
+ *
+ * Pass `bos` to seed buyer name + vehicle context. Default `to` comes
+ * from the lead's email_primary when called from the drawer, or the
+ * BoS list row's lead context when called from /bill-of-sale.
  */
-function SignatureV2Modal({ onClose, buyerName }) {
+export function EmailBoSModal({ bos, defaultTo, onClose, onSent }) {
+  const buyerFirst = bos?.buyer_name ? bos.buyer_name.trim().split(' ')[0] : '';
+  const vehicleDesc = [bos?.vehicle_year, bos?.vehicle_make, bos?.vehicle_model].filter(Boolean).join(' ');
+  const defaultSubject = vehicleDesc
+    ? `Bill of Sale for your ${vehicleDesc}`
+    : 'Your Motor Vehicle Bill of Sale';
+  const defaultBody = (() => {
+    const greeting = buyerFirst ? `Hi ${buyerFirst},` : 'Hi,';
+    const vehLine = vehicleDesc ? `the sale of your ${vehicleDesc}` : 'this vehicle sale';
+    return `${greeting}\n\nAttached is the Motor Vehicle Bill of Sale for ${vehLine}. Please review the details, sign + date both signature lines (Authorization + Odometer Disclosure), and send a signed copy back when you're ready.\n\nReply to this email with any questions or corrections before signing.`;
+  })();
+
+  const [to, setTo]           = useState(defaultTo || '');
+  const [subject, setSubject] = useState(defaultSubject);
+  const [body, setBody]       = useState(defaultBody);
+  const [sending, setSending] = useState(false);
+  const [error, setError]     = useState('');
+  const [result, setResult]   = useState(null);
+
+  const send = async () => {
+    if (!to.trim()) { setError('Recipient email is required'); return; }
+    setSending(true); setError('');
+    try {
+      const payload = { to: to.trim(), subject, body };
+      if (bos?.id) payload.id = bos.id;
+      else if (bos?.imported_lead_id) payload.lead_id = bos.imported_lead_id;
+      const res = await api.post('/bos_email', payload);
+      setResult(res.data);
+      onSent?.(res.data);
+    } catch (err) {
+      setError(extractApiError(err, 'Failed to send'));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const inputCls = 'w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-2 text-[13px] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none';
+  const labelCls = 'block text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40" />
-      <div className="relative bg-white max-w-md w-full rounded-2xl shadow-2xl p-5" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-base font-semibold text-gray-900 mb-2">E-signature is coming in v2</h3>
-        <p className="text-sm text-gray-600 mb-3">
-          We're integrating self-hosted <strong>OpenSign</strong> here. When it ships:
-        </p>
-        <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1 mb-4">
-          <li>One click sends {buyerName ? <b>{buyerName}</b> : 'the buyer'} an email with a signing link.</li>
-          <li>Buyer signs on a clean web page (no app install).</li>
-          <li>Signed PDF lands back on this lead automatically — status flips to <em>Signed</em>.</li>
-          <li>Full audit trail (timestamp, IP, signer info) attached to the PDF.</li>
-        </ul>
-        <p className="text-sm text-gray-600 mb-4">
-          Until then: download the PDF and email it manually via the
-          <strong> Outreach </strong> section above. It pre-fills a greeting
-          for {buyerName ? buyerName.split(' ')[0] : 'the buyer'}.
-        </p>
-        <div className="flex justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-xs font-medium bg-gray-900 text-white rounded-lg">Close</button>
+      <div className="relative bg-white max-w-lg w-full rounded-2xl shadow-2xl flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Email Bill of Sale</h3>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              {result ? 'Sent — buyer should sign and email back.' : 'PDF attaches automatically. Branded signature appended.'}
+            </p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100">&times;</button>
         </div>
+
+        {result ? (
+          <div className="px-5 py-5 space-y-3">
+            <div className="rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-800">
+              Sent to <b>{result.to}</b> · PDF size {(result.pdf_size / 1024).toFixed(1)} KB
+            </div>
+            <p className="text-[12px] text-gray-600">
+              The BoS status moved to <b>Awaiting signature</b>. When the buyer
+              emails back a signed copy, you can attach it manually or — once
+              OpenSign self-hosting is live — that step automates too.
+            </p>
+            <div className="flex justify-end">
+              <button onClick={onClose} className="px-4 py-2 text-[12px] font-semibold rounded-md text-white bg-gray-900 hover:bg-gray-800">Done</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="px-5 py-4 overflow-y-auto flex-1 space-y-3">
+              <label className="block">
+                <span className={labelCls}>To</span>
+                <input type="email" className={inputCls} value={to} onChange={(e) => setTo(e.target.value)} placeholder="buyer@example.com" />
+              </label>
+              <label className="block">
+                <span className={labelCls}>Subject</span>
+                <input type="text" className={inputCls} value={subject} onChange={(e) => setSubject(e.target.value)} />
+              </label>
+              <label className="block">
+                <span className={labelCls}>Message</span>
+                <textarea rows={8} className={inputCls} value={body} onChange={(e) => setBody(e.target.value)} style={{ resize: 'vertical', fontFamily: 'inherit' }} />
+              </label>
+              {error && <p className="text-[12px] text-red-700 bg-red-50 border border-red-100 rounded-md px-3 py-2">{error}</p>}
+            </div>
+            <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
+              <button onClick={onClose} className="px-3 py-2 text-[12px] text-gray-600 hover:text-gray-900">Cancel</button>
+              <button
+                onClick={send}
+                disabled={sending || !to.trim()}
+                className="px-4 py-2 text-[12px] font-semibold rounded-md text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {sending ? 'Sending…' : 'Send to buyer'}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

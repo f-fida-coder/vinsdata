@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import api, { extractApiError, getBillOfSalePdfUrl } from '../api';
 import { SectionHeader, Button, Icon, Input, EmptyState, KPI } from '../components/ui';
 import LeadDetailDrawer from '../components/LeadDetailDrawer';
-import { BoSEditor, STANDALONE_BOS_DEFAULTS } from '../components/LeadBillOfSaleSection';
+import { BoSEditor, STANDALONE_BOS_DEFAULTS, EmailBoSModal } from '../components/LeadBillOfSaleSection';
 
 // --- Status metadata ---------------------------------------------------------
 // Status is derived server-side from the BoS row's signature_* + buyer/payment
@@ -251,7 +251,7 @@ export default function BillOfSalePage() {
                         >
                           <Icon name="edit" size={12} /> Edit
                         </button>
-                        <SendForSignatureButton bos={r} />
+                        <SendForSignatureButton bos={r} onSent={load} />
                       </div>
                     </td>
                   </tr>
@@ -436,9 +436,14 @@ function NewBoSPicker({ onClose, onPickLead, onUseStandalone }) {
  * touches the DB or sends anything. The shape is in place so v2 swap
  * is a contained one-file change.
  */
-function SendForSignatureButton({ bos }) {
+/**
+ * Per-row Email button: opens EmailBoSModal with the BoS row + buyer
+ * defaults. Posts to /api/bos_email which renders the PDF, sends via
+ * Gmail SMTP with attachment, and marks the row signature_status='sent'.
+ * Re-loads the page list on success so the row's status pill updates.
+ */
+function SendForSignatureButton({ bos, onSent }) {
   const [open, setOpen] = useState(false);
-  // Already signed → no action available.
   if (bos.status === 'signed') {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-1 text-[11px] text-gray-400" title="Signed">
@@ -451,29 +456,16 @@ function SendForSignatureButton({ bos }) {
       <button
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 rounded"
-        title="Send to buyer for e-signature (coming soon)"
+        title="Email the PDF to the buyer"
       >
-        <Icon name="mail" size={12} /> Sign
+        <Icon name="mail" size={12} /> Email
       </button>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setOpen(false)}>
-          <div className="absolute inset-0 bg-black/40" />
-          <div className="relative bg-white max-w-md w-full mx-4 rounded-2xl shadow-2xl p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-base font-semibold text-gray-900 mb-2">E-signature is coming in v2</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              We're going to integrate self-hosted <strong>OpenSign</strong> here — the operator
-              clicks <em>Sign</em>, the buyer gets an email with a signing link, and the signed PDF
-              lands back in this row automatically (status flips to <em>Signed</em>).
-            </p>
-            <p className="text-sm text-gray-600 mb-4">
-              For now you can download the PDF and email it manually. The composer in the lead
-              drawer's Outreach section can attach it.
-            </p>
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setOpen(false)}>Close</Button>
-            </div>
-          </div>
-        </div>
+        <EmailBoSModal
+          bos={bos}
+          onClose={() => setOpen(false)}
+          onSent={() => { onSent?.(); }}
+        />
       )}
     </>
   );

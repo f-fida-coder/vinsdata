@@ -34,6 +34,11 @@ function sendSmtpMessage(array $opts): array
     $bodyText  = $opts['body_text']  ?? '';
     $bodyHtml  = $opts['body_html']  ?? null;
     $timeout   = (int) ($opts['timeout'] ?? 20);
+    // Attachments: array of [{ filename, content (raw bytes), content_type }].
+    // Wraps the message in multipart/mixed (with multipart/alternative
+    // nested inside when HTML is present). All attachments are base64-
+    // encoded with 76-char line wrapping per RFC 2045.
+    $attachments = is_array($opts['attachments'] ?? null) ? $opts['attachments'] : [];
 
     if ($host === '' || $user === '' || $pass === '' || $to === '' || $bodyText === '') {
         return ['ok' => false, 'error' => 'smtp_missing_required_fields'];
@@ -101,23 +106,48 @@ function sendSmtpMessage(array $opts): array
             'MIME-Version: 1.0',
         ];
 
+        // Build the inner content (text-only or text+html alternative).
+        $altBoundary = 'a_' . bin2hex(random_bytes(8));
         if ($bodyHtml === null) {
-            $headers[] = 'Content-Type: text/plain; charset=UTF-8';
-            $headers[] = 'Content-Transfer-Encoding: 8bit';
-            $body = smtpDotStuff($bodyText);
+            $innerHeaders = ['Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: 8bit'];
+            $innerBody    = smtpDotStuff($bodyText);
         } else {
-            // multipart/alternative — text fallback first, then HTML.
-            $boundary = 'b_' . bin2hex(random_bytes(8));
-            $headers[] = 'Content-Type: multipart/alternative; boundary="' . $boundary . '"';
-            $body = "--$boundary\r\n"
-                  . "Content-Type: text/plain; charset=UTF-8\r\n"
-                  . "Content-Transfer-Encoding: 8bit\r\n\r\n"
-                  . smtpDotStuff($bodyText) . "\r\n"
-                  . "--$boundary\r\n"
-                  . "Content-Type: text/html; charset=UTF-8\r\n"
-                  . "Content-Transfer-Encoding: 8bit\r\n\r\n"
-                  . smtpDotStuff($bodyHtml) . "\r\n"
-                  . "--$boundary--\r\n";
+            $innerHeaders = ['Content-Type: multipart/alternative; boundary="' . $altBoundary . '"'];
+            $innerBody = "--$altBoundary\r\n"
+                       . "Content-Type: text/plain; charset=UTF-8\r\n"
+                       . "Content-Transfer-Encoding: 8bit\r\n\r\n"
+                       . smtpDotStuff($bodyText) . "\r\n"
+                       . "--$altBoundary\r\n"
+                       . "Content-Type: text/html; charset=UTF-8\r\n"
+                       . "Content-Transfer-Encoding: 8bit\r\n\r\n"
+                       . smtpDotStuff($bodyHtml) . "\r\n"
+                       . "--$altBoundary--\r\n";
+        }
+
+        if (empty($attachments)) {
+            // Single-part path — inner content becomes the message body.
+            foreach ($innerHeaders as $h) $headers[] = $h;
+            $body = $innerBody;
+        } else {
+            // multipart/mixed wraps the inner content + each attachment.
+            $mixBoundary = 'm_' . bin2hex(random_bytes(8));
+            $headers[] = 'Content-Type: multipart/mixed; boundary="' . $mixBoundary . '"';
+            $body  = "--$mixBoundary\r\n";
+            $body .= implode("\r\n", $innerHeaders) . "\r\n\r\n";
+            $body .= $innerBody . "\r\n";
+            foreach ($attachments as $att) {
+                $name = (string) ($att['filename'] ?? 'attachment');
+                $type = (string) ($att['content_type'] ?? 'application/octet-stream');
+                $raw  = (string) ($att['content'] ?? '');
+                $encoded = chunk_split(base64_encode($raw), 76, "\r\n");
+                $safeName = preg_replace('/[^A-Za-z0-9._\-]/', '_', $name);
+                $body .= "--$mixBoundary\r\n"
+                       . "Content-Type: $type; name=\"$safeName\"\r\n"
+                       . "Content-Transfer-Encoding: base64\r\n"
+                       . "Content-Disposition: attachment; filename=\"$safeName\"\r\n\r\n"
+                       . $encoded . "\r\n";
+            }
+            $body .= "--$mixBoundary--\r\n";
         }
 
         $payload = implode("\r\n", $headers) . "\r\n\r\n" . $body . "\r\n.\r\n";
