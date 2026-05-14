@@ -62,4 +62,34 @@ try {
     ];
 }
 
+// Now sandbox the next two steps auth.php takes after the require.
+if (!empty($out['require']['ok'])) {
+    // initSession()
+    try {
+        if (function_exists('initSession')) {
+            // Session cookies need headers; we already sent ours. Skip the
+            // actual session_start but verify the function is callable.
+            $out['initSession'] = ['callable' => true];
+        } else {
+            $out['initSession'] = ['callable' => false, 'reason' => 'function not defined after require'];
+        }
+    } catch (Throwable $e) {
+        $out['initSession'] = ['error' => $e->getMessage()];
+    }
+
+    // getDBConnection() — this is what auth.php hits before the
+    // password_verify check.
+    try {
+        if (function_exists('getDBConnection')) {
+            $pdo = getDBConnection();
+            $row = $pdo->query('SELECT 1 AS ok')->fetch();
+            $out['getDBConnection'] = ['ok' => true, 'ping' => $row['ok'] ?? null];
+        } else {
+            $out['getDBConnection'] = ['ok' => false, 'reason' => 'function not defined after require'];
+        }
+    } catch (Throwable $e) {
+        $out['getDBConnection'] = ['ok' => false, 'class' => get_class($e), 'message' => $e->getMessage()];
+    }
+}
+
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
