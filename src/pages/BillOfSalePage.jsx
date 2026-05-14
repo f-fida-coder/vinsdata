@@ -60,9 +60,15 @@ export default function BillOfSalePage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
   const [openLeadId, setOpenLeadId] = useState(null);
+  // Lead-attached editor for a new BoS, opened from the lead picker.
+  // Contains the prefilled defaults from /api/bill_of_sale?lead_id=X.
+  const [leadEditor, setLeadEditor] = useState(null); // null | { leadId, initial }
   // Standalone editor: open with `null` to create a brand-new lead-less
   // BoS, or with an existing row to edit it without going through a lead.
   const [standaloneEditor, setStandaloneEditor] = useState(null); // null | 'new' | row object
+  // Lead picker: when set, the modal that lets the operator pick which
+  // lead to generate the new BoS from (or fall through to standalone).
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -76,7 +82,6 @@ export default function BillOfSalePage() {
     }
   }, []);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
   const openStandalone = async (row) => {
@@ -128,7 +133,7 @@ export default function BillOfSalePage() {
           <Button
             variant="primary"
             icon="plus"
-            onClick={() => setStandaloneEditor('new')}
+            onClick={() => setPickerOpen(true)}
           >
             New Bill of Sale
           </Button>
@@ -271,6 +276,156 @@ export default function BillOfSalePage() {
           onClose={() => setStandaloneEditor(null)}
         />
       )}
+
+      {leadEditor && (
+        <BoSEditor
+          leadId={leadEditor.leadId}
+          initial={leadEditor.initial}
+          onSaved={() => { setLeadEditor(null); load(); }}
+          onClose={() => setLeadEditor(null)}
+        />
+      )}
+
+      {pickerOpen && (
+        <NewBoSPicker
+          onClose={() => setPickerOpen(false)}
+          onPickLead={async (lead) => {
+            // Pull the lead-prefilled defaults from the BoS endpoint so the
+            // editor opens with buyer/vehicle/VIN already populated.
+            try {
+              const res = await api.get('/bill_of_sale', { params: { lead_id: lead.id } });
+              setPickerOpen(false);
+              setLeadEditor({ leadId: lead.id, initial: res.data });
+            } catch (err) {
+              setError(extractApiError(err, 'Failed to load Bill of Sale defaults'));
+              setPickerOpen(false);
+            }
+          }}
+          onUseStandalone={() => {
+            setPickerOpen(false);
+            setStandaloneEditor('new');
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * NewBoSPicker — modal that opens when the operator clicks
+ * "New Bill of Sale" from the BoS list page. Default action is to
+ * generate from an existing lead (the normal path); standalone is a
+ * de-emphasized fallback for walk-in sellers / no-lead scenarios.
+ *
+ * Lead search uses the existing /api/leads?q endpoint (same one the
+ * Leads page itself drives), so anything a lead can be found by — name,
+ * VIN, phone, email, address, notes, label, attached BoS buyer name —
+ * resolves to that lead here too.
+ */
+function NewBoSPicker({ onClose, onPickLead, onUseStandalone }) {
+  const [q, setQ]             = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState('');
+
+  // Debounced lead search. Empty query → fetch latest 10 leads so the
+  // operator sees something on open without typing.
+  useEffect(() => {
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      setLoading(true); setError('');
+      const params = { per_page: 10, page: 1 };
+      if (q.trim() !== '') params.q = q.trim();
+      api.get('/leads', { params })
+        .then((res) => {
+          if (cancelled) return;
+          setResults(res.data?.leads || []);
+        })
+        .catch((err) => { if (!cancelled) setError(extractApiError(err, 'Lead search failed')); })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    }, 200);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [q]);
+
+  const fmtLead = (lead) => {
+    const np = lead.normalized_payload || {};
+    const name = np.full_name
+      || [np.first_name, np.last_name].filter(Boolean).join(' ')
+      || `Lead #${lead.id}`;
+    const vehicle = [np.year, np.make, np.model].filter(Boolean).join(' ');
+    const vin     = np.vin;
+    return { name, vehicle, vin };
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50" />
+      <div className="relative bg-white max-w-xl w-full rounded-2xl shadow-2xl flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">New Bill of Sale</h3>
+            <p className="text-[11px] text-gray-500 mt-0.5">Pick the lead to generate it from. Buyer + vehicle fields prefill from the lead; you can edit anything before saving.</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100">&times;</button>
+        </div>
+
+        <div className="px-5 pt-4 pb-3">
+          <Input
+            icon="search"
+            placeholder="Search by name, VIN, phone, email, vehicle…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            autoFocus
+          />
+        </div>
+
+        <div className="px-5 pb-4 overflow-y-auto flex-1">
+          {error && (
+            <div className="text-[12px] text-red-700 bg-red-50 border border-red-100 rounded-md px-3 py-2 mb-2">{error}</div>
+          )}
+          {loading ? (
+            <p className="text-[12px] text-gray-400 italic py-4">Searching…</p>
+          ) : results.length === 0 ? (
+            <p className="text-[12px] text-gray-400 italic py-4">No leads match.</p>
+          ) : (
+            <ul className="space-y-1">
+              {results.map((lead) => {
+                const f = fmtLead(lead);
+                return (
+                  <li key={lead.id}>
+                    <button
+                      onClick={() => onPickLead(lead)}
+                      className="w-full text-left px-3 py-2 rounded-lg border border-gray-100 hover:border-gray-300 hover:bg-gray-50 transition-colors flex items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13px] font-medium text-gray-900 truncate">{f.name}</div>
+                        <div className="text-[11px] text-gray-500 truncate">
+                          {f.vehicle || <span className="text-gray-300">No vehicle on file</span>}
+                          {f.vin && <span className="ml-2 font-mono text-gray-400">VIN {f.vin}</span>}
+                        </div>
+                      </div>
+                      <span className="text-[11px] font-medium text-blue-700 shrink-0">
+                        Generate &rarr;
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
+          <button
+            onClick={onUseStandalone}
+            className="text-[12px] text-gray-500 hover:text-gray-900 underline-offset-2 hover:underline"
+            title="Create a Bill of Sale not tied to any lead — for walk-in sellers"
+          >
+            Or create a standalone Bill of Sale (no lead)
+          </button>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        </div>
+      </div>
     </div>
   );
 }
