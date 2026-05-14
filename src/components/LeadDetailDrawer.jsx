@@ -16,6 +16,7 @@ import {
 } from '../lib/tasks';
 import LeadTransportSection from './LeadTransportSection';
 import LeadBillOfSaleSection from './LeadBillOfSaleSection';
+import LeadOutreachSection from './LeadOutreachSection';
 
 const FIELD_LABELS = Object.fromEntries(NORMALIZED_FIELDS.map((f) => [f.key, f.label]));
 const FIELD_ORDER = [
@@ -1232,6 +1233,14 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
                 isAdmin={user?.role === 'admin'}
                 onChanged={handleChildChanged}
               />
+
+              <CollapsibleSection title="Outreach" defaultOpen>
+                <LeadOutreachSection
+                  leadId={detail.id}
+                  normalizedPayload={detail.normalized_payload}
+                  onChanged={handleChildChanged}
+                />
+              </CollapsibleSection>
 
               <CollapsibleSection title="Bill of Sale" defaultOpen>
                 <div className="space-y-4">
