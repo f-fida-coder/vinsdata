@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import api, { extractApiError, getBillOfSalePdfUrl } from '../api';
 import { SectionHeader, Button, Icon, Input, EmptyState, KPI } from '../components/ui';
 import LeadDetailDrawer from '../components/LeadDetailDrawer';
+import { BoSEditor, STANDALONE_BOS_DEFAULTS } from '../components/LeadBillOfSaleSection';
 
 // --- Status metadata ---------------------------------------------------------
 // Status is derived server-side from the BoS row's signature_* + buyer/payment
@@ -60,6 +60,9 @@ export default function BillOfSalePage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
   const [openLeadId, setOpenLeadId] = useState(null);
+  // Standalone editor: open with `null` to create a brand-new lead-less
+  // BoS, or with an existing row to edit it without going through a lead.
+  const [standaloneEditor, setStandaloneEditor] = useState(null); // null | 'new' | row object
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -73,7 +76,26 @@ export default function BillOfSalePage() {
     }
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
+
+  const openStandalone = async (row) => {
+    // Pull the full row by id (the list view only has a subset of fields).
+    try {
+      const res = await api.get('/bill_of_sale', { params: { id: row.id } });
+      setStandaloneEditor(res.data);
+    } catch (err) {
+      setError(extractApiError(err, 'Failed to load Bill of Sale'));
+    }
+  };
+
+  const openRow = (row) => {
+    if (row.imported_lead_id) {
+      setOpenLeadId(row.imported_lead_id);
+    } else {
+      openStandalone(row);
+    }
+  };
 
   const counts = useMemo(() => {
     const out = { all: rows.length };
@@ -101,7 +123,16 @@ export default function BillOfSalePage() {
     <div className="max-w-[1400px] mx-auto">
       <SectionHeader
         title="Bill of Sale"
-        subtitle="Every Texas motor vehicle bill of sale generated from a lead. Edit, download, or send for e-signature."
+        subtitle="Every Texas motor vehicle bill of sale — generated from a lead or created standalone. Edit, download, or send for e-signature."
+        actions={
+          <Button
+            variant="primary"
+            icon="plus"
+            onClick={() => setStandaloneEditor('new')}
+          >
+            New Bill of Sale
+          </Button>
+        }
       />
 
       {error && (
@@ -176,10 +207,10 @@ export default function BillOfSalePage() {
                     <td className="px-4 py-2.5"><StatusPill status={r.status} /></td>
                     <td className="px-4 py-2.5">
                       <button
-                        onClick={() => setOpenLeadId(r.imported_lead_id)}
+                        onClick={() => openRow(r)}
                         className="text-gray-900 font-medium hover:underline text-left"
                       >
-                        {r.lead_name || `Lead #${r.imported_lead_id}`}
+                        {r.lead_name || (r.imported_lead_id ? `Lead #${r.imported_lead_id}` : <span className="italic text-gray-500">Standalone</span>)}
                       </button>
                     </td>
                     <td className="px-4 py-2.5 text-gray-700">
@@ -198,7 +229,9 @@ export default function BillOfSalePage() {
                     <td className="px-4 py-2.5 text-right">
                       <div className="inline-flex gap-1">
                         <a
-                          href={getBillOfSalePdfUrl(r.imported_lead_id)}
+                          href={r.imported_lead_id
+                            ? getBillOfSalePdfUrl(r.imported_lead_id)
+                            : `/api/bill_of_sale?id=${r.id}&format=pdf`}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-blue-700 hover:bg-blue-50 rounded"
@@ -207,9 +240,9 @@ export default function BillOfSalePage() {
                           <Icon name="download" size={12} /> PDF
                         </a>
                         <button
-                          onClick={() => setOpenLeadId(r.imported_lead_id)}
+                          onClick={() => openRow(r)}
                           className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-100 rounded"
-                          title="Open lead drawer to edit fields"
+                          title={r.imported_lead_id ? 'Open lead drawer to edit fields' : 'Edit standalone Bill of Sale'}
                         >
                           <Icon name="edit" size={12} /> Edit
                         </button>
@@ -229,6 +262,15 @@ export default function BillOfSalePage() {
         onClose={() => setOpenLeadId(null)}
         onChanged={load}
       />
+
+      {standaloneEditor && (
+        <BoSEditor
+          leadId={null}
+          initial={standaloneEditor === 'new' ? STANDALONE_BOS_DEFAULTS : standaloneEditor}
+          onSaved={() => { setStandaloneEditor(null); load(); }}
+          onClose={() => setStandaloneEditor(null)}
+        />
+      )}
     </div>
   );
 }

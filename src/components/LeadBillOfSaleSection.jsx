@@ -2,6 +2,33 @@ import { useState, useEffect, useCallback } from 'react';
 import api, { extractApiError, getBillOfSalePdfUrl } from '../api';
 import { BOS_PAYMENT_TYPES } from '../lib/crm';
 
+// Empty shape for a standalone Bill of Sale (no lead attached). Mirrors
+// the structure of the lead-prefilled defaults from defaultsFromLead()
+// in api/bill_of_sale.php so the editor never sees an undefined field.
+const STANDALONE_BOS_DEFAULTS = {
+  id: null,
+  imported_lead_id: null,
+  sale_county: '', sale_state: '', sale_date: new Date().toISOString().slice(0, 10),
+  buyer_name: '', buyer_address: '',
+  seller_name: '', seller_address: '',
+  vehicle_make: '', vehicle_model: '', vehicle_body_type: '',
+  vehicle_year: '', vehicle_color: '', vehicle_odometer: '', vehicle_vin: '',
+  payment_type: 'cash', payment_amount: null, trade_amount: null,
+  trade_make: '', trade_model: '', trade_body_type: '',
+  trade_year: '', trade_color: '', trade_odometer: '',
+  gift_value: null, other_terms: '',
+  taxes_paid_by: 'buyer',
+  odometer_accurate: true, odometer_exceeds_limits: false, odometer_not_actual: false,
+};
+
+/**
+ * BoSEditor — drives both lead-attached and standalone BoS rows.
+ *   - leadId set:      saves via /bill_of_sale with lead_id (upsert by lead)
+ *   - leadId null/0:   saves standalone — by row id if `initial.id` exists,
+ *                       otherwise inserts a brand-new lead-less row.
+ * Same form fields either way; only the save payload differs.
+ */
+export { BoSEditor, STANDALONE_BOS_DEFAULTS };
 function BoSEditor({ leadId, initial, onSaved, onClose }) {
   const [d, setD]         = useState(initial);
   const [saving, setSaving] = useState(false);
@@ -12,7 +39,11 @@ function BoSEditor({ leadId, initial, onSaved, onClose }) {
   const save = async () => {
     setSaving(true); setError('');
     try {
-      const payload = { lead_id: leadId, ...d };
+      // Standalone path: no lead_id, pass id for updates so the
+      // backend uses the by-id UPDATE branch instead of upsert-by-lead.
+      const payload = leadId
+        ? { lead_id: leadId, ...d }
+        : { id: d?.id || undefined, ...d };
       const res = await api.put('/bill_of_sale', payload);
       onSaved?.(res.data.bill_of_sale);
     } catch (err) {
