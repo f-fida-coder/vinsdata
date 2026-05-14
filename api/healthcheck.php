@@ -92,4 +92,33 @@ if (isset($_GET['db']) && extension_loaded('pdo_mysql')) {
     $out['db'] = $dbCheck;
 }
 
+// Outbound providers diagnostic — opt-in, like ?db=1. Reports which
+// adapter each kind would resolve to (stub / gmail / openphone) WITHOUT
+// exposing any secret values. Useful for confirming a deploy picked up
+// the credentials stored in app_secrets / .env.
+//
+// Wrapped in try/catch so a broken config.php can't crash the rest of
+// the diagnostic — same defensive posture as the ?db=1 block above.
+if (isset($_GET['providers'])) {
+    $prov = ['attempted' => true, 'error' => null, 'email' => null, 'sms' => null];
+    try {
+        require_once __DIR__ . '/config.php';
+        require_once __DIR__ . '/outbound_helpers.php';
+        $prov['email'] = resolveOutboundProvider('email');
+        $prov['sms']   = resolveOutboundProvider('sms');
+        // Whether each key has SOME source (env file, env var, or app_secrets row).
+        // No values, just presence flags — safe to expose.
+        $prov['has'] = [
+            'GMAIL_SMTP_USER'           => getEnvValue('GMAIL_SMTP_USER') !== '',
+            'GMAIL_SMTP_PASS'           => getEnvValue('GMAIL_SMTP_PASS') !== '',
+            'OPENPHONE_API_KEY'         => getEnvValue('OPENPHONE_API_KEY') !== '',
+            'OPENPHONE_PHONE_NUMBER_ID' => getEnvValue('OPENPHONE_PHONE_NUMBER_ID') !== '',
+            'OPENPHONE_WEBHOOK_SECRET'  => getEnvValue('OPENPHONE_WEBHOOK_SECRET') !== '',
+        ];
+    } catch (Throwable $e) {
+        $prov['error'] = $e->getMessage();
+    }
+    $out['providers'] = $prov;
+}
+
 echo json_encode($out, JSON_UNESCAPED_SLASHES);
