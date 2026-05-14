@@ -235,6 +235,56 @@ function renderBillOfSalePdf(array $d): string
     return $mpdf->Output('', 'S');
 }
 
+// List mode — all bills of sale across leads, joined with enough lead
+// context for the Bill of Sale tab to render a useful table.
+//
+//   GET /api/bill_of_sale?list=1
+//
+// Returns: [{ id, imported_lead_id, lead_name, vehicle_vin, vehicle_make,
+//             vehicle_model, vehicle_year, buyer_name, payment_type,
+//             payment_amount, has_signature, status, updated_at }, ...]
+if ($method === 'GET' && isset($_GET['list'])) {
+    $stmt = $db->query(
+        "SELECT b.id, b.imported_lead_id,
+                b.vehicle_vin, b.vehicle_make, b.vehicle_model, b.vehicle_year,
+                b.buyer_name, b.payment_type, b.payment_amount,
+                b.signed_at, b.signature_request_id, b.signature_status,
+                b.created_at, b.updated_at,
+                JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.full_name'))   AS lead_full_name,
+                JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.first_name'))  AS lead_first_name,
+                JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.last_name'))   AS lead_last_name,
+                u.name AS created_by_name
+           FROM bill_of_sale b
+           JOIN imported_leads_raw r ON r.id = b.imported_lead_id
+           LEFT JOIN users u ON u.id = b.created_by
+          ORDER BY b.updated_at DESC, b.id DESC"
+    );
+    $rows = $stmt->fetchAll();
+    foreach ($rows as &$r) {
+        $r['id']               = (int) $r['id'];
+        $r['imported_lead_id'] = (int) $r['imported_lead_id'];
+        $r['payment_amount']   = $r['payment_amount'] !== null ? (float) $r['payment_amount'] : null;
+        $r['vehicle_year']     = $r['vehicle_year']   !== null ? (int) $r['vehicle_year']   : null;
+        $lead = trim((string) ($r['lead_full_name'] ?: trim(($r['lead_first_name'] ?? '') . ' ' . ($r['lead_last_name'] ?? ''))));
+        $r['lead_name'] = $lead !== '' ? $lead : null;
+        unset($r['lead_full_name'], $r['lead_first_name'], $r['lead_last_name']);
+
+        // Derive a display status. Real signature flow lands in v2.
+        if (!empty($r['signed_at'])) {
+            $r['status'] = 'signed';
+        } elseif (!empty($r['signature_request_id'])) {
+            $r['status'] = 'awaiting_signature';
+        } elseif (!empty($r['buyer_name']) && $r['payment_amount']) {
+            $r['status'] = 'ready_to_send';
+        } else {
+            $r['status'] = 'draft';
+        }
+    }
+    unset($r);
+    echo json_encode($rows);
+    exit();
+}
+
 if ($method === 'GET') {
     $leadId = (int) ($_GET['lead_id'] ?? 0);
     if ($leadId <= 0) pipelineFail(400, 'lead_id is required', 'missing_lead_id');

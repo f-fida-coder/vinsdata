@@ -175,6 +175,7 @@ export default function LeadBillOfSaleSection({ leadId, onChanged }) {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
   const [open, setOpen]       = useState(false);
+  const [signOpen, setSignOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -195,6 +196,7 @@ export default function LeadBillOfSaleSection({ leadId, onChanged }) {
   if (loading) return <p className="text-xs text-gray-400">Loading bill of sale…</p>;
 
   const saved = bos && bos.id;
+  const readyToSign = saved && bos.buyer_name && bos.payment_amount;
 
   return (
     <>
@@ -208,7 +210,7 @@ export default function LeadBillOfSaleSection({ leadId, onChanged }) {
                 : <>Not saved yet — fields will be prefilled from this lead.</>}
             </p>
           </div>
-          <div className="flex gap-2 flex-shrink-0">
+          <div className="flex gap-2 flex-shrink-0 flex-wrap">
             <button onClick={() => setOpen(true)} className="px-3 py-1.5 text-xs font-medium bg-gray-900 hover:bg-gray-800 text-white rounded-lg">
               {saved ? 'Edit fields' : 'Fill out form'}
             </button>
@@ -220,6 +222,15 @@ export default function LeadBillOfSaleSection({ leadId, onChanged }) {
             >
               Download PDF
             </a>
+            {readyToSign && (
+              <button
+                onClick={() => setSignOpen(true)}
+                className="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg"
+                title="Send to buyer for e-signature (v2 — coming soon)"
+              >
+                Send for signature
+              </button>
+            )}
           </div>
         </div>
         {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
@@ -233,6 +244,43 @@ export default function LeadBillOfSaleSection({ leadId, onChanged }) {
           onClose={() => setOpen(false)}
         />
       )}
+
+      {signOpen && (
+        <SignatureV2Modal onClose={() => setSignOpen(false)} buyerName={bos?.buyer_name} />
+      )}
     </>
+  );
+}
+
+/**
+ * E-signature stub — v2 will wire this to OpenSign (self-hosted). For
+ * now it just explains the plan so operators know to download + send
+ * the PDF manually in the meantime.
+ */
+function SignatureV2Modal({ onClose, buyerName }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="relative bg-white max-w-md w-full rounded-2xl shadow-2xl p-5" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-base font-semibold text-gray-900 mb-2">E-signature is coming in v2</h3>
+        <p className="text-sm text-gray-600 mb-3">
+          We're integrating self-hosted <strong>OpenSign</strong> here. When it ships:
+        </p>
+        <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1 mb-4">
+          <li>One click sends {buyerName ? <b>{buyerName}</b> : 'the buyer'} an email with a signing link.</li>
+          <li>Buyer signs on a clean web page (no app install).</li>
+          <li>Signed PDF lands back on this lead automatically — status flips to <em>Signed</em>.</li>
+          <li>Full audit trail (timestamp, IP, signer info) attached to the PDF.</li>
+        </ul>
+        <p className="text-sm text-gray-600 mb-4">
+          Until then: download the PDF and email it manually via the
+          <strong> Outreach </strong> section above. It pre-fills a greeting
+          for {buyerName ? buyerName.split(' ')[0] : 'the buyer'}.
+        </p>
+        <div className="flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-xs font-medium bg-gray-900 text-white rounded-lg">Close</button>
+        </div>
+      </div>
+    </div>
   );
 }
