@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import api, { extractApiError } from '../api';
-import { SectionHeader, Button, Icon, Input, EmptyState, KPI } from '../components/ui';
+import { SectionHeader, Button, Icon, Input, EmptyState, KPI, StatusBadge, TempPill } from '../components/ui';
 import LeadDetailDrawer from '../components/LeadDetailDrawer';
 
 // 5-stage post-close pipeline. The order here is the order they render
@@ -58,6 +58,7 @@ export default function FundingPage() {
   const [search, setSearch] = useState('');
   const [openLeadId, setOpenLeadId] = useState(null);
   const [fundModal, setFundModal] = useState(null); // row being marked funded
+  const [addOpen, setAddOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -92,6 +93,11 @@ export default function FundingPage() {
       <SectionHeader
         title="Funding"
         subtitle="Closed deals moving through the post-close pipeline. Every stage except Funded auto-flips from BoS + Dispatch."
+        actions={
+          <Button variant="primary" icon="plus" onClick={() => setAddOpen(true)}>
+            Add Lead
+          </Button>
+        }
       />
 
       {error && (
@@ -201,6 +207,236 @@ export default function FundingPage() {
       {fundModal && (
         <MarkFundedModal row={fundModal} onClose={() => setFundModal(null)} onSaved={() => { setFundModal(null); load(); }} />
       )}
+
+      {addOpen && (
+        <AddToFundingModal
+          onClose={() => setAddOpen(false)}
+          onAdded={load}
+          onOpenLead={(id) => { setAddOpen(false); setOpenLeadId(id); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// AddToFundingModal — search a lead, immediately mark its temperature as
+// 'closed' (which is what puts it on this page), then show the current
+// state pills + a confirmation. The "add" happens at the moment of
+// selection; the operator doesn't need to click a second button.
+// -----------------------------------------------------------------------------
+function AddToFundingModal({ onClose, onAdded, onOpenLead }) {
+  const [step, setStep]         = useState('pick');      // 'pick' | 'committed'
+  const [q, setQ]               = useState('');
+  const [results, setResults]   = useState([]);
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState('');
+  const [committing, setCommitting] = useState(false);
+  const [picked, setPicked]     = useState(null);        // full lead detail after commit
+  const [wasAlreadyClosed, setWasAlreadyClosed] = useState(false);
+
+  // Debounced lead search — same /api/leads?q the Leads page + BoS picker use.
+  useEffect(() => {
+    if (step !== 'pick') return;
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      setLoading(true); setError('');
+      const params = { per_page: 10, page: 1 };
+      if (q.trim() !== '') params.q = q.trim();
+      api.get('/leads', { params })
+        .then((res) => { if (!cancelled) setResults(res.data?.leads || []); })
+        .catch((err) => { if (!cancelled) setError(extractApiError(err, 'Lead search failed')); })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    }, 200);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [q, step]);
+
+  const fmtLead = (lead) => {
+    const np = lead.normalized_payload || {};
+    const name = np.full_name
+      || [np.first_name, np.last_name].filter(Boolean).join(' ')
+      || `Lead #${lead.id}`;
+    const vehicle = [np.year, np.make, np.model].filter(Boolean).join(' ');
+    return { name, vehicle, vin: np.vin };
+  };
+
+  const pickLead = async (lead) => {
+    setCommitting(true); setError('');
+    try {
+      // Fetch full lead detail so we can show its status pills.
+      const detailRes = await api.get('/leads', { params: { id: lead.id } });
+      const full = detailRes.data;
+      const currentTemp = full?.crm_state?.lead_temperature || '';
+      setWasAlreadyClosed(currentTemp === 'closed');
+
+      // If not already closed, set it. That's what makes the lead show up
+      // on the Funding page — the page filters by lead_temperature='closed'.
+      if (currentTemp !== 'closed') {
+        await api.put('/lead_state', {
+          lead_id: lead.id,
+          lead_temperature: 'closed',
+        });
+      }
+
+      // Re-fetch so the pills below reflect the post-update state.
+      const refreshed = await api.get('/leads', { params: { id: lead.id } });
+      setPicked(refreshed.data);
+      setStep('committed');
+      onAdded?.();
+    } catch (err) {
+      setError(extractApiError(err, 'Failed to add lead to funding'));
+    } finally {
+      setCommitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50" />
+      <div className="relative bg-white max-w-xl w-full rounded-2xl shadow-2xl flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">
+              {step === 'pick' ? 'Add a lead to Funding' : 'Added to Funding'}
+            </h3>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              {step === 'pick'
+                ? 'Pick a lead. Selecting it sets temperature to Closed and adds it to this pipeline.'
+                : (wasAlreadyClosed
+                    ? 'This lead was already closed — surfaced here unchanged.'
+                    : 'Lead marked Closed and surfaced here. Edit later from the lead drawer.')}
+            </p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100">&times;</button>
+        </div>
+
+        {step === 'pick' && (
+          <>
+            <div className="px-5 pt-4 pb-3">
+              <Input
+                icon="search"
+                placeholder="Search by name, VIN, phone, email, vehicle…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="px-5 pb-4 overflow-y-auto flex-1">
+              {error && <div className="text-[12px] text-red-700 bg-red-50 border border-red-100 rounded-md px-3 py-2 mb-2">{error}</div>}
+              {committing ? (
+                <p className="text-[12px] text-gray-400 italic py-4">Adding…</p>
+              ) : loading ? (
+                <p className="text-[12px] text-gray-400 italic py-4">Searching…</p>
+              ) : results.length === 0 ? (
+                <p className="text-[12px] text-gray-400 italic py-4">No leads match.</p>
+              ) : (
+                <ul className="space-y-1">
+                  {results.map((lead) => {
+                    const f = fmtLead(lead);
+                    const currentTemp = lead.crm_state?.lead_temperature;
+                    return (
+                      <li key={lead.id}>
+                        <button
+                          onClick={() => pickLead(lead)}
+                          disabled={committing}
+                          className="w-full text-left px-3 py-2 rounded-lg border border-gray-100 hover:border-gray-300 hover:bg-gray-50 transition-colors flex items-center justify-between gap-3 disabled:opacity-50"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[13px] font-medium text-gray-900 truncate">
+                              {f.name}
+                              {currentTemp === 'closed' && (
+                                <span className="ml-2 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 rounded px-1.5 py-0.5">already closed</span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-gray-500 truncate">
+                              {f.vehicle || <span className="text-gray-300">No vehicle on file</span>}
+                              {f.vin && <span className="ml-2 font-mono text-gray-400">VIN {f.vin}</span>}
+                            </div>
+                          </div>
+                          <span className="text-[11px] font-medium text-blue-700 shrink-0">
+                            {currentTemp === 'closed' ? 'View →' : 'Add →'}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </>
+        )}
+
+        {step === 'committed' && picked && (
+          <>
+            <div className="px-5 py-4 overflow-y-auto flex-1 space-y-3">
+              <PickedSummary lead={picked} wasAlreadyClosed={wasAlreadyClosed} />
+            </div>
+            <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
+              <button
+                onClick={() => { setStep('pick'); setPicked(null); setQ(''); }}
+                className="text-[12px] text-gray-500 hover:text-gray-900"
+              >
+                &larr; Add another
+              </button>
+              <div className="flex gap-2">
+                <Button variant="ghost" onClick={() => onOpenLead?.(picked.id)}>Open lead</Button>
+                <button
+                  onClick={onClose}
+                  className="px-4 py-2 text-[12px] font-semibold rounded-md text-white bg-gray-900 hover:bg-gray-800"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Confirmation pane after a lead is committed to funding. Shows the
+ * lead's current state — status + temperature pills, attached vehicle,
+ * Bill of Sale state if one exists. Read-only; clicking "Open lead"
+ * sends the operator into the drawer for deeper edits.
+ */
+function PickedSummary({ lead, wasAlreadyClosed }) {
+  const np = lead.normalized_payload || {};
+  const state = lead.crm_state || {};
+  const name = np.full_name
+    || [np.first_name, np.last_name].filter(Boolean).join(' ')
+    || `Lead #${lead.id}`;
+  const vehicle = [np.year, np.make, np.model].filter(Boolean).join(' ');
+  const offer = state.price_offered;
+
+  return (
+    <div className="space-y-3">
+      <div className={`rounded-lg border px-3 py-2 ${wasAlreadyClosed ? 'border-blue-100 bg-blue-50' : 'border-emerald-100 bg-emerald-50'}`}>
+        <p className={`text-[12px] font-medium ${wasAlreadyClosed ? 'text-blue-800' : 'text-emerald-800'}`}>
+          {wasAlreadyClosed
+            ? `${name} is already on the Funding pipeline.`
+            : `${name} added to Funding — temperature set to Closed.`}
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-gray-100 bg-white">
+        <table className="w-full text-[12px]">
+          <tbody>
+            <tr><td className="px-3 py-2 font-medium text-gray-600 w-1/3">Vehicle</td><td className="px-3 py-2 text-gray-900">{vehicle || <span className="text-gray-300">—</span>}</td></tr>
+            {np.vin && <tr className="bg-gray-50/40"><td className="px-3 py-2 font-medium text-gray-600">VIN</td><td className="px-3 py-2 font-mono text-gray-700">{np.vin}</td></tr>}
+            <tr><td className="px-3 py-2 font-medium text-gray-600">Status</td><td className="px-3 py-2"><StatusBadge status={state.status} /></td></tr>
+            <tr className="bg-gray-50/40"><td className="px-3 py-2 font-medium text-gray-600">Temperature</td><td className="px-3 py-2"><TempPill temp={state.lead_temperature} /></td></tr>
+            {state.assigned_user_name && <tr><td className="px-3 py-2 font-medium text-gray-600">Assigned to</td><td className="px-3 py-2 text-gray-700">{state.assigned_user_name}</td></tr>}
+            {offer != null && <tr className="bg-gray-50/40"><td className="px-3 py-2 font-medium text-gray-600">Offered</td><td className="px-3 py-2 text-gray-900 tabular-nums">${Number(offer).toLocaleString()}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="text-[11px] text-gray-500">
+        The lead will appear on the funding pipeline above with its current stage.
+        Mark <em>Funded</em> from there once payment lands.
+      </p>
     </div>
   );
 }
