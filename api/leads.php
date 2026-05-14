@@ -312,6 +312,14 @@ foreach ($likeCols as $q => $expr) {
     }
 }
 
+// Trim is stored verbatim inside normalized_payload_json as "Trim".
+// Exact match (case-insensitive via the collation override) so picking
+// from the filter dropdown returns a deterministic set.
+if (isset($_GET['trim']) && $_GET['trim'] !== '') {
+    $where[] = $jsonCi('Trim') . ' = :trim';
+    $params[':trim'] = $_GET['trim'];
+}
+
 // Global search across every field connected to a lead. JSON-extracted text
 // is utf8mb4_bin (case-sensitive); apply utf8mb4_general_ci so "john" matches
 // "John Smith". The norm_* columns inherit the table's case-insensitive
