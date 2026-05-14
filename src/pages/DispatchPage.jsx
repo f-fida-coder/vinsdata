@@ -310,6 +310,7 @@ export default function DispatchPage() {
   const [search, setSearch]         = useState('');
   const [openEvent, setOpenEvent]   = useState(null);
   const [range, setRange]           = useState({ start: null, end: null });
+  const [addOpen, setAddOpen]       = useState(false);
 
   const loadTransporters = useCallback(async () => {
     try {
@@ -332,7 +333,7 @@ export default function DispatchPage() {
       setSummary(res.data.summary || {});
       setError('');
     } catch (err) {
-      setError(extractApiError(err, 'Failed to load Bill of Sale data'));
+      setError(extractApiError(err, 'Failed to load dispatch data'));
     } finally {
       setLoading(false);
     }
@@ -409,17 +410,18 @@ export default function DispatchPage() {
   return (
     <div className="p-6 space-y-4">
       <SectionHeader
-        title="Bill of Sale"
-        subtitle="Sales scheduled across the calendar — drag a card to reschedule, click for full details"
+        title="Dispatch"
+        subtitle="Vehicle pickups + deliveries scheduled across the calendar — drag a card to reschedule, click for full details."
         actions={(
           <div style={{ display: 'flex', gap: 8 }}>
+            <Button variant="primary" icon="plus" onClick={() => setAddOpen(true)}>Add to Dispatch</Button>
             <a
               href={csvHref}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition"
             >
               <Icon name="download"/> Export CSV
             </a>
-            <Button variant="primary" icon="refresh" onClick={() => { loadEvents(); loadTransporters(); }}>Refresh</Button>
+            <Button variant="ghost" icon="refresh" onClick={() => { loadEvents(); loadTransporters(); }}>Refresh</Button>
           </div>
         )}
       />
@@ -514,6 +516,239 @@ export default function DispatchPage() {
           onChanged={() => { loadEvents(); }}
         />
       )}
+
+      {addOpen && (
+        <AddToDispatchModal
+          transporters={transporters}
+          onClose={() => setAddOpen(false)}
+          onScheduled={() => { setAddOpen(false); loadEvents(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// AddToDispatchModal — pick a lead, then fill in transport date / pickup /
+// delivery / transporter. PUTs lead_transport, which inserts a row when
+// the lead doesn't already have a transport plan; subsequent edits go
+// through the lead drawer's Transport section like any other.
+// -----------------------------------------------------------------------------
+function AddToDispatchModal({ transporters, onClose, onScheduled }) {
+  const [step, setStep]         = useState('pick'); // 'pick' | 'schedule'
+  const [picked, setPicked]     = useState(null);   // selected lead
+  const [q, setQ]               = useState('');
+  const [results, setResults]   = useState([]);
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState('');
+
+  // Lead search — same /api/leads?q endpoint, debounced.
+  useEffect(() => {
+    if (step !== 'pick') return;
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      setLoading(true); setError('');
+      const params = { per_page: 10, page: 1 };
+      if (q.trim() !== '') params.q = q.trim();
+      api.get('/leads', { params })
+        .then((res) => { if (!cancelled) setResults(res.data?.leads || []); })
+        .catch((err) => { if (!cancelled) setError(extractApiError(err, 'Lead search failed')); })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    }, 200);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [q, step]);
+
+  const fmtLead = (lead) => {
+    const np = lead.normalized_payload || {};
+    const name = np.full_name
+      || [np.first_name, np.last_name].filter(Boolean).join(' ')
+      || `Lead #${lead.id}`;
+    const vehicle = [np.year, np.make, np.model].filter(Boolean).join(' ');
+    return { name, vehicle, vin: np.vin };
+  };
+
+  // Sensible defaults sourced from the lead — operator can override in step 2.
+  const initialDraft = (lead) => {
+    const np = lead?.normalized_payload || {};
+    const vehicle = [np.year, np.make, np.model].filter(Boolean).join(' ');
+    return {
+      transport_date:    new Date().toISOString().slice(0, 10),
+      transport_time:    '',
+      time_window:       '',
+      pickup_location:   np.full_address || '',
+      delivery_location: '',
+      vehicle_info:      vehicle,
+      assigned_transporter_id: '',
+      notes:             '',
+    };
+  };
+
+  const [draft, setDraft] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const pickLead = (lead) => {
+    setPicked(lead);
+    setDraft(initialDraft(lead));
+    setStep('schedule');
+  };
+
+  const schedule = async () => {
+    if (!picked || !draft) return;
+    setSaving(true); setError('');
+    try {
+      const payload = { lead_id: picked.id };
+      Object.entries(draft).forEach(([k, v]) => {
+        if (v === '' || v === null) return;
+        payload[k] = k === 'assigned_transporter_id' ? Number(v) : v;
+      });
+      await api.put('/lead_transport', payload);
+      onScheduled?.();
+    } catch (err) {
+      setError(extractApiError(err, 'Failed to schedule dispatch'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputCls = 'w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-2 text-[13px] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none';
+  const labelCls = 'block text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50" />
+      <div className="relative bg-white max-w-xl w-full rounded-2xl shadow-2xl flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">
+              {step === 'pick' ? 'Add to Dispatch' : `Schedule pickup — ${fmtLead(picked).name}`}
+            </h3>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              {step === 'pick'
+                ? 'Pick the lead whose vehicle is being transported. Pickup location and vehicle info pre-fill from the lead.'
+                : 'Edit anything as needed. Defaults pulled from the lead.'}
+            </p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100">&times;</button>
+        </div>
+
+        {step === 'pick' && (
+          <>
+            <div className="px-5 pt-4 pb-3">
+              <input
+                type="text"
+                autoFocus
+                placeholder="Search by name, VIN, phone, email, vehicle…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                className={inputCls}
+              />
+            </div>
+            <div className="px-5 pb-4 overflow-y-auto flex-1">
+              {error && <div className="text-[12px] text-red-700 bg-red-50 border border-red-100 rounded-md px-3 py-2 mb-2">{error}</div>}
+              {loading ? (
+                <p className="text-[12px] text-gray-400 italic py-4">Searching…</p>
+              ) : results.length === 0 ? (
+                <p className="text-[12px] text-gray-400 italic py-4">No leads match.</p>
+              ) : (
+                <ul className="space-y-1">
+                  {results.map((lead) => {
+                    const f = fmtLead(lead);
+                    return (
+                      <li key={lead.id}>
+                        <button
+                          onClick={() => pickLead(lead)}
+                          className="w-full text-left px-3 py-2 rounded-lg border border-gray-100 hover:border-gray-300 hover:bg-gray-50 transition-colors flex items-center justify-between gap-3"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[13px] font-medium text-gray-900 truncate">{f.name}</div>
+                            <div className="text-[11px] text-gray-500 truncate">
+                              {f.vehicle || <span className="text-gray-300">No vehicle on file</span>}
+                              {f.vin && <span className="ml-2 font-mono text-gray-400">VIN {f.vin}</span>}
+                            </div>
+                          </div>
+                          <span className="text-[11px] font-medium text-blue-700 shrink-0">Schedule &rarr;</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </>
+        )}
+
+        {step === 'schedule' && draft && (
+          <>
+            <div className="px-5 py-4 overflow-y-auto flex-1 space-y-3">
+              <div className="grid grid-cols-3 gap-2">
+                <label>
+                  <span className={labelCls}>Date</span>
+                  <input type="date" className={inputCls} value={draft.transport_date} onChange={(e) => setDraft({ ...draft, transport_date: e.target.value })} />
+                </label>
+                <label>
+                  <span className={labelCls}>Time</span>
+                  <input type="time" className={inputCls} value={draft.transport_time} onChange={(e) => setDraft({ ...draft, transport_time: e.target.value })} />
+                </label>
+                <label>
+                  <span className={labelCls}>Window</span>
+                  <input type="text" className={inputCls} placeholder="9am–noon" value={draft.time_window} onChange={(e) => setDraft({ ...draft, time_window: e.target.value })} />
+                </label>
+              </div>
+
+              <label className="block">
+                <span className={labelCls}>Vehicle</span>
+                <input className={inputCls} value={draft.vehicle_info} onChange={(e) => setDraft({ ...draft, vehicle_info: e.target.value })} />
+              </label>
+
+              <label className="block">
+                <span className={labelCls}>Pickup location</span>
+                <textarea rows={2} className={inputCls} value={draft.pickup_location} onChange={(e) => setDraft({ ...draft, pickup_location: e.target.value })} placeholder="Where to pick up the vehicle" />
+              </label>
+
+              <label className="block">
+                <span className={labelCls}>Delivery location</span>
+                <textarea rows={2} className={inputCls} value={draft.delivery_location} onChange={(e) => setDraft({ ...draft, delivery_location: e.target.value })} placeholder="Where it's going (your yard, etc.)" />
+              </label>
+
+              <label className="block">
+                <span className={labelCls}>Transporter <span className="text-[9px] normal-case text-gray-400">(optional — can assign later)</span></span>
+                <select className={inputCls} value={draft.assigned_transporter_id} onChange={(e) => setDraft({ ...draft, assigned_transporter_id: e.target.value })}>
+                  <option value="">Unassigned</option>
+                  {(transporters || []).filter((t) => t.is_active).map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className={labelCls}>Notes</span>
+                <textarea rows={2} className={inputCls} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
+              </label>
+
+              {error && <div className="text-[12px] text-red-700 bg-red-50 border border-red-100 rounded-md px-3 py-2">{error}</div>}
+            </div>
+
+            <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
+              <button
+                onClick={() => { setStep('pick'); setPicked(null); setDraft(null); }}
+                className="text-[12px] text-gray-500 hover:text-gray-900"
+              >
+                &larr; Pick a different lead
+              </button>
+              <div className="flex gap-2">
+                <Button variant="ghost" onClick={onClose}>Cancel</Button>
+                <button
+                  onClick={schedule}
+                  disabled={saving || !draft.transport_date}
+                  className="px-4 py-2 text-[12px] font-semibold rounded-md text-white bg-gray-900 hover:bg-gray-800 disabled:opacity-50"
+                >
+                  {saving ? 'Scheduling…' : 'Schedule pickup'}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
