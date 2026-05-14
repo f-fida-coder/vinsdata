@@ -79,6 +79,23 @@ foreach ($cfgKeys as $k) {
     if (!defined($k)) define($k, $val);
 }
 
+/**
+ * Optional .env lookup for non-required keys (Gmail SMTP, OpenPhone, etc).
+ * Same search order as the required DB constants above — .env file first,
+ * then process environment, then $default. Returns '' on miss so callers
+ * can `if (getEnvValue('X') === '') { ...fall back to stub }` cleanly.
+ */
+function getEnvValue(string $key, string $default = ''): string
+{
+    global $envValues;
+    $v = is_array($envValues ?? null) ? ($envValues[$key] ?? '') : '';
+    if ($v === '') {
+        $env = getenv($key);
+        if ($env !== false && $env !== '') $v = $env;
+    }
+    return $v !== '' ? $v : $default;
+}
+
 function initSession(): void
 {
     session_set_cookie_params([
