@@ -274,6 +274,7 @@ const LEAD_ACTIVITY_TYPES = [
     'transport_scheduled','transport_updated','transport_cancelled',
     'transport_notified','transport_assigned','transport_status_changed',
     'bill_of_sale_generated','bill_of_sale_updated',
+    'lead_funded','lead_funded_cleared',
 ];
 
 const TRANSPORT_STATUSES = ['new','notified','assigned','in_transit','delivered','cancelled'];

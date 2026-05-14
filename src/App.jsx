@@ -17,6 +17,7 @@ import MarketingDetailPage from './pages/MarketingDetailPage';
 import PipelinePage from './pages/PipelinePage';
 import ReportsPage from './pages/ReportsPage';
 import BillOfSalePage from './pages/BillOfSalePage';
+import FundingPage from './pages/FundingPage';
 import DispatchPage from './pages/DispatchPage';
 import CompanySettingsPage from './pages/CompanySettingsPage';
 import { Sidebar, Topbar, CommandPalette, QuickAddMenu, ShortcutsOverlay } from './components/Shell';
@@ -87,6 +88,7 @@ function DashboardLayout() {
           <Route path="/marketing/new" element={<MarketingComposerPage />} />
           <Route path="/marketing/:id" element={<MarketingDetailPage />} />
           <Route path="/bill-of-sale" element={<BillOfSalePage />} />
+          <Route path="/funding" element={<FundingPage />} />
           <Route path="/dispatch" element={<DispatchPage />} />
           <Route path="/company-settings" element={<CompanySettingsPage />} />
           <Route path="/users" element={<UsersPage />} />

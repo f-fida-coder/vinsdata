@@ -23,11 +23,11 @@ function useIsMobile() {
 
 // Per-role visibility for sidebar entries.
 const NAV_VISIBILITY = {
-  admin:    ['dashboard','vehicles','leads','pipeline','tasks','reports','duplicates','mergePrep','marketing','billOfSale','dispatch','users','company'],
+  admin:    ['dashboard','vehicles','leads','pipeline','tasks','reports','duplicates','mergePrep','marketing','billOfSale','funding','dispatch','users','company'],
   marketer: ['dashboard','leads','pipeline','marketing','reports'],
-  carfax:   ['dashboard','leads','pipeline','tasks','billOfSale','dispatch'],
-  filter:   ['dashboard','leads','pipeline','tasks','billOfSale','dispatch'],
-  tlo:      ['dashboard','leads','pipeline','tasks','billOfSale','dispatch'],
+  carfax:   ['dashboard','leads','pipeline','tasks','billOfSale','funding','dispatch'],
+  filter:   ['dashboard','leads','pipeline','tasks','billOfSale','funding','dispatch'],
+  tlo:      ['dashboard','leads','pipeline','tasks','billOfSale','funding','dispatch'],
 };
 const ALL_NAV = [
   { key: 'dashboard',  label: 'Dashboard',         icon: 'home',      to: '/' },
@@ -39,9 +39,12 @@ const ALL_NAV = [
   { key: 'duplicates', label: 'Duplicate Review',  icon: 'duplicate', to: '/duplicates' },
   { key: 'mergePrep',  label: 'Merge Prep',        icon: 'merge',     to: '/merge-prep' },
   { key: 'marketing',  label: 'Marketing',         icon: 'sparkles',  to: '/marketing' },
+  // Post-close pipeline: BoS → Funding → Dispatch.
   // Bill of Sale = doc list (generate + edit + sign).
-  // Dispatch    = transport calendar + transporter assignment.
+  // Funding      = closed-deal pipeline view (stages, mark funded).
+  // Dispatch     = transport calendar + transporter assignment.
   { key: 'billOfSale', label: 'Bill of Sale',      icon: 'file',      to: '/bill-of-sale' },
+  { key: 'funding',    label: 'Funding',           icon: 'deal',      to: '/funding' },
   { key: 'dispatch',   label: 'Dispatch',          icon: 'truck',     to: '/dispatch' },
   { key: 'users',      label: 'Users',             icon: 'user',      to: '/users' },
   { key: 'company',    label: 'Company',           icon: 'building',  to: '/company-settings' },
@@ -59,6 +62,7 @@ const ROUTE_LABEL_BY_PATH = {
   '/marketing':        'Marketing',
   '/marketing/new':    'New Campaign',
   '/bill-of-sale':     'Bill of Sale',
+  '/funding':          'Funding',
   '/dispatch':         'Dispatch',
   '/users':            'Users',
   '/company-settings': 'Company Settings',
