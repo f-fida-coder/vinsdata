@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api, { uploadFile, getDownloadUrl, extractApiError } from '../api';
 import FileDetailDrawer from '../components/FileDetailDrawer';
 import ImportFinalFileModal from '../components/ImportFinalFileModal';
@@ -107,6 +108,124 @@ function ActionDropdown({ file, onMove, onReupload, onEdit, onDelete, onNotify, 
           <button className="dd-item" onClick={() => { setOpen(false); onDelete(); }} style={{ color: 'var(--danger)' }}><Icon name="trash" size={14}/><span>Delete</span></button>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Find leads by vehicle — Dashboard widget that replaced the Vehicles
+ * tab. Operators pick any combination of Year / Make / Model / Trim
+ * from the live lead facets (sourced from /api/lead_filter_options),
+ * click Search, and land on a /leads view filtered to matching leads.
+ *
+ * Empty selections aren't sent as filters — pick just a year, or just
+ * make + model, or all four. The Leads page reads the same URL params
+ * its own filter UI uses, so the round-trip is consistent.
+ */
+function LeadFinderCard() {
+  const navigate = useNavigate();
+  const [options, setOptions] = useState({ makes: [], models: [], years: [], trims: [] });
+  const [state, setState] = useState({ year: '', make: '', model: '', trim: '' });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/lead_filter_options')
+      .then((res) => {
+        if (cancelled) return;
+        setOptions({
+          makes:  res.data?.makes  ?? [],
+          models: res.data?.models ?? [],
+          years:  res.data?.years  ?? [],
+          trims:  res.data?.trims  ?? [],
+        });
+      })
+      .catch(() => { /* swallow — empty dropdowns still let operator type */ })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const set = (patch) => setState((s) => ({ ...s, ...patch }));
+  const clear = () => setState({ year: '', make: '', model: '', trim: '' });
+  const search = () => {
+    const params = new URLSearchParams();
+    if (state.year)  params.set('year',  state.year);
+    if (state.make)  params.set('make',  state.make);
+    if (state.model) params.set('model', state.model);
+    if (state.trim)  params.set('trim',  state.trim);
+    navigate(`/leads${params.toString() ? '?' + params.toString() : ''}`);
+  };
+
+  const hasAny = !!(state.year || state.make || state.model || state.trim);
+
+  // Inline selects — keep the styling consistent with the rest of the
+  // dashboard tokens rather than introducing a new component.
+  const selectStyle = {
+    width: '100%',
+    padding: '8px 10px',
+    background: 'var(--bg-2)',
+    border: '1px solid var(--border-0)',
+    borderRadius: 8,
+    color: 'var(--text-0)',
+    fontSize: 13,
+    outline: 'none',
+    fontFamily: 'inherit',
+  };
+  const labelStyle = {
+    display: 'block',
+    fontSize: 10,
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
+    fontWeight: 600,
+    color: 'var(--text-2)',
+    marginBottom: 4,
+  };
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-0)' }}>Find leads by vehicle</div>
+          <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 2 }}>
+            Year, Make, Model, Trim — any combination jumps to a filtered Leads view.
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {hasAny && <Button variant="ghost" size="sm" onClick={clear}>Clear</Button>}
+          <Button variant="primary" size="sm" icon="search" onClick={search}>Search leads</Button>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
+        <label>
+          <span style={labelStyle}>Year</span>
+          <select style={selectStyle} value={state.year} onChange={(e) => set({ year: e.target.value })} disabled={loading}>
+            <option value="">Any year</option>
+            {options.years.map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </label>
+        <label>
+          <span style={labelStyle}>Make</span>
+          <select style={selectStyle} value={state.make} onChange={(e) => set({ make: e.target.value })} disabled={loading}>
+            <option value="">Any make</option>
+            {options.makes.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </label>
+        <label>
+          <span style={labelStyle}>Model</span>
+          <select style={selectStyle} value={state.model} onChange={(e) => set({ model: e.target.value })} disabled={loading}>
+            <option value="">Any model</option>
+            {options.models.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </label>
+        <label>
+          <span style={labelStyle}>Trim</span>
+          <select style={selectStyle} value={state.trim} onChange={(e) => set({ trim: e.target.value })} disabled={loading}>
+            <option value="">Any trim</option>
+            {options.trims.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </label>
+      </div>
     </div>
   );
 }
@@ -390,6 +509,8 @@ export default function DashboardPage() {
         ))}
         <KPI label="Invalid" value={invalidCount} dot="var(--hot)"/>
       </div>
+
+      <LeadFinderCard />
 
       {canSeeMarketingStats && marketingStats && (
         <div className="mkt-strip">

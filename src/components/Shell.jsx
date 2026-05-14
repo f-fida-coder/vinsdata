@@ -23,7 +23,7 @@ function useIsMobile() {
 
 // Per-role visibility for sidebar entries.
 const NAV_VISIBILITY = {
-  admin:    ['dashboard','vehicles','leads','pipeline','tasks','reports','duplicates','mergePrep','marketing','billOfSale','funding','dispatch','users','company'],
+  admin:    ['dashboard','leads','pipeline','tasks','reports','duplicates','mergePrep','marketing','billOfSale','funding','dispatch','users','company'],
   marketer: ['dashboard','leads','pipeline','marketing','reports'],
   carfax:   ['dashboard','leads','pipeline','tasks','billOfSale','funding','dispatch'],
   filter:   ['dashboard','leads','pipeline','tasks','billOfSale','funding','dispatch'],
@@ -31,7 +31,8 @@ const NAV_VISIBILITY = {
 };
 const ALL_NAV = [
   { key: 'dashboard',  label: 'Dashboard',         icon: 'home',      to: '/' },
-  { key: 'vehicles',   label: 'Vehicles',          icon: 'car',       to: '/vehicles' },
+  // Vehicles tab removed — superseded by the Make/Model/Year/Trim filter
+  // on the Dashboard which navigates directly into a filtered /leads view.
   { key: 'leads',      label: 'Leads',             icon: 'users',     to: '/leads' },
   { key: 'pipeline',   label: 'Pipeline',          icon: 'pipeline',  to: '/pipeline' },
   { key: 'reports',    label: 'Reports',           icon: 'chart',     to: '/reports' },
@@ -52,7 +53,6 @@ const ALL_NAV = [
 
 const ROUTE_LABEL_BY_PATH = {
   '/':                 'Dashboard',
-  '/vehicles':         'Vehicles',
   '/leads':            'CRM Leads',
   '/pipeline':         'Pipeline',
   '/reports':          'Reports',
@@ -304,7 +304,6 @@ export function QuickAddMenu({ open, onClose }) {
   if (!open) return null;
   const items = [
     { icon: 'user', label: 'New lead', kbd: 'L', action: () => navigate('/leads') },
-    { icon: 'car', label: 'New vehicle', kbd: 'V', action: () => navigate('/vehicles') },
     { icon: 'check', label: 'New task', kbd: 'T', action: () => navigate('/tasks') },
     { icon: 'sparkles', label: 'New campaign', kbd: 'M', action: () => navigate('/marketing/new') },
     { icon: 'upload', label: 'New file / import', kbd: 'I', action: () => navigate('/') },
