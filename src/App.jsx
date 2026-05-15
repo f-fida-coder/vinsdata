@@ -4,7 +4,9 @@ import { useAuth } from './context/AuthContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
-import VehiclesPage from './pages/VehiclesPage';
+// Vehicles tab removed — operators now filter leads by Make/Model/Year/Trim
+// directly from the Dashboard. The /vehicles route below redirects so old
+// bookmarks and quick-add shortcuts don't 404.
 import UsersPage from './pages/UsersPage';
 import LogsPage from './pages/LogsPage';
 import LeadsPage from './pages/LeadsPage';
@@ -17,6 +19,8 @@ import MarketingDetailPage from './pages/MarketingDetailPage';
 import PipelinePage from './pages/PipelinePage';
 import ReportsPage from './pages/ReportsPage';
 import BillOfSalePage from './pages/BillOfSalePage';
+import FundingPage from './pages/FundingPage';
+import DispatchPage from './pages/DispatchPage';
 import CompanySettingsPage from './pages/CompanySettingsPage';
 import { Sidebar, Topbar, CommandPalette, QuickAddMenu, ShortcutsOverlay } from './components/Shell';
 
@@ -53,7 +57,7 @@ function DashboardLayout() {
       else if (!meta && !isInput) {
         if (e.key.toLowerCase() === 'g') { window.__gWaiting = true; setTimeout(() => { window.__gWaiting = false; }, 800); return; }
         if (window.__gWaiting) {
-          const map = { d: '/', l: '/leads', p: '/pipeline', t: '/tasks', r: '/reports', v: '/vehicles', m: '/marketing', u: '/users' };
+          const map = { d: '/', l: '/leads', p: '/pipeline', t: '/tasks', r: '/reports', v: '/leads', m: '/marketing', u: '/users' };
           const r = map[e.key.toLowerCase()];
           if (r) { navigate(r); window.__gWaiting = false; }
         }
@@ -75,7 +79,7 @@ function DashboardLayout() {
         />
         <Routes>
           <Route path="/" element={rootElement} />
-          <Route path="/vehicles" element={<VehiclesPage />} />
+          <Route path="/vehicles" element={<Navigate to="/leads" replace />} />
           <Route path="/leads" element={<LeadsPage />} />
           <Route path="/pipeline" element={<PipelinePage />} />
           <Route path="/reports" element={<ReportsPage />} />
@@ -86,7 +90,8 @@ function DashboardLayout() {
           <Route path="/marketing/new" element={<MarketingComposerPage />} />
           <Route path="/marketing/:id" element={<MarketingDetailPage />} />
           <Route path="/bill-of-sale" element={<BillOfSalePage />} />
-          <Route path="/dispatch" element={<Navigate to="/bill-of-sale" replace />} />
+          <Route path="/funding" element={<FundingPage />} />
+          <Route path="/dispatch" element={<DispatchPage />} />
           <Route path="/company-settings" element={<CompanySettingsPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/logs" element={<LogsPage />} />

@@ -19,12 +19,15 @@ const EMPTY_FILTERS = {
   q: '',
   batch_id: '',
   file_id: '',
-  vehicle_id: '',
+  vehicle_id: '',  // legacy hunt-list filter — still URL-honored for old
+                   //   bookmarks (e.g. Dashboard's deprecated vehicle-card
+                   //   click-throughs), but no longer surfaced in the UI.
   source_stage: '',
   state: '',
   make: '',
   model: '',
   year: '',
+  trim: '',
   vin: '',
   phone_primary: '',
   email_primary: '',
@@ -59,6 +62,7 @@ const CHIP_LABELS = {
   make:          'Make',
   model:         'Model',
   year:          'Year',
+  trim:          'Trim',
   vin:           'VIN',
   phone_primary: 'Phone',
   email_primary: 'Email',
@@ -217,7 +221,7 @@ export default function LeadsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const [options, setOptions] = useState({ batches: [], files: [], vehicles: [], stages: [], states: [], makes: [], years: [], users: [], labels: [] });
+  const [options, setOptions] = useState({ batches: [], files: [], vehicles: [], stages: [], states: [], makes: [], models: [], years: [], trims: [], users: [], labels: [] });
   const [detailId, setDetailId] = useState(null);
   const [summary, setSummary] = useState(null);
   const [selection, setSelection] = useState(() => new Set());
@@ -622,17 +626,26 @@ export default function LeadsPage() {
                 marginBottom: 14,
               }}
             >
-              <FilterSelect label="Vehicle" value={filters.vehicle_id} onChange={(v) => updateFilter('vehicle_id', v)}>
-                <option value="">Any vehicle</option>
-                {options.vehicles.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-              </FilterSelect>
-              <FilterSelect label="Vehicle · Make" value={filters.make} onChange={(v) => updateFilter('make', v)}>
-                <option value="">Any make</option>
-                {options.makes.map((m) => <option key={m} value={m}>{m}</option>)}
-              </FilterSelect>
+              {/* Vehicle identity filters — Year/Make/Model/Trim. The old
+                  hunt-list "Vehicle" dropdown was removed alongside the
+                  Vehicles tab; operators filter by the actual lead facets
+                  the same way the Dashboard's Find-leads-by-vehicle card
+                  navigates here. */}
               <FilterSelect label="Year" value={filters.year} onChange={(v) => updateFilter('year', v)}>
                 <option value="">Any year</option>
                 {options.years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </FilterSelect>
+              <FilterSelect label="Make" value={filters.make} onChange={(v) => updateFilter('make', v)}>
+                <option value="">Any make</option>
+                {options.makes.map((m) => <option key={m} value={m}>{m}</option>)}
+              </FilterSelect>
+              <FilterSelect label="Model" value={filters.model} onChange={(v) => updateFilter('model', v)}>
+                <option value="">Any model</option>
+                {(options.models || []).map((m) => <option key={m} value={m}>{m}</option>)}
+              </FilterSelect>
+              <FilterSelect label="Trim" value={filters.trim} onChange={(v) => updateFilter('trim', v)}>
+                <option value="">Any trim</option>
+                {(options.trims || []).map((t) => <option key={t} value={t}>{t}</option>)}
               </FilterSelect>
               <FilterSelect label="State" value={filters.state} onChange={(v) => updateFilter('state', v)}>
                 <option value="">Any state</option>

@@ -58,11 +58,31 @@ $makes = $db->query(
       ORDER BY norm_make"
 )->fetchAll(PDO::FETCH_COLUMN);
 
+$models = $db->query(
+    "SELECT DISTINCT norm_model
+       FROM imported_leads_raw
+      WHERE import_status = 'imported' AND norm_model IS NOT NULL AND norm_model <> ''
+      ORDER BY norm_model"
+)->fetchAll(PDO::FETCH_COLUMN);
+
 $years = $db->query(
     "SELECT DISTINCT norm_year
        FROM imported_leads_raw
       WHERE import_status = 'imported' AND norm_year IS NOT NULL
       ORDER BY norm_year DESC"
+)->fetchAll(PDO::FETCH_COLUMN);
+
+// Trim lives in normalized_payload_json (CarFax + TLO populate it as "Trim").
+// Pull the distinct set so the filter dropdown stays bounded — there's no
+// promoted-column index for it, but the dropdown is bounded by distinct
+// values across imported leads so the query cost is per-distinct-trim.
+$trims = $db->query(
+    "SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(normalized_payload_json, '$.Trim')) AS t
+       FROM imported_leads_raw
+      WHERE import_status = 'imported'
+        AND JSON_EXTRACT(normalized_payload_json, '$.Trim') IS NOT NULL
+        AND JSON_UNQUOTE(JSON_EXTRACT(normalized_payload_json, '$.Trim')) <> ''
+      ORDER BY t"
 )->fetchAll(PDO::FETCH_COLUMN);
 
 $users = $db->query(
@@ -80,7 +100,9 @@ echo json_encode([
     'stages'     => $stages,
     'states'     => $states,
     'makes'      => $makes,
+    'models'     => $models,
     'years'      => array_map('intval', $years),
+    'trims'      => $trims,
     'users'      => $users,
     'labels'     => $labels,
     'statuses'     => LEAD_STATUSES,

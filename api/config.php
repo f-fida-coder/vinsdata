@@ -79,6 +79,59 @@ foreach ($cfgKeys as $k) {
     if (!defined($k)) define($k, $val);
 }
 
+/**
+ * Optional .env lookup for non-required keys (Gmail SMTP, OpenPhone, etc).
+ *
+ * Search order:
+ *   1. .env file value (from $envValues populated above)
+ *   2. Process environment (getenv)
+ *   3. app_secrets DB row (lets admins rotate keys via the UI without
+ *      SSH'ing into the production box). Cached per-request.
+ *   4. $default
+ *
+ * Returns '' on miss so callers can use `=== ''` clean-syntax checks.
+ */
+function getEnvValue(string $key, string $default = ''): string
+{
+    global $envValues;
+    $v = is_array($envValues ?? null) ? ($envValues[$key] ?? '') : '';
+    if ($v === '') {
+        $env = getenv($key);
+        if ($env !== false && $env !== '') $v = $env;
+    }
+    if ($v === '') {
+        $v = loadAppSecret($key);
+    }
+    return $v !== '' ? $v : $default;
+}
+
+/**
+ * DB-backed admin-settable secrets. Read-through cache: one query the
+ * first time we touch the table per request, all subsequent lookups
+ * hit a static array. Soft-fails to '' if the table doesn't exist
+ * (lets a pre-migration deploy boot cleanly).
+ */
+function loadAppSecret(string $key): string
+{
+    static $cache = null;
+    if ($cache === null) {
+        $cache = [];
+        try {
+            $db = getDBConnection();
+            $stmt = $db->query('SELECT `key`, `value` FROM app_secrets');
+            foreach ($stmt->fetchAll() as $row) {
+                $cache[$row['key']] = (string) $row['value'];
+            }
+        } catch (Throwable $_e) {
+            // Pre-migration / DB outage / missing table — fail open. The
+            // top-level getEnvValue() will just return '' and callers
+            // fall back to the stub provider.
+            $cache = [];
+        }
+    }
+    return $cache[$key] ?? '';
+}
+
 function initSession(): void
 {
     session_set_cookie_params([

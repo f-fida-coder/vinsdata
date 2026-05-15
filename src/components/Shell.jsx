@@ -23,15 +23,16 @@ function useIsMobile() {
 
 // Per-role visibility for sidebar entries.
 const NAV_VISIBILITY = {
-  admin:    ['dashboard','vehicles','leads','pipeline','tasks','reports','duplicates','mergePrep','marketing','billOfSale','users','company'],
+  admin:    ['dashboard','leads','pipeline','tasks','reports','duplicates','mergePrep','marketing','billOfSale','funding','dispatch','users','company'],
   marketer: ['dashboard','leads','pipeline','marketing','reports'],
-  carfax:   ['dashboard','leads','pipeline','tasks','billOfSale'],
-  filter:   ['dashboard','leads','pipeline','tasks','billOfSale'],
-  tlo:      ['dashboard','leads','pipeline','tasks','billOfSale'],
+  carfax:   ['dashboard','leads','pipeline','tasks','billOfSale','funding','dispatch'],
+  filter:   ['dashboard','leads','pipeline','tasks','billOfSale','funding','dispatch'],
+  tlo:      ['dashboard','leads','pipeline','tasks','billOfSale','funding','dispatch'],
 };
 const ALL_NAV = [
   { key: 'dashboard',  label: 'Dashboard',         icon: 'home',      to: '/' },
-  { key: 'vehicles',   label: 'Vehicles',          icon: 'car',       to: '/vehicles' },
+  // Vehicles tab removed — superseded by the Make/Model/Year/Trim filter
+  // on the Dashboard which navigates directly into a filtered /leads view.
   { key: 'leads',      label: 'Leads',             icon: 'users',     to: '/leads' },
   { key: 'pipeline',   label: 'Pipeline',          icon: 'pipeline',  to: '/pipeline' },
   { key: 'reports',    label: 'Reports',           icon: 'chart',     to: '/reports' },
@@ -39,14 +40,19 @@ const ALL_NAV = [
   { key: 'duplicates', label: 'Duplicate Review',  icon: 'duplicate', to: '/duplicates' },
   { key: 'mergePrep',  label: 'Merge Prep',        icon: 'merge',     to: '/merge-prep' },
   { key: 'marketing',  label: 'Marketing',         icon: 'sparkles',  to: '/marketing' },
-  { key: 'billOfSale', label: 'Bill of Sale',      icon: 'truck',     to: '/bill-of-sale' },
+  // Post-close pipeline: BoS → Funding → Dispatch.
+  // Bill of Sale = doc list (generate + edit + sign).
+  // Funding      = closed-deal pipeline view (stages, mark funded).
+  // Dispatch     = transport calendar + transporter assignment.
+  { key: 'billOfSale', label: 'Bill of Sale',      icon: 'file',      to: '/bill-of-sale' },
+  { key: 'funding',    label: 'Funding',           icon: 'deal',      to: '/funding' },
+  { key: 'dispatch',   label: 'Dispatch',          icon: 'truck',     to: '/dispatch' },
   { key: 'users',      label: 'Users',             icon: 'user',      to: '/users' },
   { key: 'company',    label: 'Company',           icon: 'building',  to: '/company-settings' },
 ];
 
 const ROUTE_LABEL_BY_PATH = {
   '/':                 'Dashboard',
-  '/vehicles':         'Vehicles',
   '/leads':            'CRM Leads',
   '/pipeline':         'Pipeline',
   '/reports':          'Reports',
@@ -56,6 +62,8 @@ const ROUTE_LABEL_BY_PATH = {
   '/marketing':        'Marketing',
   '/marketing/new':    'New Campaign',
   '/bill-of-sale':     'Bill of Sale',
+  '/funding':          'Funding',
+  '/dispatch':         'Dispatch',
   '/users':            'Users',
   '/company-settings': 'Company Settings',
   '/logs':             'Activity Logs',
@@ -296,7 +304,6 @@ export function QuickAddMenu({ open, onClose }) {
   if (!open) return null;
   const items = [
     { icon: 'user', label: 'New lead', kbd: 'L', action: () => navigate('/leads') },
-    { icon: 'car', label: 'New vehicle', kbd: 'V', action: () => navigate('/vehicles') },
     { icon: 'check', label: 'New task', kbd: 'T', action: () => navigate('/tasks') },
     { icon: 'sparkles', label: 'New campaign', kbd: 'M', action: () => navigate('/marketing/new') },
     { icon: 'upload', label: 'New file / import', kbd: 'I', action: () => navigate('/') },

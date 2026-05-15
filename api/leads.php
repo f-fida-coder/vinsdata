@@ -312,29 +312,61 @@ foreach ($likeCols as $q => $expr) {
     }
 }
 
-// Global search across the most useful normalized fields. JSON-extracted text
+// Trim is stored verbatim inside normalized_payload_json as "Trim".
+// Exact match (case-insensitive via the collation override) so picking
+// from the filter dropdown returns a deterministic set.
+if (isset($_GET['trim']) && $_GET['trim'] !== '') {
+    $where[] = $jsonCi('Trim') . ' = :trim';
+    $params[':trim'] = $_GET['trim'];
+}
+
+// Global search across every field connected to a lead. JSON-extracted text
 // is utf8mb4_bin (case-sensitive); apply utf8mb4_general_ci so "john" matches
 // "John Smith". The norm_* columns inherit the table's case-insensitive
 // collation already, so they don't need an explicit COLLATE.
 // Phones get a digit-only variant so "(555) 123-4567" matches "5551234567".
+//
+// Coverage:
+//   - VIN (norm + raw payload)
+//   - All 4 phone slots (primary indexed column + 3 JSON-payload slots),
+//     each searched as raw text AND as digit-stripped so "(555) 123-4567"
+//     matches "5551234567"
+//   - Both email slots (norm_email_primary + Email2 from CarFax)
+//   - Names (first / last / full / CarFax MostRecentOwner)
+//   - Address fields (full_address / city / state / zip)
+//   - Vehicle facets (make / model / year / Trim)
+//   - Cross-table: lead_notes content, lead_labels names, attached
+//     bill_of_sale buyer/seller fields. Done via EXISTS subqueries so
+//     they don't break the list-mode JOINs above.
 if (isset($_GET['q']) && $_GET['q'] !== '') {
     $qRaw    = (string) $_GET['q'];
     $qDigits = preg_replace('/[^0-9]/', '', $qRaw);
 
     $textCols = [
+        // Vehicle identity
         'r.norm_vin',
+        'r.norm_make',
+        'r.norm_model',
+        'CAST(r.norm_year AS CHAR)',
+        $jsonCi('Trim'),
+        // Names
         $jsonCi('first_name'),
         $jsonCi('last_name'),
         $jsonCi('full_name'),
+        $jsonCi('MostRecentOwner'),
+        // Emails (both slots)
         'r.norm_email_primary',
+        $jsonCi('Email2'),
+        // Address
         $jsonCi('full_address'),
         $jsonCi('city'),
         $jsonCi('zip_code'),
         'r.norm_state',
-        'r.norm_make',
-        'r.norm_model',
+        // Phones — raw text match (handles e.g. "+15551234567" lookups)
         'r.norm_phone_primary',
-        'CAST(r.norm_year AS CHAR)',
+        $jsonCi('phone_secondary'),
+        $jsonCi('phone_3'),
+        $jsonCi('phone_4'),
     ];
     // Use a unique placeholder per OR clause. PDO with native prepares
     // (ATTR_EMULATE_PREPARES=false) treats each placeholder occurrence as a
@@ -348,10 +380,41 @@ if (isset($_GET['q']) && $_GET['q'] !== '') {
         $params[$ph] = $like;
     }
 
+    // Digit-only phone variant — applied to all 4 phone slots. Lets
+    // operators search "5551234567" or "555-123-4567" interchangeably.
     if ($qDigits !== '') {
-        $ors[] = "REGEXP_REPLACE(r.norm_phone_primary, '[^0-9]', '') LIKE :q_digits";
-        $params[':q_digits'] = '%' . $qDigits . '%';
+        $phoneCols = [
+            "REGEXP_REPLACE(r.norm_phone_primary, '[^0-9]', '')",
+            "REGEXP_REPLACE(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '\$.phone_secondary')), '[^0-9]', '')",
+            "REGEXP_REPLACE(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '\$.phone_3')),         '[^0-9]', '')",
+            "REGEXP_REPLACE(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '\$.phone_4')),         '[^0-9]', '')",
+        ];
+        foreach ($phoneCols as $i => $col) {
+            $ph = ":qd$i";
+            $ors[] = "$col LIKE $ph";
+            $params[$ph] = '%' . $qDigits . '%';
+        }
     }
+
+    // Cross-table coverage — wrapped in EXISTS so they don't fan-out
+    // the row count for leads with many notes / labels.
+    //
+    // Notes content. Catches "the buyer said he wants $30k" type queries.
+    $ors[] = 'EXISTS (SELECT 1 FROM lead_notes ln WHERE ln.imported_lead_id = r.id AND ln.note LIKE :q_note COLLATE utf8mb4_general_ci)';
+    $params[':q_note'] = $like;
+
+    // Label names. Catches operator-set tags like "hot weekend list".
+    $ors[] = 'EXISTS (SELECT 1 FROM lead_label_links lll JOIN lead_labels lbl ON lbl.id = lll.label_id WHERE lll.imported_lead_id = r.id AND lbl.name LIKE :q_label COLLATE utf8mb4_general_ci)';
+    $params[':q_label'] = $like;
+
+    // Attached Bill of Sale fields — buyer + seller name/address.
+    $ors[] = 'EXISTS (SELECT 1 FROM bill_of_sale bos WHERE bos.imported_lead_id = r.id
+              AND (bos.buyer_name    LIKE :q_bos_bn COLLATE utf8mb4_general_ci
+                OR bos.buyer_address LIKE :q_bos_ba COLLATE utf8mb4_general_ci
+                OR bos.seller_name   LIKE :q_bos_sn COLLATE utf8mb4_general_ci))';
+    $params[':q_bos_bn'] = $like;
+    $params[':q_bos_ba'] = $like;
+    $params[':q_bos_sn'] = $like;
 
     $where[] = '(' . implode(' OR ', $ors) . ')';
 }
