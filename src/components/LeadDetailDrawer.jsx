@@ -124,6 +124,12 @@ function CrmStateSection({ leadId, initialState, users, isAdmin, onChanged }) {
     lead_temperature: initialState?.lead_temperature ?? '',
     price_wanted:     normalizePriceInput(initialState?.price_wanted),
     price_offered:    normalizePriceInput(initialState?.price_offered),
+    // Vehicle overrides — empty string in the form = "clear the value"
+    // on save (server converts '' to null). Initial state pulls from
+    // lead_states; the drawer's BoS section continues to show the BoS
+    // copy separately so the two don't collide.
+    vehicle_color:    initialState?.vehicle_color ?? '',
+    vehicle_odometer: initialState?.vehicle_odometer != null ? String(initialState.vehicle_odometer) : '',
     assigned_user_id: initialState?.assigned_user_id ?? null,
   });
   const [baseline, setBaseline] = useState(state);
@@ -136,6 +142,8 @@ function CrmStateSection({ leadId, initialState, users, isAdmin, onChanged }) {
     || (state.lead_temperature || '') !== (baseline.lead_temperature || '')
     || (state.price_wanted    || '') !== (baseline.price_wanted    || '')
     || (state.price_offered   || '') !== (baseline.price_offered   || '')
+    || (state.vehicle_color    || '') !== (baseline.vehicle_color    || '')
+    || (state.vehicle_odometer || '') !== (baseline.vehicle_odometer || '')
     || (state.assigned_user_id ?? null) !== (baseline.assigned_user_id ?? null)
   ), [state, baseline]);
 
@@ -153,6 +161,16 @@ function CrmStateSection({ leadId, initialState, users, isAdmin, onChanged }) {
       }
       if ((state.price_offered || '') !== (baseline.price_offered || '')) {
         payload.price_offered = state.price_offered === '' ? null : Number(state.price_offered);
+      }
+      if ((state.vehicle_color || '') !== (baseline.vehicle_color || '')) {
+        payload.vehicle_color = state.vehicle_color === '' ? null : state.vehicle_color;
+      }
+      if ((state.vehicle_odometer || '') !== (baseline.vehicle_odometer || '')) {
+        // Strip any commas the operator typed ("123,456" → "123456"). The
+        // server also accepts the comma form, but we normalise here so
+        // baseline comparisons stay clean on the next render.
+        const cleaned = String(state.vehicle_odometer).replace(/[,\s]/g, '');
+        payload.vehicle_odometer = cleaned === '' ? null : Number(cleaned);
       }
       if ((state.assigned_user_id ?? null) !== (baseline.assigned_user_id ?? null)) {
         payload.assigned_user_id = state.assigned_user_id ?? null;
@@ -240,6 +258,33 @@ function CrmStateSection({ leadId, initialState, users, isAdmin, onChanged }) {
         </label>
       </div>
 
+      {/* Vehicle overrides: blank = use the imported value. These flow
+          into the BoS prefill (api/bos_helpers.php defaultsFromLead) so
+          correcting miles here updates downstream paperwork. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+        <label className="block">
+          <span className="block text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">Color</span>
+          <input
+            type="text"
+            value={state.vehicle_color}
+            onChange={(e) => setState({ ...state, vehicle_color: e.target.value })}
+            placeholder="e.g. Silver, Sunset Pearl"
+            maxLength={50}
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          />
+        </label>
+        <label className="block">
+          <span className="block text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">Miles</span>
+          <input
+            type="text" inputMode="numeric"
+            value={state.vehicle_odometer}
+            onChange={(e) => setState({ ...state, vehicle_odometer: e.target.value })}
+            placeholder="e.g. 87,500"
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          />
+        </label>
+      </div>
+
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         <StatusPill statusKey={state.status} />
         <PriorityPill priorityKey={state.priority} />
@@ -264,21 +309,44 @@ function CrmStateSection({ leadId, initialState, users, isAdmin, onChanged }) {
 function LabelsSection({ leadId, initialLabels, availableLabels, onChanged, defaultOpen = true }) {
   const [labels, setLabels] = useState(initialLabels || []);
   const [selectedAdd, setSelectedAdd] = useState('');
+  // Local follow-up due date for the next attach. Only meaningful when the
+  // selected label has auto_follow_up=true; ignored on submit otherwise.
+  // <input type="date"> uses yyyy-mm-dd; we append T23:59 server-side via
+  // parseDatetime so a date-only pick still produces a valid DATETIME.
+  // datetime-local format: yyyy-mm-ddThh:mm (operator picks date + time).
+  // Blank = no due date (open task with no deadline).
+  const [followUpDate, setFollowUpDate] = useState('');
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
 
   const attachedIds = useMemo(() => new Set(labels.map((l) => l.id)), [labels]);
   const candidates = availableLabels.filter((l) => !attachedIds.has(l.id));
+  const selectedLabel = useMemo(
+    () => availableLabels.find((l) => String(l.id) === String(selectedAdd)) || null,
+    [availableLabels, selectedAdd]
+  );
+  // The labels list API returns auto_follow_up as a boolean. Some older
+  // callers may still send 0/1 — coerce so the UI is forgiving.
+  const isAutoFollowUp = !!selectedLabel?.auto_follow_up;
 
   const attach = async () => {
     if (!selectedAdd) return;
-    const label = availableLabels.find((l) => String(l.id) === String(selectedAdd));
+    const label = selectedLabel;
     if (!label) return;
     setWorking(true); setError('');
     try {
-      await api.post('/lead_labels', { lead_id: leadId, label_id: label.id });
+      const body = { lead_id: leadId, label_id: label.id };
+      // Only forward the value for auto-follow-up labels so a stale state
+      // can't piggy-back onto a regular attach. parseDatetime on the
+      // server normalises both `yyyy-mm-ddThh:mm` (datetime-local input)
+      // and bare dates, so we just pass the raw value through.
+      if (isAutoFollowUp && followUpDate) {
+        body.follow_up_due_at = followUpDate;
+      }
+      await api.post('/lead_labels', body);
       setLabels((prev) => [...prev, label].sort((a, b) => a.name.localeCompare(b.name)));
       setSelectedAdd('');
+      setFollowUpDate('');
       onChanged?.();
     } catch (err) {
       setError(extractApiError(err, 'Failed to attach label'));
@@ -314,7 +382,7 @@ function LabelsSection({ leadId, initialLabels, availableLabels, onChanged, defa
       <div className="flex items-center gap-2 mt-3">
         <select
           value={selectedAdd}
-          onChange={(e) => setSelectedAdd(e.target.value)}
+          onChange={(e) => { setSelectedAdd(e.target.value); setFollowUpDate(''); }}
           disabled={candidates.length === 0 || working}
           className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:opacity-50"
         >
@@ -329,6 +397,23 @@ function LabelsSection({ leadId, initialLabels, availableLabels, onChanged, defa
           Add
         </button>
       </div>
+      {/* Auto-follow-up affordance: only renders once the operator has
+          picked a label that carries the flag. Leaving the date blank is
+          deliberately valid → creates an open task with no due date. */}
+      {isAutoFollowUp && (
+        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/60 px-2.5 py-2">
+          <p className="text-[11px] text-amber-900 mb-1.5">
+            This label auto-creates a follow-up task. Pick a due date &amp; time or leave blank.
+          </p>
+          <input
+            type="datetime-local"
+            value={followUpDate}
+            onChange={(e) => setFollowUpDate(e.target.value)}
+            disabled={working}
+            className="w-full bg-white border border-amber-200 rounded-md px-2 py-1 text-xs focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none disabled:opacity-50"
+          />
+        </div>
+      )}
       {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
     </CollapsibleSection>
   );
