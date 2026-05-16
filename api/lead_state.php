@@ -21,6 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     $stmt = $db->prepare(
         'SELECT s.status, s.priority, s.lead_temperature, s.price_wanted, s.price_offered,
+                s.vehicle_color, s.vehicle_odometer,
                 s.assigned_user_id, u.name AS assigned_user_name,
                 s.created_at, s.updated_at
            FROM lead_states s
@@ -36,6 +37,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'lead_temperature'   => null,
             'price_wanted'       => null,
             'price_offered'      => null,
+            'vehicle_color'      => null,
+            'vehicle_odometer'   => null,
             'assigned_user_id'   => null,
             'assigned_user_name' => null,
             'is_default'         => true,
@@ -45,6 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $row['assigned_user_id'] = $row['assigned_user_id'] !== null ? (int) $row['assigned_user_id'] : null;
     $row['price_wanted']     = $row['price_wanted']  !== null ? (float) $row['price_wanted']  : null;
     $row['price_offered']    = $row['price_offered'] !== null ? (float) $row['price_offered'] : null;
+    $row['vehicle_odometer'] = $row['vehicle_odometer'] !== null ? (int) $row['vehicle_odometer'] : null;
     $row['is_default'] = false;
     echo json_encode($row);
     exit();
@@ -58,7 +62,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
 
     // Load current (or defaults). Fetch every column we may touch.
     $stmt = $db->prepare(
-        'SELECT status, priority, assigned_user_id, lead_temperature, price_wanted, price_offered
+        'SELECT status, priority, assigned_user_id, lead_temperature, price_wanted, price_offered,
+                vehicle_color, vehicle_odometer
            FROM lead_states WHERE imported_lead_id = :lid'
     );
     $stmt->execute([':lid' => $leadId]);
@@ -70,6 +75,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
     $currentTemperature = $current['lead_temperature'] ?? null;
     $currentWanted      = normalizePrice($current['price_wanted']  ?? null);
     $currentOffered     = normalizePrice($current['price_offered'] ?? null);
+    $currentColor       = $current['vehicle_color'] ?? null;
+    $currentOdometer    = isset($current['vehicle_odometer']) && $current['vehicle_odometer'] !== null
+        ? (int) $current['vehicle_odometer'] : null;
 
     $next = [
         'status'           => $current['status'],
@@ -78,6 +86,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
         'lead_temperature' => $currentTemperature,
         'price_wanted'     => $currentWanted,
         'price_offered'    => $currentOffered,
+        'vehicle_color'    => $currentColor,
+        'vehicle_odometer' => $currentOdometer,
     ];
 
     $changes = [];  // [activity_type, old, new]
@@ -149,6 +159,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
         }
     }
 
+    if (array_key_exists('vehicle_color', $input)) {
+        $newColor = $input['vehicle_color'];
+        // Treat empty string the same as null — operator-cleared field.
+        $newColor = ($newColor === null || $newColor === '') ? null : trim((string) $newColor);
+        if ($newColor !== null && mb_strlen($newColor) > 50) {
+            pipelineFail(400, 'vehicle_color too long (max 50)', 'invalid_color');
+        }
+        if ($newColor !== $currentColor) {
+            $changes[] = ['vehicle_color_changed', $currentColor, $newColor];
+            $next['vehicle_color'] = $newColor;
+        }
+    }
+
+    if (array_key_exists('vehicle_odometer', $input)) {
+        // Accept null/'' to clear, plus integer-ish strings ("123,456" → 123456).
+        $rawOdo = $input['vehicle_odometer'];
+        if ($rawOdo === null || $rawOdo === '') {
+            $newOdometer = null;
+        } else {
+            $stripped = is_string($rawOdo) ? str_replace([',', ' '], '', $rawOdo) : $rawOdo;
+            if (!is_numeric($stripped) || (int) $stripped < 0 || (int) $stripped > 4294967295) {
+                pipelineFail(400, 'vehicle_odometer must be a non-negative integer', 'invalid_odometer');
+            }
+            $newOdometer = (int) $stripped;
+        }
+        if ($newOdometer !== $currentOdometer) {
+            $changes[] = ['vehicle_odometer_changed', $currentOdometer, $newOdometer];
+            $next['vehicle_odometer'] = $newOdometer;
+        }
+    }
+
     if (empty($changes)) {
         echo json_encode(['success' => true, 'unchanged' => true]);
         exit();
@@ -158,15 +199,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
         $db->beginTransaction();
         $stmt = $db->prepare(
             'INSERT INTO lead_states
-               (imported_lead_id, status, priority, assigned_user_id, lead_temperature, price_wanted, price_offered)
-             VALUES (:lid, :status, :priority, :assignee, :temp, :wanted, :offered)
+               (imported_lead_id, status, priority, assigned_user_id, lead_temperature,
+                price_wanted, price_offered, vehicle_color, vehicle_odometer)
+             VALUES (:lid, :status, :priority, :assignee, :temp,
+                     :wanted, :offered, :color, :odometer)
              ON DUPLICATE KEY UPDATE
                status = VALUES(status),
                priority = VALUES(priority),
                assigned_user_id = VALUES(assigned_user_id),
                lead_temperature = VALUES(lead_temperature),
                price_wanted = VALUES(price_wanted),
-               price_offered = VALUES(price_offered)'
+               price_offered = VALUES(price_offered),
+               vehicle_color = VALUES(vehicle_color),
+               vehicle_odometer = VALUES(vehicle_odometer)'
         );
         $stmt->execute([
             ':lid'      => $leadId,
@@ -176,6 +221,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
             ':temp'     => $next['lead_temperature'],
             ':wanted'   => $next['price_wanted'],
             ':offered'  => $next['price_offered'],
+            ':color'    => $next['vehicle_color'],
+            ':odometer' => $next['vehicle_odometer'],
         ]);
         foreach ($changes as [$type, $old, $new]) {
             logLeadActivity($db, $leadId, $user['id'], $type, $old, $new);

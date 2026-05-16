@@ -8,8 +8,13 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+dist
 dist-ssr
 *.local
+vinvault-deploy.zip
+
+# Claude Code session metadata
+.claude/
 
 # .env IS tracked at user request (deploy workflow ships it to server).
 # Local-only variants (.env.local etc.) stay ignored.
@@ -20,11 +25,4 @@ dist-ssr
 
 # Editor directories and files
 .vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+!.vscode/exten

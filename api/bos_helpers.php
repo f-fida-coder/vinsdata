@@ -46,6 +46,13 @@ function defaultsFromLead(PDO $db, int $leadId): array
     $np  = json_decode($row['normalized_payload_json'] ?? 'null', true) ?: [];
     $raw = json_decode($row['raw_payload_json']        ?? 'null', true) ?: [];
 
+    // Operator-set overrides on lead_states win over the imported values.
+    // If the operator corrected color/miles on the lead drawer, the BoS
+    // draft should use those instead of the stale import.
+    $ovStmt = $db->prepare('SELECT vehicle_color, vehicle_odometer FROM lead_states WHERE imported_lead_id = :id');
+    $ovStmt->execute([':id' => $leadId]);
+    $override = $ovStmt->fetch() ?: [];
+
     $name = trim(($np['full_name'] ?? '') ?: trim(($np['first_name'] ?? '') . ' ' . ($np['last_name'] ?? '')));
     $addr = trim(($np['full_address'] ?? '') ?: trim(implode(', ', array_filter([
         $np['city']  ?? null,
@@ -55,7 +62,10 @@ function defaultsFromLead(PDO $db, int $leadId): array
 
     // Pull common Carfax/TLO columns from the raw row when normalized fields don't carry them.
     $bodyType = $raw['BodyClass'] ?? $raw['Body Type'] ?? $raw['Body'] ?? null;
-    $color    = $raw['Color']     ?? $raw['ExteriorColor'] ?? null;
+    $color    = ($override['vehicle_color']    ?? null) ?: ($raw['Color'] ?? $raw['ExteriorColor'] ?? null);
+    $odometer = ($override['vehicle_odometer'] ?? null) !== null
+        ? (int) $override['vehicle_odometer']
+        : ($np['mileage'] ?? null);
 
     $stmt = $db->prepare('SELECT company_name, company_address, default_state, default_county FROM company_settings WHERE id = 1');
     $stmt->execute();
@@ -74,7 +84,7 @@ function defaultsFromLead(PDO $db, int $leadId): array
         'vehicle_body_type' => $bodyType,
         'vehicle_year'      => $np['year']    ?? null,
         'vehicle_color'     => $color,
-        'vehicle_odometer'  => $np['mileage'] ?? null,
+        'vehicle_odometer'  => $odometer,
         'vehicle_vin'       => $np['vin']     ?? null,
         'payment_type'      => 'cash',
         'payment_amount'    => null,
