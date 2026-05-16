@@ -81,12 +81,17 @@ switch ($action) {
     case 'remove_label': {
         $labelId = (int) ($payload['label_id'] ?? 0);
         if ($labelId <= 0) pipelineFail(400, 'label_id is required', 'missing_fields');
-        $stmt = $db->prepare('SELECT id, name FROM lead_labels WHERE id = :id');
+        $stmt = $db->prepare('SELECT id, name, auto_follow_up FROM lead_labels WHERE id = :id');
         $stmt->execute([':id' => $labelId]);
         $label = $stmt->fetch();
         if (!$label) pipelineFail(404, 'Label not found', 'label_not_found');
-        $prepared['label_id']   = $labelId;
-        $prepared['label_name'] = $label['name'];
+        $prepared['label_id']         = $labelId;
+        $prepared['label_name']       = $label['name'];
+        // Bulk attach defaults to NULL due_at — one shared date rarely
+        // fits every lead. Operator can open each lead's task and set a
+        // per-lead due_at later, same as a manually-created open task.
+        $prepared['auto_follow_up']   = (int) $label['auto_follow_up'] === 1;
+        $prepared['follow_up_due_at'] = parseDatetime($payload['follow_up_due_at'] ?? null, 'follow_up_due_at');
         break;
     }
     case 'send_to_marketing': {
@@ -252,6 +257,38 @@ foreach ($leadIds as $leadId) {
                             'name'     => $prepared['label_name'],
                         ]);
                         $activityCount = 1;
+
+                        // Mirror single-lead auto_follow_up behaviour. We
+                        // only fire when the link was newly created so a
+                        // re-run of the same batch doesn't accumulate
+                        // duplicate tasks on leads that already had the
+                        // label.
+                        if (!empty($prepared['auto_follow_up'])) {
+                            $title = 'Follow up — ' . $prepared['label_name'];
+                            $stmt = $db->prepare(
+                                'INSERT INTO lead_tasks
+                                   (imported_lead_id, assigned_user_id, task_type, title, due_at, created_by)
+                                 VALUES (:lid, :au, :type, :title, :due, :by)'
+                            );
+                            $stmt->execute([
+                                ':lid'   => $leadId,
+                                ':au'    => $actorId,
+                                ':type'  => 'follow_up',
+                                ':title' => $title,
+                                ':due'   => $prepared['follow_up_due_at'],
+                                ':by'    => $actorId,
+                            ]);
+                            $taskId = (int) $db->lastInsertId();
+                            logLeadActivity($db, $leadId, $actorId, 'task_created', null, [
+                                'task_id'           => $taskId,
+                                'title'             => $title,
+                                'task_type'         => 'follow_up',
+                                'due_at'            => $prepared['follow_up_due_at'],
+                                'assigned_user_id'  => $actorId,
+                                'auto_from_label'   => $prepared['label_id'],
+                            ]);
+                            $activityCount = 2;
+                        }
                     }
                     $db->commit();
                 } catch (Throwable $e) {

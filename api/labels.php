@@ -18,7 +18,8 @@ function validateColor(?string $color): string
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $stmt = $db->query(
-        'SELECT l.id, l.name, l.color, l.created_by, u.name AS created_by_name,
+        'SELECT l.id, l.name, l.color, l.auto_follow_up,
+                l.created_by, u.name AS created_by_name,
                 l.created_at, l.updated_at,
                 (SELECT COUNT(*) FROM lead_label_links lll WHERE lll.label_id = l.id) AS usage_count
            FROM lead_labels l
@@ -26,8 +27,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
           ORDER BY l.name'
     );
     $labels = array_map(function ($r) {
-        $r['id']          = (int) $r['id'];
-        $r['usage_count'] = (int) $r['usage_count'];
+        $r['id']             = (int) $r['id'];
+        $r['usage_count']    = (int) $r['usage_count'];
+        $r['auto_follow_up'] = (bool) $r['auto_follow_up'];
         return $r;
     }, $stmt->fetchAll());
     echo json_encode($labels);
@@ -39,12 +41,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true) ?? [];
     $name  = trim((string) ($input['name']  ?? ''));
     $color = validateColor($input['color'] ?? null);
+    $autoFollowUp = !empty($input['auto_follow_up']) ? 1 : 0;
     if ($name === '') pipelineFail(400, 'name is required', 'missing_fields');
     if (mb_strlen($name) > 80) pipelineFail(400, 'name too long', 'name_too_long');
 
     try {
-        $stmt = $db->prepare('INSERT INTO lead_labels (name, color, created_by) VALUES (:n, :c, :u)');
-        $stmt->execute([':n' => $name, ':c' => $color, ':u' => $user['id']]);
+        $stmt = $db->prepare(
+            'INSERT INTO lead_labels (name, color, auto_follow_up, created_by)
+             VALUES (:n, :c, :a, :u)'
+        );
+        $stmt->execute([':n' => $name, ':c' => $color, ':a' => $autoFollowUp, ':u' => $user['id']]);
     } catch (PDOException $e) {
         if ($e->getCode() === '23000') pipelineFail(409, 'A label with that name already exists', 'duplicate_label');
         throw $e;
@@ -70,6 +76,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'PATCH') {
     if (isset($input['color'])) {
         $fields[] = 'color = :color';
         $params[':color'] = validateColor((string) $input['color']);
+    }
+    if (array_key_exists('auto_follow_up', $input)) {
+        $fields[] = 'auto_follow_up = :auto_follow_up';
+        $params[':auto_follow_up'] = !empty($input['auto_follow_up']) ? 1 : 0;
     }
     if (empty($fields)) pipelineFail(400, 'No fields to update', 'missing_fields');
 
