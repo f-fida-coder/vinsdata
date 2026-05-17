@@ -97,11 +97,11 @@ jobs:
             echo "DEPLOY_DIR=$DEPLOY_DIR"
           } >> "$GITHUB_ENV"
 
-      - name: Ensure remote directory exists
+      - name: Ensure remote directories exist
         run: |
           ssh -p "$PORT" -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
               "$USER@$HOST" \
-              "mkdir -p '$DEPLOY_DIR'"
+              "mkdir -p '$DEPLOY_DIR' '$DEPLOY_DIR/api' '$DEPLOY_DIR/api/uploads'"
 
       - name: Deploy dist to Hostinger (frontend)
         run: |

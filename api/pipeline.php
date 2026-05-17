@@ -121,6 +121,17 @@ function validateUploadedArtifact(array $phpFile): void
 
 function storeUploadedFile(string $uploadDir, array $phpFile): array
 {
+    // Hostinger deploys can leave api/uploads missing on fresh environments.
+    // Ensure the runtime upload dir exists before moving the temporary file.
+    if (!is_dir($uploadDir)) {
+        if (!@mkdir($uploadDir, 0775, true) && !is_dir($uploadDir)) {
+            pipelineFail(500, 'Upload directory is missing and could not be created', 'upload_dir_create_failed');
+        }
+    }
+    if (!is_writable($uploadDir)) {
+        pipelineFail(500, 'Upload directory is not writable', 'upload_dir_not_writable');
+    }
+
     $ext = strtolower(pathinfo($phpFile['name'], PATHINFO_EXTENSION));
     $storedName = uniqid('', true) . '_' . bin2hex(random_bytes(8)) . ($ext ? '.' . $ext : '');
     $destination = $uploadDir . $storedName;
