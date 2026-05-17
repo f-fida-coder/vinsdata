@@ -1,7 +1,7 @@
-name: Deploy frontend to Hostinger
+name: Deploy frontend + api to Hostinger
 
-# Push frontend build output (dist/) to Hostinger on every push to main.
-# This workflow intentionally does NOT deploy api/.
+# Push frontend build output and api code to Hostinger on every push to main.
+# Runtime upload files in api/uploads/ are preserved and never deleted.
 #
 # Required GitHub Secrets:
 #   HOSTINGER_SSH_HOST   - SSH host, e.g. srv2052.hstgr.io
@@ -16,7 +16,7 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  deploy-frontend:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -30,6 +30,17 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Setup PHP + Composer
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer:v2
+          coverage: none
+
+      - name: Install API composer dependencies
+        working-directory: api
+        run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
 
       - name: Build frontend only
         run: npm run build
@@ -92,13 +103,21 @@ jobs:
               "$USER@$HOST" \
               "mkdir -p '$DEPLOY_DIR'"
 
-      - name: Deploy dist to Hostinger (frontend only)
+      - name: Deploy dist to Hostinger (frontend)
         run: |
           rsync -avz --delete \
             --exclude='api/' \
             -e "ssh -p $PORT -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
             ./dist/ \
             "$USER@$HOST:$DEPLOY_DIR/"
+
+      - name: Deploy api to Hostinger (preserve uploads)
+        run: |
+          rsync -avz --delete \
+            --exclude='uploads/' \
+            -e "ssh -p $PORT -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
+            ./api/ \
+            "$USER@$HOST:$DEPLOY_DIR/api/"
 
       - name: Upload SPA rewrite config
         run: |
