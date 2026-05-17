@@ -130,8 +130,14 @@ jobs:
             echo "No .htaccess file found in repo root."
           fi
 
+      - name: Fix uploads folder permissions
+        run: |
+          ssh -p "$PORT" -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
+              "$USER@$HOST" \
+              "chmod 0775 '$DEPLOY_DIR/api/uploads' || true && chown $USER '$DEPLOY_DIR/api/uploads' || true && ls -ld '$DEPLOY_DIR/api/uploads'"
+
       - name: Verify deployment
         run: |
           ssh -p "$PORT" -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
               "$USER@$HOST" \
-              "echo 'Deployed files:' && ls -la '$DEPLOY_DIR' | head -30 && echo '---' && ls -la '$DEPLOY_DIR/assets' | head -20"
+              "echo 'Deployed files:' && ls -la '$DEPLOY_DIR' | head -30 && echo '---' && ls -la '$DEPLOY_DIR/assets' | head -20 && echo 'Uploads folder:' && ls -ld '$DEPLOY_DIR/api/uploads'"
