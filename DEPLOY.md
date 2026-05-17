@@ -1,113 +1,64 @@
-# Hostinger Deployment Guide
+# Hostinger Deployment Guide (Frontend Auto Deploy, API Persistent)
 
-## 1. Build the Frontend
+## Goal
 
-```bash
-cd vin-dashboard
-npm run build
-```
+Push to GitHub main and auto-deploy only frontend files.
+The server-side api folder remains on Hostinger and is not overwritten on each push.
 
-This creates a `dist/` folder with the production React app.
+## Current Structure
 
-## 2. Database Setup
+- Local repo contains both frontend and api code.
+- GitHub Action deploys dist and .htaccess to Hostinger.
+- Hostinger keeps api as a persistent server folder.
 
-In Hostinger hPanel → Databases → Create a new MySQL database:
-- Database name: `vin_dashboard`
-- Create a database user and assign it to the database
+## Workflow Used
 
-Then import this SQL via phpMyAdmin:
+The workflow file is .github/workflows/deploy-hostinger.yml.
 
-```sql
-CREATE TABLE users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    email VARCHAR(150) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,
-    role ENUM('admin','carfax','filter','tlo') NOT NULL DEFAULT 'admin',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+It does this on push to main:
+1. npm ci
+2. npm run build
+3. rsync dist to HOSTINGER_DEPLOY_DIR with --delete
+4. Explicitly excludes api/
+5. Uploads .htaccess
 
-CREATE TABLE vehicles (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+## Required GitHub Secrets
 
-CREATE TABLE files (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    vehicle_id INT NOT NULL,
-    file_name VARCHAR(255) NOT NULL,
-    year INT DEFAULT NULL,
-    version VARCHAR(20) DEFAULT NULL,
-    current_stage ENUM('generated','carfax','filter','tlo') NOT NULL DEFAULT 'generated',
-    added_by INT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (vehicle_id) REFERENCES vehicles(id),
-    FOREIGN KEY (added_by) REFERENCES users(id)
-);
+Set these in GitHub repository settings:
 
-CREATE TABLE file_logs (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    file_id INT NOT NULL,
-    user_id INT NOT NULL,
-    from_stage VARCHAR(20) DEFAULT NULL,
-    to_stage VARCHAR(20) NOT NULL,
-    notes TEXT DEFAULT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (file_id) REFERENCES files(id),
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
+- HOSTINGER_SSH_HOST
+- HOSTINGER_SSH_USER
+- HOSTINGER_SSH_PORT
+- HOSTINGER_SSH_KEY
+- HOSTINGER_DEPLOY_DIR
 
--- Default admin user (password: password)
-INSERT INTO users (name, email, password, role) VALUES
-('Admin', 'admin@vin.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin');
-```
+Example HOSTINGER_DEPLOY_DIR:
 
-## 3. Update DB Credentials
+/home/username/domains/yourdomain.com/public_html
 
-Edit `api/config.php` and replace the placeholders:
-```php
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'your_hostinger_username_vin_dashboard');
-define('DB_USER', 'your_hostinger_username_dbuser');
-define('DB_PASS', 'your_actual_password');
-```
+## Build Scripts
 
-## 4. Upload Files to Hostinger
+- npm run build: frontend only (default)
+- npm run build:with-api: optional legacy build that copies api into dist
 
-Via File Manager or FTP, upload to `public_html/vin-dashboard/`:
+Use build:with-api only if you intentionally want a bundled snapshot.
 
-```
-public_html/vin-dashboard/
-├── index.html          ← from dist/
-├── assets/             ← from dist/assets/
-├── .htaccess           ← from project root
-└── api/
-    ├── config.php
-    ├── auth.php
-    ├── me.php
-    ├── logout.php
-    ├── files.php
-    ├── vehicles.php
-    ├── users.php
-    └── logs.php
-```
+## First-Time Setup on Hostinger
 
-Steps:
-1. Upload everything inside `dist/` → `public_html/vin-dashboard/`
-2. Upload the `api/` folder → `public_html/vin-dashboard/api/`
-3. Upload `.htaccess` → `public_html/vin-dashboard/.htaccess`
+1. Upload api once manually to HOSTINGER_DEPLOY_DIR/api.
+2. Keep .env on the server (outside git if possible).
+3. Confirm api/uploads exists and is writable.
 
-## 5. Verify
+After this, normal pushes should not touch api.
 
-1. Visit `yourdomain.com/vin-dashboard/`
-2. Login with: `admin@vin.com` / `admin123`
-3. Test all pages: Dashboard, Files, Vehicles, Users
+## Verify After Push
+
+1. Open GitHub Actions and confirm deploy-hostinger workflow passed.
+2. Check site loads new frontend.
+3. Confirm old api endpoints still work.
 
 ## Troubleshooting
 
-- **Blank page?** Check that `.htaccess` was uploaded and `mod_rewrite` is enabled
-- **API 500 errors?** Check `api/config.php` DB credentials. Hostinger prepends your username to DB names
-- **Session issues?** Make sure all PHP files use `initSession()` (not `session_start()`)
-- **404 on refresh?** The `.htaccess` SPA fallback handles this — make sure it's in the right directory
+- Frontend changed but backend broke: verify backend was changed locally but not deployed; this is expected with frontend-only workflow.
+- 404 on refresh: ensure .htaccess is present in deploy directory.
+- Wrong deploy path: verify HOSTINGER_DEPLOY_DIR secret.

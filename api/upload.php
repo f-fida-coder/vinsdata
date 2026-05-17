@@ -277,6 +277,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
         $newStatus = ($effectiveStage === 'tlo' && $file['status'] === 'completed')
             ? 'completed'
             : 'active';
+        $isInvalid = $newStatus === 'invalid' ? 1 : 0;
 
         $rolledBack    = $effectiveStage !== $file['current_stage'];
         $reactivated   = !$rolledBack && $newStatus !== $file['status'];
@@ -288,16 +289,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
                 SET current_stage      = :stage,
                     status             = :status,
                     latest_artifact_id = :aid,
-                    is_invalid         = CASE WHEN :status2 = \'invalid\' THEN 1 ELSE 0 END,
+                    is_invalid         = :is_invalid,
                     updated_at         = NOW()
               WHERE id = :id'
         );
         $upd->execute([
-            ':stage'   => $effectiveStage,
-            ':status'  => $newStatus,
-            ':status2' => $newStatus,
-            ':aid'     => $latestId ?: null,
-            ':id'      => $file['id'],
+            ':stage'      => $effectiveStage,
+            ':status'     => $newStatus,
+            ':is_invalid' => $isInvalid,
+            ':aid'        => $latestId ?: null,
+            ':id'         => $file['id'],
         ]);
 
         if ($rolledBack) {
