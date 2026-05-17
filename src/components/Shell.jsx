@@ -78,6 +78,19 @@ export function Sidebar({ onSignOut, mobileOpen, onMobileClose }) {
   const { user, logout } = useAuth();
   const items = navItemsForRole(user?.role);
   const location = useLocation();
+  const [vehicles, setVehicles] = useState([]);
+  const [loadingVehicles, setLoadingVehicles] = useState(false);
+  const navigate = useNavigate();
+
+  // Fetch vehicles for sidebar
+  useEffect(() => {
+    setLoadingVehicles(true);
+    fetch('/api/vehicles')
+      .then((r) => r.json())
+      .then((data) => setVehicles(Array.isArray(data) ? data.filter(v => v.is_active !== false) : []))
+      .catch(() => setVehicles([]))
+      .finally(() => setLoadingVehicles(false));
+  }, []);
 
   // Auto-close on route change (mobile only)
   useEffect(() => {
@@ -95,7 +108,7 @@ export function Sidebar({ onSignOut, mobileOpen, onMobileClose }) {
 
   return (
     <>
-      {mobileOpen && <div className="sb-backdrop" onClick={onMobileClose}/>}
+      {mobileOpen && <div className="sb-backdrop" onClick={onMobileClose}/>} 
       <aside className={`sidebar ${mobileOpen ? 'is-open' : ''}`}>
         <div className="sb-brand">
           <div className="sb-logo">V</div>
@@ -134,6 +147,28 @@ export function Sidebar({ onSignOut, mobileOpen, onMobileClose }) {
             </NavLink>
           ))}
         </nav>
+
+        <div className="sb-section-label" style={{ marginTop: 24 }}>Vehicles</div>
+        <div className="sb-vehicles-list">
+          {loadingVehicles ? (
+            <div style={{ color: '#888', fontSize: 13, padding: '8px 16px' }}>Loading…</div>
+          ) : vehicles.length === 0 ? (
+            <div style={{ color: '#888', fontSize: 13, padding: '8px 16px' }}>No vehicles</div>
+          ) : (
+            vehicles.map((v) => (
+              <div
+                key={v.id}
+                className="sb-link sb-vehicle-link"
+                style={{ paddingLeft: 36, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                onClick={() => navigate(`/leads?vehicle_id=${v.id}`)}
+                title={v.name}
+              >
+                <Icon name="car" size={14} className="sb-link-icon" style={{ marginRight: 6 }}/>
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v.name}</span>
+              </div>
+            ))
+          )}
+        </div>
 
         <div className="sb-footer">
           <div className="sb-link" onClick={() => (onSignOut ? onSignOut() : logout())}>
