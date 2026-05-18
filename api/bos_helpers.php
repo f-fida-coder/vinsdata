@@ -114,6 +114,12 @@ function renderBillOfSalePdf(array $d): string
 {
     require_once __DIR__ . '/vendor/autoload.php';
 
+    // Register Dancing Script (Google Fonts, OFL-licensed) as a custom
+    // mPDF font so the pre-signed buyer line renders in real cursive
+    // instead of italic-serif. Font file lives at api/fonts/.
+    $defaultConfig     = (new \Mpdf\Config\ConfigVariables())->getDefaults();
+    $defaultFontConfig = (new \Mpdf\Config\FontVariables())->getDefaults();
+
     $mpdf = new \Mpdf\Mpdf([
         'mode'        => 'utf-8',
         'format'      => 'Letter',
@@ -121,6 +127,10 @@ function renderBillOfSalePdf(array $d): string
         'margin_right'  => 18,
         'margin_top'    => 16,
         'margin_bottom' => 16,
+        'fontDir'      => array_merge($defaultConfig['fontDir'], [__DIR__ . '/fonts']),
+        'fontdata'     => $defaultFontConfig['fontdata'] + [
+            'dancingscript' => ['R' => 'DancingScript-Regular.ttf'],
+        ],
     ]);
 
     $esc = fn($v) => htmlspecialchars((string) ($v ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -154,23 +164,20 @@ function renderBillOfSalePdf(array $d): string
       .clause { text-align: justify; }
       .sig-block { margin: 10px 0; }
       .sig-line  { border-bottom: 1px solid #111; display: inline-block; min-width: 240px; margin-left: 6px; vertical-align: bottom; }
-      /* Pre-signed buyer signature. mPDF ships DejaVu; no built-in
-         script font, so we lean on italic serif at signature-sized
-         leading to read as a written signature. The signature text
-         overlays the same .sig-line element so it appears on the line. */
+      /* Pre-signed buyer signature rendered in Dancing Script (real
+         cursive). No underline beneath — a signed name doesn't have one
+         in the wild, and the .sig-line element we replace already had
+         its bottom-border purpose served (this IS the signature). */
       .sig-text {
-        font-family: "Times", serif;
-        font-style: italic;
-        font-weight: 600;
-        font-size: 16pt;
+        font-family: dancingscript;
+        font-size: 22pt;
         color: #1a1a4a;
-        letter-spacing: 0.5px;
         display: inline-block;
         min-width: 240px;
         padding: 0 6px 2px;
-        border-bottom: 1px solid #111;
         margin-left: 6px;
         vertical-align: bottom;
+        line-height: 1;
       }
       .warning   { font-weight: bold; }
       .page-break { page-break-before: always; }
