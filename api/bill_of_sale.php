@@ -169,6 +169,25 @@ if ($method === 'PUT') {
                 $v = $v ? 1 : 0;
             } elseif (in_array($k, ['payment_amount','trade_amount','gift_value'], true)) {
                 $v = ($v === '' || $v === null) ? null : (float) $v;
+            } elseif ($k === 'vehicle_year' || $k === 'trade_year') {
+                // Years come in as strings (free-text input) or numbers.
+                // Clamp to a SMALLINT-ish range so a typo like "20020"
+                // can't blow up the column type.
+                if ($v === '' || $v === null) {
+                    $v = null;
+                } else {
+                    $n = (int) (is_string($v) ? trim($v) : $v);
+                    $v = ($n >= 1900 && $n <= 2100) ? $n : null;
+                }
+            } elseif ($k === 'vehicle_odometer' || $k === 'trade_odometer') {
+                // Stored as VARCHAR(50) on the BoS table but the form
+                // posts user-typed strings — strip commas + spaces so
+                // "87,500" round-trips cleanly.
+                if ($v === '' || $v === null) {
+                    $v = null;
+                } else {
+                    $v = is_string($v) ? trim(str_replace([',', ' '], '', $v)) : (string) $v;
+                }
             } else {
                 $v = ($v === '' || $v === null) ? null : (is_string($v) ? trim($v) : $v);
             }
@@ -176,28 +195,32 @@ if ($method === 'PUT') {
             $params[":$k"] = $v;
         }
 
-        if ($bosId > 0) {
-            // Update existing standalone (or any) BoS by primary key.
-            if (empty($fieldVals)) {
-                echo json_encode(['success' => true, 'unchanged' => true]);
-                exit();
+        try {
+            if ($bosId > 0) {
+                // Update existing standalone (or any) BoS by primary key.
+                if (empty($fieldVals)) {
+                    echo json_encode(['success' => true, 'unchanged' => true]);
+                    exit();
+                }
+                $sets = [];
+                foreach (array_keys($fieldVals) as $k) $sets[] = "$k = :$k";
+                $params[':id'] = $bosId;
+                $sql = 'UPDATE bill_of_sale SET ' . implode(', ', $sets) . ' WHERE id = :id';
+                $db->prepare($sql)->execute($params);
+            } else {
+                // Insert new standalone row (imported_lead_id stays NULL).
+                $cols = ['created_by'];
+                $vals = [':uid'];
+                foreach (array_keys($fieldVals) as $k) {
+                    $cols[] = $k;
+                    $vals[] = ":$k";
+                }
+                $sql = 'INSERT INTO bill_of_sale (' . implode(',', $cols) . ') VALUES (' . implode(',', $vals) . ')';
+                $db->prepare($sql)->execute($params);
+                $bosId = (int) $db->lastInsertId();
             }
-            $sets = [];
-            foreach (array_keys($fieldVals) as $k) $sets[] = "$k = :$k";
-            $params[':id'] = $bosId;
-            $sql = 'UPDATE bill_of_sale SET ' . implode(', ', $sets) . ' WHERE id = :id';
-            $db->prepare($sql)->execute($params);
-        } else {
-            // Insert new standalone row (imported_lead_id stays NULL).
-            $cols = ['created_by'];
-            $vals = [':uid'];
-            foreach (array_keys($fieldVals) as $k) {
-                $cols[] = $k;
-                $vals[] = ":$k";
-            }
-            $sql = 'INSERT INTO bill_of_sale (' . implode(',', $cols) . ') VALUES (' . implode(',', $vals) . ')';
-            $db->prepare($sql)->execute($params);
-            $bosId = (int) $db->lastInsertId();
+        } catch (Throwable $e) {
+            pipelineFail(500, 'Bill of Sale save failed: ' . $e->getMessage(), 'db_error');
         }
 
         $sel = $db->prepare('SELECT * FROM bill_of_sale WHERE id = :id');
@@ -219,6 +242,15 @@ if ($method === 'PUT') {
             $v = $v ? 1 : 0;
         } elseif (in_array($k, ['payment_amount','trade_amount','gift_value'], true)) {
             $v = ($v === '' || $v === null) ? null : (float) $v;
+        } elseif ($k === 'vehicle_year' || $k === 'trade_year') {
+            if ($v === '' || $v === null) {
+                $v = null;
+            } else {
+                $n = (int) (is_string($v) ? trim($v) : $v);
+                $v = ($n >= 1900 && $n <= 2100) ? $n : null;
+            }
+        } elseif ($k === 'vehicle_odometer' || $k === 'trade_odometer') {
+            $v = ($v === '' || $v === null) ? null : (is_string($v) ? trim(str_replace([',', ' '], '', $v)) : (string) $v);
         } else {
             $v = ($v === '' || $v === null) ? null : (is_string($v) ? trim($v) : $v);
         }
