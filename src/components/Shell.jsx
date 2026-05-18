@@ -1,6 +1,6 @@
 // VINVAULT app shell: Sidebar, Topbar, CommandPalette, QuickAdd, Shortcuts overlay
 import { useState, useEffect, useRef } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { Icon, Avatar, Button, Kbd } from './ui';
