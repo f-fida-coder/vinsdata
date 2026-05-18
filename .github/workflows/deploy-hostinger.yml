@@ -111,10 +111,13 @@ jobs:
             ./dist/ \
             "$USER@$HOST:$DEPLOY_DIR/"
 
-      - name: Deploy api to Hostinger (preserve uploads)
+      - name: Deploy api to Hostinger (preserve runtime files)
         run: |
-          rsync -avz --delete \
+          rsync -avz \
             --exclude='uploads/' \
+            --exclude='.env' \
+            --exclude='.user.ini' \
+            --exclude='.htaccess' \
             -e "ssh -p $PORT -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
             ./api/ \
             "$USER@$HOST:$DEPLOY_DIR/api/"
