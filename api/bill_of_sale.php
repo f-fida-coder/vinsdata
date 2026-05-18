@@ -160,8 +160,12 @@ if ($method === 'PUT') {
     // ON-DUPLICATE-KEY upsert depends on imported_lead_id being the
     // unique-conflict target.
     if ($standalone) {
-        $params = [':uid' => $user['id']];
+        // Collect just the field bindings here. :uid + :id get added
+        // per-branch below so PDO doesn't reject "extra" params under
+        // emulate_prepares=false (which is what HY093 was complaining
+        // about — the UPDATE branch never references :uid).
         $fieldVals = [];
+        $fieldParams = [];
         foreach ($columns as $k) {
             if (!array_key_exists($k, $input)) continue;
             $v = $input[$k];
@@ -191,8 +195,8 @@ if ($method === 'PUT') {
             } else {
                 $v = ($v === '' || $v === null) ? null : (is_string($v) ? trim($v) : $v);
             }
-            $fieldVals[$k] = $v;
-            $params[":$k"] = $v;
+            $fieldVals[$k]       = $v;
+            $fieldParams[":$k"]  = $v;
         }
 
         try {
@@ -204,7 +208,7 @@ if ($method === 'PUT') {
                 }
                 $sets = [];
                 foreach (array_keys($fieldVals) as $k) $sets[] = "$k = :$k";
-                $params[':id'] = $bosId;
+                $params = $fieldParams + [':id' => $bosId];
                 $sql = 'UPDATE bill_of_sale SET ' . implode(', ', $sets) . ' WHERE id = :id';
                 $db->prepare($sql)->execute($params);
             } else {
@@ -215,6 +219,7 @@ if ($method === 'PUT') {
                     $cols[] = $k;
                     $vals[] = ":$k";
                 }
+                $params = $fieldParams + [':uid' => $user['id']];
                 $sql = 'INSERT INTO bill_of_sale (' . implode(',', $cols) . ') VALUES (' . implode(',', $vals) . ')';
                 $db->prepare($sql)->execute($params);
                 $bosId = (int) $db->lastInsertId();
