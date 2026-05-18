@@ -566,15 +566,20 @@ function SendForSignatureButton({ bos, onSent }) {
       </span>
     );
   }
+  // 'awaiting_signature' = we already sent it once; show "Resend" so the
+  // operator knows clicking again will fire a new email (re-uses the
+  // same OpenSign document — opensign.php dedupes by signature_request_id
+  // / contact email).
+  const alreadySent = bos.status === 'awaiting_signature' || !!bos.signature_request_id;
   return (
     <>
       <button
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 rounded"
-        title="Email the PDF to the buyer"
-        aria-label="Email"
+        className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded ${alreadySent ? 'text-amber-700 hover:bg-amber-50' : 'text-emerald-700 hover:bg-emerald-50'}`}
+        title={alreadySent ? 'Re-send the signing link to the seller' : 'Email the PDF / e-sign link to the seller'}
+        aria-label={alreadySent ? 'Resend' : 'Email'}
       >
-        <Icon name="mail" size={12} /> <span className="hidden sm:inline">Email</span>
+        <Icon name={alreadySent ? 'refresh' : 'mail'} size={12} /> <span className="hidden sm:inline">{alreadySent ? 'Resend' : 'Email'}</span>
       </button>
       {open && (
         <EmailBoSModal

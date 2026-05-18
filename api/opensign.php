@@ -260,7 +260,20 @@ try {
 }
 
 // ---- 4. Build the signing URL. ----
-$signingUrl = $baseUrl . '/load/recipientSignPdf/' . rawurlencode($docId) . '/' . rawurlencode($contactId);
+//
+// We route through OpenSign's GuestLogin page (/login/<base64>) instead
+// of jumping straight to /load/recipientSignPdf/<docId>/<contactId>.
+// GuestLogin explicitly calls localStorage.clear() before navigating —
+// without it, a signer who already has a stale Parse session in their
+// browser (from prior testing or an unrelated OpenSign visit) ends up
+// authenticated as the wrong user, can't read the contact, and gets
+// "user not found" instead of the signing UI.
+//
+// Format: base64("<docId>/<email>/<contactId>/<sendmail>").
+// Trailing "false" tells OpenSign not to send its own duplicate email
+// (we already send via Gmail SMTP below).
+$base64Payload = base64_encode($docId . '/' . $signerEmail . '/' . $contactId . '/false');
+$signingUrl = $baseUrl . '/login/' . rawurlencode($base64Payload);
 
 // ---- 5. Email the signing link via Gmail SMTP. ----
 // We send through the CRM's existing Gmail provider so deliverability is
