@@ -35,14 +35,15 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // ---- Config check up front. Anything missing → bail before doing work. ----
-$baseUrl       = rtrim(getEnvValue('OPENSIGN_BASE_URL'),   '/');
-$appId         = getEnvValue('OPENSIGN_APP_ID');
-$masterKey     = getEnvValue('OPENSIGN_MASTER_KEY');
-$serviceUserId = getEnvValue('OPENSIGN_SERVICE_USER_ID');
-if ($baseUrl === '' || $appId === '' || $masterKey === '' || $serviceUserId === '') {
+$baseUrl        = rtrim(getEnvValue('OPENSIGN_BASE_URL'),   '/');
+$appId          = getEnvValue('OPENSIGN_APP_ID');
+$masterKey      = getEnvValue('OPENSIGN_MASTER_KEY');
+$serviceUserId  = getEnvValue('OPENSIGN_SERVICE_USER_ID');
+$serviceExtUser = getEnvValue('OPENSIGN_SERVICE_EXTUSER_ID');
+if ($baseUrl === '' || $appId === '' || $masterKey === '' || $serviceUserId === '' || $serviceExtUser === '') {
     pipelineFail(
         503,
-        'OpenSign is not configured. Set OPENSIGN_BASE_URL, OPENSIGN_APP_ID, OPENSIGN_MASTER_KEY, and OPENSIGN_SERVICE_USER_ID in Outbound Integrations.',
+        'OpenSign is not configured. Set OPENSIGN_BASE_URL, OPENSIGN_APP_ID, OPENSIGN_MASTER_KEY, OPENSIGN_SERVICE_USER_ID, and OPENSIGN_SERVICE_EXTUSER_ID in Outbound Integrations.',
         'opensign_not_configured'
     );
 }
@@ -122,35 +123,99 @@ try {
     pipelineFail(502, 'OpenSign upload failed: ' . $e->getMessage(), 'opensign_upload_failed');
 }
 
-// ---- 2. Create Contactbook entry for the signer. ----
+// ---- 2. Ensure a _User exists for the signer + create/find Contactbook. ----
 //
-// Reuse-by-email: OpenSign treats Contactbook entries as unique per
-// (CreatedBy + Email + IsDeleted=false). We could query first to avoid
-// duplicates, but Parse will happily insert another row — and operators
-// would see multiple "Test Signer" rows in the OpenSign UI. Cheap
-// dedupe: query first.
-$sellerName = trim((string) ($bos['seller_name'] ?? '')) ?: 'Seller';
+// OpenSign's signing URL (/load/recipientSignPdf/<docId>/<contactId>)
+// authenticates the signer as a guest user by looking up
+// Contactbook.UserId → _User. If that pointer is missing the link 500s
+// with "user not found." So we MUST create (or look up) a _User keyed
+// on the signer's email before creating the Contactbook entry, then
+// set Contactbook.UserId to that user's pointer.
+//
+// Convention mirrored from OpenSign's own savecontact cloud function:
+// username = email (lowercased), password = email (same string). The
+// signer never logs in with that password — the embedded signing flow
+// uses session tokens minted by the load route.
+$sellerName     = trim((string) ($bos['seller_name'] ?? '')) ?: 'Seller';
+$signerEmail    = strtolower($to);
 $serviceUserPtr = ['__type' => 'Pointer', 'className' => '_User', 'objectId' => $serviceUserId];
+
+$signerUserId = null;
+try {
+    // 2a. Look up an existing _User for this email. Parse returns an
+    //     empty results array if none — that's our cue to insert.
+    $whereU = json_encode(['username' => $signerEmail]);
+    $userQuery = $parseRequest(
+        'GET',
+        '/users?where=' . rawurlencode($whereU) . '&limit=1',
+        null,
+        ['Content-Type: application/json']
+    );
+    if (!empty($userQuery['results'][0]['objectId'])) {
+        $signerUserId = $userQuery['results'][0]['objectId'];
+    } else {
+        $newUser = $parseRequest('POST', '/users', json_encode([
+            'name'     => $sellerName,
+            'username' => $signerEmail,
+            'email'    => $signerEmail,
+            'password' => $signerEmail,
+        ]), [
+            'Content-Type: application/json',
+        ]);
+        $signerUserId = $newUser['objectId'] ?? null;
+        if (!$signerUserId) throw new RuntimeException('Signer _User create returned no objectId');
+    }
+} catch (Throwable $e) {
+    pipelineFail(502, 'OpenSign signer user create failed: ' . $e->getMessage(), 'opensign_user_failed');
+}
+
+$signerUserPtr = ['__type' => 'Pointer', 'className' => '_User', 'objectId' => $signerUserId];
+// Read-write ACL for both the service user (so we can manage the row)
+// and the signer (so OpenSign's guest session can read its own contact).
+$contactAcl = [
+    $serviceUserId => ['read' => true, 'write' => true],
+    $signerUserId  => ['read' => true, 'write' => true],
+];
 
 $contactId = null;
 try {
+    // 2b. Dedupe Contactbook by (CreatedBy + Email). If the existing row
+    //     is missing UserId / ACL (legacy from the pre-fix version), patch
+    //     it now so old signing links start working again on the next click.
     $where = json_encode([
-        'Email'      => strtolower($to),
+        'Email'      => $signerEmail,
         'CreatedBy'  => $serviceUserPtr,
         'IsDeleted'  => ['$ne' => true],
     ]);
-    $query  = $parseRequest('GET', '/classes/contracts_Contactbook?where=' . rawurlencode($where) . '&limit=1', null, [
-        'Content-Type: application/json',
-    ]);
+    $query  = $parseRequest(
+        'GET',
+        '/classes/contracts_Contactbook?where=' . rawurlencode($where) . '&limit=1',
+        null,
+        ['Content-Type: application/json']
+    );
     if (!empty($query['results'][0]['objectId'])) {
         $contactId = $query['results'][0]['objectId'];
+        $existing  = $query['results'][0];
+        // Backfill UserId + ACL if missing — same fix-on-touch the poll
+        // endpoint uses for older rows.
+        $needsPatch = empty($existing['UserId']) || empty($existing['ACL']);
+        if ($needsPatch) {
+            $parseRequest('PUT', '/classes/contracts_Contactbook/' . rawurlencode($contactId), json_encode([
+                'UserId' => $signerUserPtr,
+                'ACL'    => $contactAcl,
+            ]), [
+                'Content-Type: application/json',
+            ]);
+        }
     } else {
         $created = $parseRequest('POST', '/classes/contracts_Contactbook', json_encode([
             'Name'      => $sellerName,
-            'Email'     => strtolower($to),
+            'Email'     => $signerEmail,
             'UserRole'  => 'contracts_Guest',
             'IsDeleted' => false,
             'CreatedBy' => $serviceUserPtr,
+            'UserId'    => $signerUserPtr,
+            'ACL'       => $contactAcl,
         ]), [
             'Content-Type: application/json',
         ]);
@@ -180,6 +245,10 @@ try {
         'SendinOrder'         => false,
         'IsCompleted'         => false,
         'CreatedBy'           => $serviceUserPtr,
+        // ExtUserPtr is REQUIRED. Without it the signing UI 500s on
+        // load because it can't resolve the document's tenant /
+        // owner. Points at the service user's contracts_Users wrapper.
+        'ExtUserPtr'          => ['__type' => 'Pointer', 'className' => 'contracts_Users', 'objectId' => $serviceExtUser],
         'Signers'             => [['__type' => 'Pointer', 'className' => 'contracts_Contactbook', 'objectId' => $contactId]],
     ]), [
         'Content-Type: application/json',

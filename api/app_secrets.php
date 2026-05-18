@@ -46,6 +46,11 @@ const OUTBOUND_SECRET_KEYS = [
     'OPENSIGN_APP_ID',
     'OPENSIGN_MASTER_KEY',
     'OPENSIGN_SERVICE_USER_ID',
+    // objectId of the contracts_Users extension wrapper for the service
+    // user. Every Document we create must reference this via ExtUserPtr
+    // or OpenSign's signing UI 500s with "user not found" because it
+    // can't resolve the document's tenant.
+    'OPENSIGN_SERVICE_EXTUSER_ID',
 ];
 
 /** Show last 4 chars; the rest as dots. Empty → empty. */
