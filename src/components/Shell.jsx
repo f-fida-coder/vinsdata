@@ -23,11 +23,16 @@ function useIsMobile() {
 
 // Per-role visibility for sidebar entries.
 const NAV_VISIBILITY = {
-  admin:    ['dashboard','leads','pipeline','tasks','reports','duplicates','mergePrep','marketing','billOfSale','funding','dispatch','users','company'],
-  marketer: ['dashboard','leads','pipeline','marketing','reports'],
-  carfax:   ['dashboard','leads','pipeline','tasks','billOfSale','funding','dispatch'],
-  filter:   ['dashboard','leads','pipeline','tasks','billOfSale','funding','dispatch'],
-  tlo:      ['dashboard','leads','pipeline','tasks','billOfSale','funding','dispatch'],
+  admin:        ['dashboard','leads','pipeline','tasks','reports','duplicates','mergePrep','marketing','billOfSale','funding','dispatch','users','company'],
+  marketer:     ['dashboard','leads','pipeline','marketing','reports'],
+  carfax:       ['dashboard','leads','pipeline','tasks','billOfSale','funding','dispatch'],
+  filter:       ['dashboard','leads','pipeline','tasks','billOfSale','funding','dispatch'],
+  tlo:          ['dashboard','leads','pipeline','tasks','billOfSale','funding','dispatch'],
+  // Sales agents work assigned leads end-to-end. They see the operator
+  // surface (Dashboard → Leads → Pipeline → Tasks → Reports → post-close
+  // tabs) and never see Users / Company / Marketing / Duplicates / Merge
+  // Prep, which stay admin-only.
+  sales_agent:  ['dashboard','leads','pipeline','tasks','reports','billOfSale','funding','dispatch'],
 };
 const ALL_NAV = [
   { key: 'dashboard',  label: 'Dashboard',         icon: 'home',      to: '/' },

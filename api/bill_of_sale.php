@@ -30,20 +30,24 @@ if ($method === 'GET' && isset($_GET['list'])) {
                 b.vehicle_vin, b.vehicle_make, b.vehicle_model, b.vehicle_year,
                 b.buyer_name, b.payment_type, b.payment_amount,
                 b.signed_at, b.signature_request_id, b.signature_status,
+                b.signed_pdf_url,
                 b.created_at, b.updated_at,
                 JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.full_name'))   AS lead_full_name,
                 JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.first_name'))  AS lead_first_name,
                 JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.last_name'))   AS lead_last_name,
                 u.name AS created_by_name
            FROM bill_of_sale b
-           JOIN imported_leads_raw r ON r.id = b.imported_lead_id
+           LEFT JOIN imported_leads_raw r ON r.id = b.imported_lead_id
            LEFT JOIN users u ON u.id = b.created_by
           ORDER BY b.updated_at DESC, b.id DESC"
     );
     $rows = $stmt->fetchAll();
     foreach ($rows as &$r) {
         $r['id']               = (int) $r['id'];
-        $r['imported_lead_id'] = (int) $r['imported_lead_id'];
+        // Keep NULL for standalone BoSes — coercing to 0 made the frontend
+        // think every row was attached to "lead 0" and broke routing into
+        // the lead drawer / PDF preview links.
+        $r['imported_lead_id'] = $r['imported_lead_id'] !== null ? (int) $r['imported_lead_id'] : null;
         $r['payment_amount']   = $r['payment_amount'] !== null ? (float) $r['payment_amount'] : null;
         $r['vehicle_year']     = $r['vehicle_year']   !== null ? (int) $r['vehicle_year']   : null;
         $lead = trim((string) ($r['lead_full_name'] ?: trim(($r['lead_first_name'] ?? '') . ' ' . ($r['lead_last_name'] ?? ''))));
@@ -238,6 +242,37 @@ if ($method === 'PUT') {
         pipelineFail(500, 'Bill of Sale save failed: ' . $e->getMessage(), 'db_error');
     }
     echo json_encode(['success' => true, 'bill_of_sale' => fetchBoS($db, $leadId)]);
+    exit();
+}
+
+if ($method === 'DELETE') {
+    // Hard delete a BoS row. Standalone or lead-attached, doesn't matter.
+    // No soft-delete here — BoSes are working drafts; if you don't want
+    // one anymore you delete it.
+    $input = json_decode(file_get_contents('php://input'), true) ?? [];
+    $bosId = (int) ($input['id'] ?? 0);
+    if ($bosId <= 0) pipelineFail(400, 'id is required', 'missing_id');
+
+    $stmt = $db->prepare('SELECT imported_lead_id FROM bill_of_sale WHERE id = :id');
+    $stmt->execute([':id' => $bosId]);
+    $row = $stmt->fetch();
+    if (!$row) pipelineFail(404, 'Bill of Sale not found', 'bos_not_found');
+
+    try {
+        $db->beginTransaction();
+        $db->prepare('DELETE FROM bill_of_sale WHERE id = :id')->execute([':id' => $bosId]);
+        if (!empty($row['imported_lead_id'])) {
+            // Best-effort timeline entry; failure here doesn't undo the delete.
+            try {
+                logLeadActivity($db, (int) $row['imported_lead_id'], $user['id'], 'bill_of_sale_updated', ['action' => 'deleted', 'bos_id' => $bosId], null);
+            } catch (Throwable $_e) { /* swallow */ }
+        }
+        $db->commit();
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        pipelineFail(500, 'Bill of Sale delete failed: ' . $e->getMessage(), 'db_error');
+    }
+    echo json_encode(['success' => true, 'deleted_id' => $bosId]);
     exit();
 }
 

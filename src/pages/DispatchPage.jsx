@@ -9,8 +9,10 @@ import { TRANSPORT_STATUSES, TRANSPORT_STATUS_BY_KEY } from '../lib/crm';
 import '../styles/bos-calendar.css';
 
 function StatusCards({ summary, activeStatus, onSelect }) {
+  // Phones get a single column so the count + label aren't squeezed; the
+  // grid widens as the viewport allows up to all 6 cards on one row.
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
       {TRANSPORT_STATUSES.map((s) => {
         const active = activeStatus === s.key;
         return (
@@ -258,7 +260,7 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
             </div>
           ) : (
             <div className="space-y-2">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <input type="date" className={inputCls} value={draft.transport_date} onChange={(e) => setDraft({ ...draft, transport_date: e.target.value })} />
                 <input type="time" className={inputCls} value={draft.transport_time || ''} onChange={(e) => setDraft({ ...draft, transport_time: e.target.value })} />
                 <input type="text" placeholder="Window" className={inputCls} value={draft.time_window} onChange={(e) => setDraft({ ...draft, time_window: e.target.value })} />
@@ -283,7 +285,24 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
             <a href={`/api/bill_of_sale?lead_id=${event.lead_id}&format=pdf`} target="_blank" rel="noreferrer" className="text-emerald-700 hover:text-emerald-900 font-medium">Download Bill of Sale PDF</a>
           </div>
           {!editing ? (
-            <button onClick={() => setEditing(true)} className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-md hover:bg-gray-800">Edit</button>
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  if (!window.confirm('Delete this dispatch event? The lead and BoS stay; only the transport entry is removed.')) return;
+                  try {
+                    await api.delete('/lead_transport', { data: { lead_id: event.lead_id } });
+                    onChanged?.();
+                    onClose?.();
+                  } catch (err) {
+                    setError(extractApiError(err, 'Failed to delete'));
+                  }
+                }}
+                className="px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-md"
+              >
+                Delete
+              </button>
+              <button onClick={() => setEditing(true)} className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-md hover:bg-gray-800">Edit</button>
+            </div>
           ) : (
             <div className="flex gap-2">
               <button onClick={() => setEditing(false)} className="text-xs text-gray-500 hover:text-gray-800 px-2 py-1">Cancel</button>
@@ -680,7 +699,7 @@ function AddToDispatchModal({ transporters, onClose, onScheduled }) {
         {step === 'schedule' && draft && (
           <>
             <div className="px-5 py-4 overflow-y-auto flex-1 space-y-3">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <label>
                   <span className={labelCls}>Date</span>
                   <input type="date" className={inputCls} value={draft.transport_date} onChange={(e) => setDraft({ ...draft, transport_date: e.target.value })} />

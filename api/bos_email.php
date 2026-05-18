@@ -58,11 +58,12 @@ if ($bosId > 0) {
     pipelineFail(400, 'Either id or lead_id is required', 'missing_id');
 }
 
-// Default the subject + body if the caller didn't provide them. The
-// buyer's first name (if known) goes in the greeting.
-$buyerFirst = '';
-if (!empty($bos['buyer_name'])) {
-    $buyerFirst = trim(explode(' ', trim($bos['buyer_name']))[0] ?? '');
+// Default the subject + body if the caller didn't provide them. After
+// the buyer/seller swap the lead is the SELLER — they're the one we're
+// asking to sign — so the greeting + ask-to-sign copy speaks to them.
+$sellerFirst = '';
+if (!empty($bos['seller_name'])) {
+    $sellerFirst = trim(explode(' ', trim($bos['seller_name']))[0] ?? '');
 }
 $vehicleDesc = trim(implode(' ', array_filter([$bos['vehicle_year'] ?? null, $bos['vehicle_make'] ?? null, $bos['vehicle_model'] ?? null])));
 if ($subject === '') {
@@ -71,10 +72,10 @@ if ($subject === '') {
         : 'Your Motor Vehicle Bill of Sale';
 }
 if ($body === '') {
-    $greeting = $buyerFirst !== '' ? "Hi $buyerFirst," : 'Hi,';
+    $greeting = $sellerFirst !== '' ? "Hi $sellerFirst," : 'Hi,';
     $vehLine  = $vehicleDesc !== '' ? "the sale of your $vehicleDesc" : 'this vehicle sale';
     $body = "$greeting\n\n"
-          . "Attached is the Motor Vehicle Bill of Sale for $vehLine. Please review the details, sign + date both signature lines (Authorization + Odometer Disclosure), and send a signed copy back when you're ready.\n\n"
+          . "Attached is the Motor Vehicle Bill of Sale for $vehLine. The buyer side is already signed on our end — please review the details, then sign + date the Seller Signature lines (Authorization + Odometer Disclosure), and send a signed copy back when you're ready.\n\n"
           . "Reply to this email with any questions or corrections before signing.";
 }
 

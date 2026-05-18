@@ -36,6 +36,16 @@ const OUTBOUND_SECRET_KEYS = [
     'SIGNATURE_LOGO_URL',
     'SIGNATURE_CONTACT_EMAIL',
     'SIGNATURE_CONTACT_PHONE',
+    // OpenSign self-hosted e-signature integration. BASE_URL is the
+    // server origin (e.g. https://sign.vinvault.us). APP_ID + MASTER_KEY
+    // come from the OpenSign .env.prod on the VM. SERVICE_USER_ID is the
+    // objectId of a service _User created via REST (used as CreatedBy on
+    // every Document we generate). If any of these are blank, the
+    // /api/opensign endpoint refuses with a clear error.
+    'OPENSIGN_BASE_URL',
+    'OPENSIGN_APP_ID',
+    'OPENSIGN_MASTER_KEY',
+    'OPENSIGN_SERVICE_USER_ID',
 ];
 
 /** Show last 4 chars; the rest as dots. Empty → empty. */

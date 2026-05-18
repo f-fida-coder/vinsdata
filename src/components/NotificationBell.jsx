@@ -174,8 +174,11 @@ export default function NotificationBell({ tone = 'dark' }) {
         )}
       </button>
 
+      {/* On phones the dropdown fills the viewport with a slight gutter
+          so the rounded corners still breathe. sm+ falls back to the
+          fixed 360px width anchored to the bell. */}
       {open && (
-        <div className={`absolute z-50 mt-2 w-[360px] max-w-[calc(100vw-24px)] bg-white rounded-xl shadow-2xl border border-gray-100 ${tone === 'dark' ? 'left-0' : 'right-0'}`}>
+        <div className={`absolute z-50 mt-2 w-[calc(100vw-16px)] sm:w-[360px] sm:max-w-[calc(100vw-24px)] bg-white rounded-xl shadow-2xl border border-gray-100 ${tone === 'dark' ? 'left-0' : 'right-0'}`}>
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100">
             <h3 className="text-sm font-semibold text-gray-900">
               Notifications{data.unread_count > 0 ? ` · ${data.unread_count} unread` : ''}

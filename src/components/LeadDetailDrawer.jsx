@@ -7,7 +7,7 @@ import {
   STATUS_BY_KEY, PRIORITY_BY_KEY, TEMPERATURE_BY_KEY,
   DEFAULT_LEAD_STATE, ACTIVITY_META, describeActivity, formatPrice,
   CAMPAIGN_STATUS_META, RECIPIENT_STATUS_META, MARKETING_CHANNELS,
-  TIER_BY_KEY, computeLeadTier,
+  TIER_BY_KEY, computeLeadTier, roleLabel,
 } from '../lib/crm';
 import {
   TASK_TYPES, TASK_TYPE_BY_KEY,
@@ -233,7 +233,7 @@ function CrmStateSection({ leadId, initialState, users, isAdmin, onChanged }) {
             className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:text-gray-500 disabled:cursor-not-allowed"
           >
             <option value="">Unassigned</option>
-            {users.map((u) => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
+            {users.map((u) => <option key={u.id} value={u.id}>{u.name} ({roleLabel(u.role)})</option>)}
           </select>
         </label>
         <label className="block">
@@ -461,7 +461,7 @@ function TaskRow({ t, currentUser, onComplete, onCancel, onReopen, onEdit, editi
             className="sm:col-span-2 w-full bg-white border border-gray-200 rounded-md px-2 py-1.5 text-xs"
           >
             <option value="">Unassigned</option>
-            {users.map((u) => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
+            {users.map((u) => <option key={u.id} value={u.id}>{u.name} ({roleLabel(u.role)})</option>)}
           </select>
           <textarea
             value={editingDraft.notes || ''}
@@ -731,7 +731,7 @@ function TasksSection({ leadId, currentUser, users, onChanged, defaultOpen = tru
                   className="sm:col-span-2 w-full bg-white border border-gray-200 rounded-md px-2 py-1.5 text-xs"
                 >
                   <option value="">Unassigned</option>
-                  {users.map((u) => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
+                  {users.map((u) => <option key={u.id} value={u.id}>{u.name} ({roleLabel(u.role)})</option>)}
                 </select>
                 <textarea
                   value={draft.notes}
@@ -1249,7 +1249,33 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
                 <p className="text-[11px] text-gray-500 mt-1 font-mono">VIN {detail.normalized_payload.vin}</p>
               )}
             </div>
-            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">&times;</button>
+            <div className="flex items-center gap-1">
+              {detail && (
+                <button
+                  onClick={async () => {
+                    const archived = !!detail.deleted_at;
+                    const action = archived ? 'restore' : 'archive';
+                    const msg = archived
+                      ? `Restore ${title}? They'll reappear in the active leads list.`
+                      : `Archive ${title}? They'll disappear from the leads list (recoverable from the Archived view).`;
+                    if (!window.confirm(msg)) return;
+                    try {
+                      await api.post('/lead_archive', { lead_id: detail.id, action });
+                      onChanged?.();
+                      onClose?.();
+                    } catch (err) {
+                      window.alert(extractApiError(err, `Failed to ${action} lead`));
+                    }
+                  }}
+                  className={`w-8 h-8 flex items-center justify-center rounded-lg ${detail.deleted_at ? 'text-emerald-600 hover:bg-emerald-50' : 'text-red-500 hover:bg-red-50'}`}
+                  title={detail.deleted_at ? 'Restore lead' : 'Archive lead'}
+                  aria-label={detail.deleted_at ? 'Restore lead' : 'Archive lead'}
+                >
+                  <Icon name={detail.deleted_at ? 'check' : 'trash'} size={16} />
+                </button>
+              )}
+              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">&times;</button>
+            </div>
           </div>
           {detail && (
             <>

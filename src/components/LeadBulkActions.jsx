@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LEAD_STATUSES, LEAD_PRIORITIES } from '../lib/crm';
+import { LEAD_STATUSES, LEAD_PRIORITIES, roleLabel } from '../lib/crm';
 import { TASK_TYPES } from '../lib/tasks';
 
 // ---------- Action catalog ----------
@@ -200,7 +200,7 @@ function BulkActionModalInner({ action, count, onClose, onSubmit, submitting, op
             >
               <option value="">Unassigned</option>
               {(options.users || []).map((u) => (
-                <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                <option key={u.id} value={u.id}>{u.name} ({roleLabel(u.role)})</option>
               ))}
             </select>
           </Field>
@@ -266,7 +266,7 @@ function BulkActionModalInner({ action, count, onClose, onSubmit, submitting, op
             >
               <option value="">Unassigned</option>
               {(options.users || []).map((u) => (
-                <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                <option key={u.id} value={u.id}>{u.name} ({roleLabel(u.role)})</option>
               ))}
             </select>
           </Field>
@@ -309,7 +309,9 @@ export function BulkResultModal({ result, onClose, onRefresh }) {
       onSubmit={() => { onClose(); onRefresh?.(); }}
       submitLabel="Close"
     >
-      <div className="grid grid-cols-3 gap-2 text-center">
+      {/* On phones the three KPI cards stack vertically so the big counts
+          stay readable instead of being crushed into ~100px boxes. */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center">
         <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Succeeded</p>
           <p className="text-2xl font-bold text-emerald-700 mt-1">{succeeded}</p>

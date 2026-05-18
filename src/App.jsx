@@ -25,12 +25,23 @@ import CompanySettingsPage from './pages/CompanySettingsPage';
 import { Sidebar, Topbar, CommandPalette, QuickAddMenu, ShortcutsOverlay } from './components/Shell';
 
 const LANDING_BY_ROLE = {
-  admin:    '/',
-  marketer: '/marketing',
-  carfax:   '/leads',
-  filter:   '/leads',
-  tlo:      '/leads',
+  admin:       '/',
+  marketer:    '/marketing',
+  carfax:      '/leads',
+  filter:      '/leads',
+  tlo:         '/leads',
+  sales_agent: '/leads',
 };
+
+// Route-level guard. URL-typing alone shouldn't be able to reach a route
+// the role isn't allowed on; bounce them back to their landing instead.
+// The backend still 403s independently — this is the UX layer.
+function RequireRoles({ roles, landing, children }) {
+  const { user } = useAuth();
+  if (!user) return null;
+  if (!roles.includes(user.role)) return <Navigate to={landing || '/'} replace />;
+  return children;
+}
 
 function DashboardLayout() {
   const [cmdkOpen, setCmdkOpen] = useState(false);
@@ -84,17 +95,17 @@ function DashboardLayout() {
           <Route path="/pipeline" element={<PipelinePage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/tasks" element={<TasksPage />} />
-          <Route path="/duplicates" element={<DuplicatesPage />} />
-          <Route path="/merge-prep" element={<MergePrepPage />} />
-          <Route path="/marketing" element={<MarketingCampaignsPage />} />
-          <Route path="/marketing/new" element={<MarketingComposerPage />} />
-          <Route path="/marketing/:id" element={<MarketingDetailPage />} />
+          <Route path="/duplicates"        element={<RequireRoles roles={['admin']}             landing={landing}><DuplicatesPage /></RequireRoles>} />
+          <Route path="/merge-prep"        element={<RequireRoles roles={['admin']}             landing={landing}><MergePrepPage /></RequireRoles>} />
+          <Route path="/marketing"         element={<RequireRoles roles={['admin','marketer']}  landing={landing}><MarketingCampaignsPage /></RequireRoles>} />
+          <Route path="/marketing/new"     element={<RequireRoles roles={['admin','marketer']}  landing={landing}><MarketingComposerPage /></RequireRoles>} />
+          <Route path="/marketing/:id"     element={<RequireRoles roles={['admin','marketer']}  landing={landing}><MarketingDetailPage /></RequireRoles>} />
           <Route path="/bill-of-sale" element={<BillOfSalePage />} />
           <Route path="/funding" element={<FundingPage />} />
           <Route path="/dispatch" element={<DispatchPage />} />
-          <Route path="/company-settings" element={<CompanySettingsPage />} />
-          <Route path="/users" element={<UsersPage />} />
-          <Route path="/logs" element={<LogsPage />} />
+          <Route path="/company-settings"  element={<RequireRoles roles={['admin']}             landing={landing}><CompanySettingsPage /></RequireRoles>} />
+          <Route path="/users"             element={<RequireRoles roles={['admin']}             landing={landing}><UsersPage /></RequireRoles>} />
+          <Route path="/logs"              element={<RequireRoles roles={['admin']}             landing={landing}><LogsPage /></RequireRoles>} />
           <Route path="*" element={<Navigate to={landing} replace />} />
         </Routes>
       </main>

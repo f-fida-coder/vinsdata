@@ -1,14 +1,19 @@
 import { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import api, { extractApiError } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { Icon, Avatar, Button, EmptyState } from '../components/ui';
 
 const ROLES = [
-  { key: 'admin',    label: 'Admin',    tone: 'accent', hint: 'Full access. Can manage users, files, leads, marketing.' },
-  { key: 'carfax',   label: 'Carfax',   tone: 'warm',   hint: 'Can move files through the Carfax stage.' },
-  { key: 'filter',   label: 'Filter',   tone: 'cold',   hint: 'Can move files through the Filter stage.' },
-  { key: 'tlo',      label: 'TLO',      tone: 'success', hint: 'Can move files through the TLO stage.' },
-  { key: 'marketer', label: 'Marketer', tone: 'info',   hint: 'Can build segments and run marketing campaigns.' },
+  { key: 'admin',       label: 'Admin',             tone: 'accent', hint: 'Full access. Can manage users, files, leads, marketing.' },
+  // Acquisition Agent = internal key `sales_agent`. The team's term for the
+  // role is "Acquisition" (we acquire vehicles from leads, not sell them) so
+  // the label reads that way in the UI while the schema key stays stable.
+  { key: 'sales_agent', label: 'Acquisition Agent', tone: 'success', hint: 'Works assigned leads end-to-end (call → close → BoS → funding → dispatch). Sees only leads assigned to them.' },
+  { key: 'carfax',      label: 'Carfax',            tone: 'warm',   hint: 'Can move files through the Carfax stage.' },
+  { key: 'filter',      label: 'Filter',            tone: 'cold',   hint: 'Can move files through the Filter stage.' },
+  { key: 'tlo',         label: 'TLO',               tone: 'success', hint: 'Can move files through the TLO stage.' },
+  { key: 'marketer',    label: 'Marketer',          tone: 'info',   hint: 'Can build segments and run marketing campaigns.' },
 ];
 const ROLE_BY_KEY = Object.fromEntries(ROLES.map((r) => [r.key, r]));
 
@@ -344,9 +349,9 @@ export default function UsersPage() {
       <div className="us-hero">
         <HeroTile label="Total" value={counts.total} icon="users" tone="accent"/>
         <HeroTile label="Admins" value={counts.admin} icon="user" tone="info"/>
+        <HeroTile label="Acquisition Agents" value={counts.sales_agent} icon="user" tone="success"/>
         <HeroTile label="Carfax" value={counts.carfax} icon="folder" tone="warm"/>
-        <HeroTile label="Filter" value={counts.filter} icon="filter" tone="cold"/>
-        <HeroTile label="TLO" value={counts.tlo} icon="check" tone="success"/>
+        <HeroTile label="Filter / TLO" value={(counts.filter || 0) + (counts.tlo || 0)} icon="filter" tone="cold"/>
       </div>
 
       <div className="us-toolbar">
@@ -412,6 +417,7 @@ export default function UsersPage() {
               <span>Email</span>
               <span>Phone</span>
               <span>Role</span>
+              <span>Leads</span>
               <span>Created</span>
               <span/>
             </div>
@@ -427,9 +433,44 @@ export default function UsersPage() {
                 <div className="us-row-email">{u.email}</div>
                 <div className="us-row-phone">{u.phone ? <span className="cell-mono">{u.phone}</span> : <span className="us-row-empty">—</span>}</div>
                 <div><RolePill roleKey={u.role}/></div>
+                <div className="us-row-leads" onClick={(e) => e.stopPropagation()}>
+                  {/* Click count → open the Leads page filtered to this
+                      user. Stop propagation so it doesn't also fire the
+                      row's open-edit handler. */}
+                  {u.assigned_leads_count > 0 ? (
+                    <Link
+                      to={`/leads?assigned_user_id=${u.id}`}
+                      className="us-row-leadlink"
+                      title={`${u.assigned_open_count} open of ${u.assigned_leads_count} total`}
+                    >
+                      <span className="us-row-leadcount">{u.assigned_open_count}</span>
+                      <span className="us-row-leadsep">/</span>
+                      <span className="us-row-leadtotal">{u.assigned_leads_count}</span>
+                    </Link>
+                  ) : (
+                    <span className="us-row-empty">—</span>
+                  )}
+                </div>
                 <div className="us-row-date">{formatDate(u.created_at)}</div>
                 <div className="us-row-actions" onClick={(e) => e.stopPropagation()}>
                   <Button variant="ghost" size="sm" icon="edit" onClick={() => openEdit(u)}>Edit</Button>
+                  {Number(u.id) !== Number(user?.id) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon="trash"
+                      onClick={async () => {
+                        if (!window.confirm(`Delete ${u.name}? This cannot be undone.`)) return;
+                        try {
+                          await api.delete('/users', { data: { id: u.id } });
+                          fetchUsers();
+                        } catch (err) {
+                          window.alert(extractApiError(err, 'Failed to delete user'));
+                        }
+                      }}
+                      title="Delete user"
+                    >Delete</Button>
+                  )}
                 </div>
               </div>
             ))}

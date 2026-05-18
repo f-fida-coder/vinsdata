@@ -71,14 +71,18 @@ function defaultsFromLead(PDO $db, int $leadId): array
     $stmt->execute();
     $cs = $stmt->fetch() ?: [];
 
+    // Lead becomes the SELLER (the current owner of the vehicle).
+    // BUYER side defaults to Mitchell Briggs at the company address —
+    // VinVault's representative on the acquisition. Operator can override
+    // the buyer name from the form if a different rep signs the deal.
     return [
         'sale_county'       => $cs['default_county'] ?? null,
         'sale_state'        => $cs['default_state']  ?? null,
         'sale_date'         => date('Y-m-d'),
-        'buyer_name'        => $name ?: null,
-        'buyer_address'     => $addr ?: null,
-        'seller_name'       => $cs['company_name']    ?? null,
-        'seller_address'    => $cs['company_address'] ?? null,
+        'seller_name'       => $name ?: null,
+        'seller_address'    => $addr ?: null,
+        'buyer_name'        => 'Mitchell Briggs',
+        'buyer_address'     => $cs['company_address'] ?? null,
         'vehicle_make'      => $np['make']    ?? null,
         'vehicle_model'     => $np['model']   ?? null,
         'vehicle_body_type' => $bodyType,
@@ -149,7 +153,25 @@ function renderBillOfSalePdf(array $d): string
       .indent { margin-left: 24px; }
       .clause { text-align: justify; }
       .sig-block { margin: 10px 0; }
-      .sig-line  { border-bottom: 1px solid #111; display: inline-block; min-width: 240px; margin-left: 6px; }
+      .sig-line  { border-bottom: 1px solid #111; display: inline-block; min-width: 240px; margin-left: 6px; vertical-align: bottom; }
+      /* Pre-signed buyer signature. mPDF ships DejaVu; no built-in
+         script font, so we lean on italic serif at signature-sized
+         leading to read as a written signature. The signature text
+         overlays the same .sig-line element so it appears on the line. */
+      .sig-text {
+        font-family: "Times", serif;
+        font-style: italic;
+        font-weight: 600;
+        font-size: 16pt;
+        color: #1a1a4a;
+        letter-spacing: 0.5px;
+        display: inline-block;
+        min-width: 240px;
+        padding: 0 6px 2px;
+        border-bottom: 1px solid #111;
+        margin-left: 6px;
+        vertical-align: bottom;
+      }
       .warning   { font-weight: bold; }
       .page-break { page-break-before: always; }
     ';
@@ -229,8 +251,16 @@ function renderBillOfSalePdf(array $d): string
     $html .= '<div class="section"><p><span class="num">5. BUYER AND SELLER CONDITIONS.</span></p>';
     $html .= '<p class="clause">The undersigned Seller affirms that the above information about the Vehicle is accurate to the best of their knowledge. The undersigned Buyer accepts receipt of this document and understands that the above vehicle is sold on an &ldquo;as is, where is&rdquo; condition with no guarantees or warranties, either expressed or implied.</p></div>';
 
+    // Buyer signature is pre-filled with the current buyer_name (defaults
+    // to "Mitchell Briggs", editable on the form) so VinVault never has to
+    // physically sign every BoS. Seller signature stays blank for the lead
+    // to fill in by hand or e-sign.
+    $buyerSig = $d['buyer_name']
+        ? '<span class="sig-text">' . $esc($d['buyer_name']) . '</span>'
+        : '<span class="sig-line"></span>';
+
     $html .= '<div class="section"><p><span class="num">6. AUTHORIZATION.</span></p>';
-    $html .= '<div class="sig-block"><b>Buyer Signature:</b><span class="sig-line"></span></div>';
+    $html .= '<div class="sig-block"><b>Buyer Signature:</b>' . $buyerSig . '</div>';
     $html .= '<p>Date: ' . $blank($saleDate, '160px') . '<br>Print Name: ' . $blank($d['buyer_name'], '240px') . '</p>';
     $html .= '<div class="sig-block"><b>Seller Signature:</b><span class="sig-line"></span></div>';
     $html .= '<p>Date: ' . $blank($saleDate, '160px') . '<br>Print Name: ' . $blank($d['seller_name'], '240px') . '</p>';
@@ -244,8 +274,14 @@ function renderBillOfSalePdf(array $d): string
     $html .= '<p>The actual mileage of the vehicle is accurate, unless one (1) of the following statements is checked (&#10004;):</p>';
     $html .= '<p class="indent">' . $check($d['odometer_exceeds_limits']) . ' I hereby certify that the odometer reading reflects the amount of mileage in excess of its mechanical limits.</p>';
     $html .= '<p class="indent">' . $check($d['odometer_not_actual']) . ' I hereby certify that the odometer reading is <b>not</b> the actual mileage. <span class="warning">WARNING &mdash; ODOMETER DISCREPANCY</span></p>';
-    $html .= '<div class="sig-block" style="margin-top:18px"><b>Buyer Signature:</b><span class="sig-line"></span></div>';
+    // Odometer disclosure also pre-signs on the buyer line. Per legal
+    // convention the seller's certification + signature is what makes
+    // the disclosure binding, but this template's existing layout puts
+    // a buyer-ack line here — we keep it pre-filled for consistency.
+    $html .= '<div class="sig-block" style="margin-top:18px"><b>Buyer Signature:</b>' . $buyerSig . '</div>';
     $html .= '<p>Date: ' . $blank($saleDate, '160px') . '<br>Print Name: ' . $blank($d['buyer_name'], '240px') . '</p>';
+    $html .= '<div class="sig-block" style="margin-top:14px"><b>Seller Signature:</b><span class="sig-line"></span></div>';
+    $html .= '<p>Date: ' . $blank($saleDate, '160px') . '<br>Print Name: ' . $blank($d['seller_name'], '240px') . '</p>';
 
     $mpdf->WriteHTML($html);
     return $mpdf->Output('', 'S');

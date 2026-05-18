@@ -88,7 +88,7 @@ function assertActive(array $file): void
     }
 }
 
-const USER_ROLES = ['admin', 'carfax', 'filter', 'tlo', 'marketer'];
+const USER_ROLES = ['admin', 'carfax', 'filter', 'tlo', 'marketer', 'sales_agent'];
 
 function assertAdminOrMarketer(array $user): void
 {

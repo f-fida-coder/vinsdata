@@ -49,6 +49,7 @@ const EMPTY_FILTERS = {
   number_of_owners_max: '',
   in_campaign_id: '',
   tier: '',
+  include_archived: '', // '' = live only; '1' = archived only
 };
 
 // Which filters show as removable "chips" above the table.
@@ -205,10 +206,13 @@ export default function LeadsPage() {
   const isAdmin = user?.role === 'admin' || user?.role === 'marketer';
   const [searchParams] = useSearchParams();
   const [filters, setFilters] = useState(() => {
-    // Honor query-string filters on first mount (used by the "View recipients in CRM"
-    // link from a campaign detail page).
+    // Honor query-string filters on first mount. Used by:
+    //  - the Marketing detail page's "View recipients in CRM" link
+    //    (in_campaign_id, status)
+    //  - the Users tab's per-agent lead counts that deep-link to a
+    //    pre-filtered view (assigned_user_id)
     const seeded = { ...EMPTY_FILTERS };
-    ['in_campaign_id', 'status'].forEach((k) => {
+    ['in_campaign_id', 'status', 'assigned_user_id'].forEach((k) => {
       const v = searchParams.get(k);
       if (v !== null && v !== '') seeded[k] = v;
     });
@@ -597,6 +601,18 @@ export default function LeadsPage() {
           >
             <Icon name="download" size={16}/>
           </a>
+          {/* Show Archived toggle. Flips the include_archived filter so
+              the table swaps from "live leads" → "archived leads" only.
+              Open any archived lead → Restore from the drawer. */}
+          <button
+            type="button"
+            onClick={() => updateFilter('include_archived', filters.include_archived === '1' ? '' : '1')}
+            className={`vv-btn ${filters.include_archived === '1' ? 'vv-btn-primary' : 'vv-btn-ghost'}`}
+            title={filters.include_archived === '1' ? 'Currently showing archived leads — click to return to active' : 'Show archived (soft-deleted) leads'}
+          >
+            <Icon name={filters.include_archived === '1' ? 'eye' : 'archive'} size={14} />
+            <span style={{ marginLeft: 6 }}>{filters.include_archived === '1' ? 'Archived' : 'Archive'}</span>
+          </button>
         </div>
 
         {/* Quick-filter pills — single compact row, horizontally scrollable on narrow screens */}

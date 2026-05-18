@@ -70,6 +70,8 @@ export default function BillOfSalePage() {
   // lead to generate the new BoS from (or fall through to standalone).
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  const [pollState, setPollState] = useState({ running: false, lastResult: null, error: null });
+
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
@@ -82,7 +84,37 @@ export default function BillOfSalePage() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // Check OpenSign for newly-signed documents. Silent on the auto-mount
+  // call (no error toast), louder when the operator hits the button.
+  const pollSignatures = useCallback(async ({ silent = false } = {}) => {
+    setPollState((s) => ({ ...s, running: true, error: null }));
+    try {
+      const res = await api.get('/opensign_poll');
+      setPollState({ running: false, lastResult: res.data, error: null });
+      // Refresh the table only when we actually flipped something.
+      if (res.data?.signed > 0) await load();
+      return res.data;
+    } catch (err) {
+      const msg = extractApiError(err, 'Signature refresh failed');
+      // Suppress the "not configured" message on silent mounts so the
+      // BoS page works fine for non-OpenSign deployments.
+      const code = err?.response?.data?.code;
+      const showError = !(silent && code === 'opensign_not_configured');
+      setPollState({ running: false, lastResult: null, error: showError ? msg : null });
+      return null;
+    }
+  }, [load]);
+
+  useEffect(() => {
+    // Initial fetch, then a silent poll once the table is on screen.
+    // The poll only does work when there are 'sent' rows pending, so
+    // it's a no-op cost when nothing's outstanding.
+    (async () => {
+      await load();
+      pollSignatures({ silent: true });
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const openStandalone = async (row) => {
     // Pull the full row by id (the list view only has a subset of fields).
@@ -130,15 +162,42 @@ export default function BillOfSalePage() {
         title="Bill of Sale"
         subtitle="Every Texas motor vehicle bill of sale — generated from a lead or created standalone. Edit, download, or send for e-signature."
         actions={
-          <Button
-            variant="primary"
-            icon="plus"
-            onClick={() => setPickerOpen(true)}
-          >
-            New Bill of Sale
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              icon="refresh"
+              onClick={() => pollSignatures({ silent: false })}
+              disabled={pollState.running}
+              title="Check OpenSign for newly-signed documents"
+            >
+              {pollState.running ? 'Checking…' : 'Refresh signatures'}
+            </Button>
+            <Button
+              variant="primary"
+              icon="plus"
+              onClick={() => setPickerOpen(true)}
+            >
+              New Bill of Sale
+            </Button>
+          </div>
         }
       />
+
+      {/* Poll feedback: only chimes in when the operator hit the button
+          and something actually changed (or failed). Auto-mounted silent
+          polls stay quiet. */}
+      {pollState.lastResult && pollState.lastResult.signed > 0 && (
+        <div className="mb-4 px-3 py-2 rounded-md text-[13px] bg-emerald-50 border border-emerald-100 text-emerald-800">
+          {pollState.lastResult.signed === 1
+            ? '1 signature received — status updated to Signed.'
+            : `${pollState.lastResult.signed} signatures received — statuses updated to Signed.`}
+        </div>
+      )}
+      {pollState.error && (
+        <div className="mb-4 px-3 py-2 rounded-md text-[13px] bg-amber-50 border border-amber-100 text-amber-800">
+          {pollState.error}
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 px-3 py-2 rounded-md text-[13px] bg-red-50 border border-red-100 text-red-700">{error}</div>
@@ -232,6 +291,9 @@ export default function BillOfSalePage() {
                     </td>
                     <td className="hidden xl:table-cell px-4 py-2.5 text-[11px] text-gray-500">{formatDate(r.updated_at)}</td>
                     <td className="px-4 py-2.5 text-right">
+                      {/* Phone: icon-only buttons keep the action column from
+                          blowing past viewport width. Tablet+ shows the
+                          full label as before. */}
                       <div className="inline-flex gap-1">
                         <a
                           href={r.imported_lead_id
@@ -241,17 +303,20 @@ export default function BillOfSalePage() {
                           rel="noreferrer"
                           className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-blue-700 hover:bg-blue-50 rounded"
                           title="Download PDF"
+                          aria-label="Download PDF"
                         >
-                          <Icon name="download" size={12} /> PDF
+                          <Icon name="download" size={12} /> <span className="hidden sm:inline">PDF</span>
                         </a>
                         <button
                           onClick={() => openRow(r)}
                           className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-100 rounded"
                           title={r.imported_lead_id ? 'Open lead drawer to edit fields' : 'Edit standalone Bill of Sale'}
+                          aria-label="Edit"
                         >
-                          <Icon name="edit" size={12} /> Edit
+                          <Icon name="edit" size={12} /> <span className="hidden sm:inline">Edit</span>
                         </button>
                         <SendForSignatureButton bos={r} onSent={load} />
+                        <DeleteBosButton bos={r} onDeleted={load} />
                       </div>
                     </td>
                   </tr>
@@ -442,12 +507,62 @@ function NewBoSPicker({ onClose, onPickLead, onUseStandalone }) {
  * Gmail SMTP with attachment, and marks the row signature_status='sent'.
  * Re-loads the page list on success so the row's status pill updates.
  */
+function DeleteBosButton({ bos, onDeleted }) {
+  // Hard delete for BoS rows. Signed docs prompt extra confirmation so a
+  // legally-binding signed BoS doesn't get nuked by reflex.
+  const [working, setWorking] = useState(false);
+  const onClick = async () => {
+    const label = [bos.vehicle_year, bos.vehicle_make, bos.vehicle_model].filter(Boolean).join(' ') || 'this Bill of Sale';
+    let msg = `Delete Bill of Sale for ${label}? This cannot be undone.`;
+    if (bos.status === 'signed') {
+      msg = `This Bill of Sale is SIGNED. Deleting will remove the legally-binding record from the CRM. Continue?`;
+    }
+    if (!window.confirm(msg)) return;
+    setWorking(true);
+    try {
+      await api.delete('/bill_of_sale', { data: { id: bos.id } });
+      onDeleted?.();
+    } catch (err) {
+      window.alert(extractApiError(err, 'Failed to delete'));
+    } finally {
+      setWorking(false);
+    }
+  };
+  return (
+    <button
+      onClick={onClick}
+      disabled={working}
+      className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50 rounded disabled:opacity-40"
+      title="Delete this Bill of Sale"
+      aria-label="Delete"
+    >
+      <Icon name="trash" size={12} /> <span className="hidden sm:inline">Delete</span>
+    </button>
+  );
+}
+
 function SendForSignatureButton({ bos, onSent }) {
   const [open, setOpen] = useState(false);
   if (bos.status === 'signed') {
+    // Signed PDF link, when OpenSign returned one via the poll. Falls
+    // back to a plain "Signed" badge for legacy rows that pre-date the
+    // signed_pdf_url column (those have no link to point at).
+    if (bos.signed_pdf_url) {
+      return (
+        <a
+          href={bos.signed_pdf_url}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 rounded"
+          title="Open the signed PDF in OpenSign"
+        >
+          <Icon name="check" size={12} /> <span className="hidden sm:inline">View signed</span>
+        </a>
+      );
+    }
     return (
       <span className="inline-flex items-center gap-1 px-2 py-1 text-[11px] text-gray-400" title="Signed">
-        <Icon name="check" size={12} /> Signed
+        <Icon name="check" size={12} /> <span className="hidden sm:inline">Signed</span>
       </span>
     );
   }
@@ -457,8 +572,9 @@ function SendForSignatureButton({ bos, onSent }) {
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 rounded"
         title="Email the PDF to the buyer"
+        aria-label="Email"
       >
-        <Icon name="mail" size={12} /> Email
+        <Icon name="mail" size={12} /> <span className="hidden sm:inline">Email</span>
       </button>
       {open && (
         <EmailBoSModal

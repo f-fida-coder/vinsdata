@@ -1,5 +1,21 @@
 // Mirror of LEAD_STATUSES / LEAD_PRIORITIES / LEAD_ACTIVITY_TYPES from api/pipeline.php.
 
+// User roles. Internal DB keys (left) vs display labels (right). "sales_agent"
+// is what the team calls "Acquisition Agent" — VinVault acquires vehicles from
+// leads, doesn't sell to them. Keep this in sync with USER_ROLES in
+// api/pipeline.php.
+export const USER_ROLES = [
+  { key: 'admin',       label: 'Admin' },
+  { key: 'sales_agent', label: 'Acquisition Agent' },
+  { key: 'carfax',      label: 'Carfax' },
+  { key: 'filter',      label: 'Filter' },
+  { key: 'tlo',         label: 'TLO' },
+  { key: 'marketer',    label: 'Marketer' },
+];
+export const ROLE_LABEL = Object.fromEntries(USER_ROLES.map((r) => [r.key, r.label]));
+export const roleLabel = (key) => ROLE_LABEL[key] || key || '—';
+
+
 export const LEAD_STATUSES = [
   { key: 'new',             label: 'New',             bg: 'bg-blue-50',    text: 'text-blue-700',    dot: 'bg-blue-500' },
   { key: 'contacted',       label: 'Contacted',       bg: 'bg-sky-50',     text: 'text-sky-700',     dot: 'bg-sky-500' },

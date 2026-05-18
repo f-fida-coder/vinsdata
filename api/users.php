@@ -28,8 +28,40 @@ function assertValidUserRole(string $role): void
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    $stmt = $db->query("SELECT id, name, email, phone, role, created_at FROM users ORDER BY created_at DESC");
-    echo json_encode($stmt->fetchAll());
+    // assigned_leads_count = total lead_states.assigned_user_id rows
+    //                        pointing at this user (any status, including
+    //                        deal_closed). The Users tab uses this to
+    //                        show per-agent workload at a glance.
+    // assigned_open_count   = same restricted to leads that are still in
+    //                        flight (excludes terminal states). Drives
+    //                        the "active leads" tooltip / sub-count.
+    $stmt = $db->query(
+        "SELECT u.id, u.name, u.email, u.phone, u.role, u.created_at,
+                COALESCE(t.cnt, 0)  AS assigned_leads_count,
+                COALESCE(o.cnt, 0)  AS assigned_open_count
+           FROM users u
+           LEFT JOIN (
+             SELECT assigned_user_id, COUNT(*) AS cnt
+               FROM lead_states
+              WHERE assigned_user_id IS NOT NULL
+              GROUP BY assigned_user_id
+           ) t ON t.assigned_user_id = u.id
+           LEFT JOIN (
+             SELECT assigned_user_id, COUNT(*) AS cnt
+               FROM lead_states
+              WHERE assigned_user_id IS NOT NULL
+                AND status NOT IN ('deal_closed','disqualified','do_not_call')
+              GROUP BY assigned_user_id
+           ) o ON o.assigned_user_id = u.id
+          ORDER BY u.created_at DESC"
+    );
+    $rows = $stmt->fetchAll();
+    foreach ($rows as &$r) {
+        $r['id']                   = (int) $r['id'];
+        $r['assigned_leads_count'] = (int) $r['assigned_leads_count'];
+        $r['assigned_open_count']  = (int) $r['assigned_open_count'];
+    }
+    echo json_encode($rows);
 
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents("php://input"), true);

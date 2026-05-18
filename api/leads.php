@@ -77,6 +77,7 @@ if (isset($_GET['id'])) {
     $stmt = $db->prepare(
         'SELECT r.id, r.batch_id, r.source_row_number, r.raw_payload_json, r.normalized_payload_json,
                 r.import_status, r.error_message, r.created_at,
+                r.deleted_at, r.deleted_by,
                 b.batch_name, b.source_stage, b.imported_at, b.mapping_json, b.notes AS batch_notes,
                 b.mapping_template_id,
                 f.id AS file_id, f.display_name AS file_display_name, f.file_name,
@@ -98,6 +99,9 @@ if (isset($_GET['id'])) {
     $stmt->execute([':id' => $id]);
     $row = $stmt->fetch();
     if (!$row) pipelineFail(404, 'Lead not found', 'lead_not_found');
+    // Archived leads still load fine via detail GET — the drawer needs
+    // to show them so an operator can hit "Restore." The list endpoint
+    // filters them out by default (see further down).
 
     $row['raw_payload']        = json_decode($row['raw_payload_json']        ?? 'null', true);
     $row['normalized_payload'] = json_decode($row['normalized_payload_json'] ?? 'null', true);
@@ -139,6 +143,16 @@ $offset = ($page - 1) * $perPage;
 
 $where  = ['r.import_status = :imp_status'];
 $params = [':imp_status' => 'imported'];
+
+// Soft-delete filter. Default is "live" leads only; the Archived view
+// flips include_archived=1 to show only deleted rows, and admin can
+// pass include_archived=both to see everything (used by reports).
+$includeArchived = $_GET['include_archived'] ?? '';
+if ($includeArchived === '1' || $includeArchived === 'only') {
+    $where[] = 'r.deleted_at IS NOT NULL';
+} elseif ($includeArchived !== 'both') {
+    $where[] = 'r.deleted_at IS NULL';
+}
 
 // Exact IDs
 foreach (['batch_id' => 'b.id', 'file_id' => 'b.file_id', 'artifact_id' => 'b.artifact_id', 'vehicle_id' => 'f.vehicle_id'] as $q => $col) {

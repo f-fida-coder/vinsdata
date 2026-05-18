@@ -102,7 +102,9 @@ function BoSEditor({ leadId, initial, onSaved, onClose }) {
           {/* 3. EXCHANGE */}
           <section>
             <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-700 mb-2">3. The exchange</h4>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+            {/* 1 column on phone so the labels never get clipped; 2 on
+                small tablets; 4 once we have real horizontal room. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 mb-2">
               {BOS_PAYMENT_TYPES.map((p) => (
                 <button
                   key={p.key}
@@ -300,17 +302,30 @@ export default function LeadBillOfSaleSection({ leadId, onChanged }) {
  * BoS list row's lead context when called from /bill-of-sale.
  */
 export function EmailBoSModal({ bos, defaultTo, onClose, onSent }) {
-  const buyerFirst = bos?.buyer_name ? bos.buyer_name.trim().split(' ')[0] : '';
+  // The lead is the SELLER in this flow — they're the one we're asking
+  // to sign. First name is pulled from seller_name for the greeting.
+  const sellerFirst = bos?.seller_name ? bos.seller_name.trim().split(' ')[0] : '';
   const vehicleDesc = [bos?.vehicle_year, bos?.vehicle_make, bos?.vehicle_model].filter(Boolean).join(' ');
   const defaultSubject = vehicleDesc
     ? `Bill of Sale for your ${vehicleDesc}`
     : 'Your Motor Vehicle Bill of Sale';
   const defaultBody = (() => {
-    const greeting = buyerFirst ? `Hi ${buyerFirst},` : 'Hi,';
+    const greeting = sellerFirst ? `Hi ${sellerFirst},` : 'Hi,';
     const vehLine = vehicleDesc ? `the sale of your ${vehicleDesc}` : 'this vehicle sale';
-    return `${greeting}\n\nAttached is the Motor Vehicle Bill of Sale for ${vehLine}. Please review the details, sign + date both signature lines (Authorization + Odometer Disclosure), and send a signed copy back when you're ready.\n\nReply to this email with any questions or corrections before signing.`;
+    return `${greeting}\n\nAttached is the Motor Vehicle Bill of Sale for ${vehLine}. The buyer side is already signed on our end — please review the details, then sign + date the Seller Signature lines (on the Authorization and Odometer Disclosure sections) and send a signed copy back when you're ready.\n\nReply to this email with any questions or corrections before signing.`;
   })();
 
+  // Build the preview URL once per render. Prefer the lead-attached path
+  // (uses lead_id) because it picks up the latest saved BoS + the lead's
+  // current override values; falls back to id-based for standalone rows.
+  const previewUrl = bos?.imported_lead_id
+    ? `/api/bill_of_sale?lead_id=${bos.imported_lead_id}&format=pdf`
+    : bos?.id
+      ? `/api/bill_of_sale?id=${bos.id}&format=pdf`
+      : null;
+
+  const [step, setStep]       = useState('review'); // 'review' → 'compose' → sent
+  const [confirmed, setConfirmed] = useState(false);
   const [to, setTo]           = useState(defaultTo || '');
   const [subject, setSubject] = useState(defaultSubject);
   const [body, setBody]       = useState(defaultBody);
@@ -325,7 +340,21 @@ export function EmailBoSModal({ bos, defaultTo, onClose, onSent }) {
       const payload = { to: to.trim(), subject, body };
       if (bos?.id) payload.id = bos.id;
       else if (bos?.imported_lead_id) payload.lead_id = bos.imported_lead_id;
-      const res = await api.post('/bos_email', payload);
+      // Prefer the OpenSign e-signature path. Falls back to the older
+      // "PDF attached via Gmail" flow only when OpenSign isn't yet
+      // configured (503 / opensign_not_configured). This way the same
+      // modal works regardless of admin setup state.
+      let res;
+      try {
+        res = await api.post('/opensign', payload);
+      } catch (eSignErr) {
+        const code = eSignErr?.response?.data?.code;
+        if (code === 'opensign_not_configured') {
+          res = await api.post('/bos_email', payload);
+        } else {
+          throw eSignErr;
+        }
+      }
       setResult(res.data);
       onSent?.(res.data);
     } catch (err) {
@@ -341,12 +370,19 @@ export function EmailBoSModal({ bos, defaultTo, onClose, onSent }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40" />
-      <div className="relative bg-white max-w-lg w-full rounded-2xl shadow-2xl flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+      {/* Wider modal because the Review step embeds a PDF preview. On
+          phones it collapses to full-viewport via the existing flex/p-4
+          wrapper; max-w-3xl only caps it on larger screens. */}
+      <div className="relative bg-white max-w-3xl w-full rounded-2xl shadow-2xl flex flex-col max-h-[92vh]" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <div>
-            <h3 className="text-base font-semibold text-gray-900">Email Bill of Sale</h3>
+            <h3 className="text-base font-semibold text-gray-900">Send Bill of Sale to seller</h3>
             <p className="text-[11px] text-gray-500 mt-0.5">
-              {result ? 'Sent — buyer should sign and email back.' : 'PDF attaches automatically. Branded signature appended.'}
+              {result
+                ? 'Sent — seller should sign and email back.'
+                : step === 'review'
+                  ? 'Review the document + signature locations before composing the email.'
+                  : 'PDF attaches automatically. Branded signature appended.'}
             </p>
           </div>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100">&times;</button>
@@ -354,24 +390,108 @@ export function EmailBoSModal({ bos, defaultTo, onClose, onSent }) {
 
         {result ? (
           <div className="px-5 py-5 space-y-3">
-            <div className="rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-800">
-              Sent to <b>{result.to}</b> · PDF size {(result.pdf_size / 1024).toFixed(1)} KB
-            </div>
-            <p className="text-[12px] text-gray-600">
-              The BoS status moved to <b>Awaiting signature</b>. When the buyer
-              emails back a signed copy, you can attach it manually or — once
-              OpenSign self-hosting is live — that step automates too.
-            </p>
+            {/* result.signing_url present = OpenSign flow. Otherwise the
+                Gmail-attachment fallback ran (result.pdf_size present). */}
+            {result.signing_url ? (
+              <>
+                <div className={`rounded-md border px-3 py-2 text-[12px] ${result.email_delivered ? 'border-emerald-100 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+                  {result.email_delivered
+                    ? <>Email with signing link sent to <b>{result.to}</b>.</>
+                    : <>OpenSign document created, but email send failed{result.reason ? `: ${result.reason}` : ''}. Copy the link below and send it manually.</>}
+                </div>
+                <label className="block">
+                  <span className="block text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">Signing link</span>
+                  <div className="flex gap-2">
+                    <input
+                      readOnly
+                      value={result.signing_url}
+                      onFocus={(e) => e.target.select()}
+                      className="flex-1 bg-gray-50 border border-gray-200 rounded-md px-2.5 py-2 text-[12px] font-mono text-gray-800"
+                    />
+                    <button
+                      onClick={() => navigator.clipboard?.writeText(result.signing_url)}
+                      className="px-3 py-2 text-[12px] font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700"
+                    >Copy</button>
+                  </div>
+                </label>
+                <p className="text-[11px] text-gray-500">
+                  The BoS status is now <b>Awaiting signature</b>. When the seller signs in OpenSign, the document is marked complete on their side — you'll need to flip the CRM status manually until the webhook ships.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-800">
+                  Sent to <b>{result.to}</b>{result.pdf_size ? <> · PDF size {(result.pdf_size / 1024).toFixed(1)} KB</> : null}
+                </div>
+                <p className="text-[12px] text-gray-600">
+                  The BoS status moved to <b>Awaiting signature</b>. When the seller
+                  emails back a signed copy, attach it manually.
+                </p>
+              </>
+            )}
             <div className="flex justify-end">
               <button onClick={onClose} className="px-4 py-2 text-[12px] font-semibold rounded-md text-white bg-gray-900 hover:bg-gray-800">Done</button>
             </div>
           </div>
+        ) : step === 'review' ? (
+          // STEP 1 — review the PDF + signature locations.
+          <>
+            <div className="px-5 py-4 overflow-y-auto flex-1 space-y-3">
+              <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-[12px] text-blue-900 space-y-1">
+                <p><b>Buyer side is pre-signed</b> on every BoS — no action needed from VinVault.</p>
+                <p>The seller signs at the two <b>Seller Signature</b> lines on page 2 (Authorization + Odometer Disclosure).</p>
+              </div>
+              {previewUrl ? (
+                <div className="rounded-lg border border-gray-200 overflow-hidden bg-gray-50">
+                  <iframe
+                    src={previewUrl}
+                    title="Bill of Sale preview"
+                    className="block w-full h-[480px] bg-white"
+                  />
+                </div>
+              ) : (
+                <p className="text-[12px] text-gray-500 italic">Save the BoS first to enable preview.</p>
+              )}
+              <label className="flex items-start gap-2 text-[12px] text-gray-800">
+                <input
+                  type="checkbox"
+                  checked={confirmed}
+                  onChange={(e) => setConfirmed(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>I confirm the document details and signature locations are correct.</span>
+              </label>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-100 flex justify-between gap-2 flex-wrap">
+              {previewUrl && (
+                <a
+                  href={previewUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[12px] text-gray-600 hover:text-gray-900 underline self-center"
+                >
+                  Open in new tab
+                </a>
+              )}
+              <div className="flex gap-2 ml-auto">
+                <button onClick={onClose} className="px-3 py-2 text-[12px] text-gray-600 hover:text-gray-900">Cancel</button>
+                <button
+                  onClick={() => setStep('compose')}
+                  disabled={!confirmed}
+                  className="px-4 py-2 text-[12px] font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40"
+                >
+                  Continue → Compose email
+                </button>
+              </div>
+            </div>
+          </>
         ) : (
+          // STEP 2 — compose the email.
           <>
             <div className="px-5 py-4 overflow-y-auto flex-1 space-y-3">
               <label className="block">
-                <span className={labelCls}>To</span>
-                <input type="email" className={inputCls} value={to} onChange={(e) => setTo(e.target.value)} placeholder="buyer@example.com" />
+                <span className={labelCls}>To (seller's email)</span>
+                <input type="email" className={inputCls} value={to} onChange={(e) => setTo(e.target.value)} placeholder="seller@example.com" />
               </label>
               <label className="block">
                 <span className={labelCls}>Subject</span>
@@ -383,15 +503,18 @@ export function EmailBoSModal({ bos, defaultTo, onClose, onSent }) {
               </label>
               {error && <p className="text-[12px] text-red-700 bg-red-50 border border-red-100 rounded-md px-3 py-2">{error}</p>}
             </div>
-            <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
-              <button onClick={onClose} className="px-3 py-2 text-[12px] text-gray-600 hover:text-gray-900">Cancel</button>
-              <button
-                onClick={send}
-                disabled={sending || !to.trim()}
-                className="px-4 py-2 text-[12px] font-semibold rounded-md text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
-              >
-                {sending ? 'Sending…' : 'Send to buyer'}
-              </button>
+            <div className="px-5 py-3 border-t border-gray-100 flex justify-between gap-2 flex-wrap">
+              <button onClick={() => setStep('review')} className="text-[12px] text-gray-600 hover:text-gray-900 self-center">← Back to review</button>
+              <div className="flex gap-2 ml-auto">
+                <button onClick={onClose} className="px-3 py-2 text-[12px] text-gray-600 hover:text-gray-900">Cancel</button>
+                <button
+                  onClick={send}
+                  disabled={sending || !to.trim()}
+                  className="px-4 py-2 text-[12px] font-semibold rounded-md text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {sending ? 'Sending…' : 'Send to seller'}
+                </button>
+              </div>
             </div>
           </>
         )}
