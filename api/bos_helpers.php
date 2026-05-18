@@ -165,9 +165,9 @@ function renderBillOfSalePdf(array $d): string
       .sig-block { margin: 10px 0; }
       .sig-line  { border-bottom: 1px solid #111; display: inline-block; min-width: 240px; margin-left: 6px; vertical-align: bottom; }
       /* Pre-signed buyer signature rendered in Dancing Script (real
-         cursive). No underline beneath — a signed name doesn't have one
-         in the wild, and the .sig-line element we replace already had
-         its bottom-border purpose served (this IS the signature). */
+         cursive). No underline beneath: a signed name does not sit on
+         one in the wild, and the .sig-line element we replace already
+         had its bottom-border purpose served (this IS the signature). */
       .sig-text {
         font-family: dancingscript;
         font-size: 22pt;
