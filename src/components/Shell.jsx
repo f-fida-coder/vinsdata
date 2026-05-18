@@ -23,7 +23,7 @@ function useIsMobile() {
 
 // Per-role visibility for sidebar entries.
 const NAV_VISIBILITY = {
-  admin:        ['dashboard','leads','pipeline','tasks','reports','duplicates','mergePrep','marketing','billOfSale','funding','dispatch','users','company'],
+  admin:        ['dashboard','leads','pipeline','tasks','reports','duplicates','mergePrep','marketing','billOfSale','funding','dispatch','vehicles','users','company'],
   marketer:     ['dashboard','leads','pipeline','marketing','reports'],
   carfax:       ['dashboard','leads','pipeline','tasks','billOfSale','funding','dispatch'],
   filter:       ['dashboard','leads','pipeline','tasks','billOfSale','funding','dispatch'],
@@ -36,8 +36,6 @@ const NAV_VISIBILITY = {
 };
 const ALL_NAV = [
   { key: 'dashboard',  label: 'Dashboard',         icon: 'home',      to: '/' },
-  // Vehicles tab removed — superseded by the Make/Model/Year/Trim filter
-  // on the Dashboard which navigates directly into a filtered /leads view.
   { key: 'leads',      label: 'Leads',             icon: 'users',     to: '/leads' },
   { key: 'pipeline',   label: 'Pipeline',          icon: 'pipeline',  to: '/pipeline' },
   { key: 'reports',    label: 'Reports',           icon: 'chart',     to: '/reports' },
@@ -52,6 +50,7 @@ const ALL_NAV = [
   { key: 'billOfSale', label: 'Bill of Sale',      icon: 'file',      to: '/bill-of-sale' },
   { key: 'funding',    label: 'Funding',           icon: 'deal',      to: '/funding' },
   { key: 'dispatch',   label: 'Dispatch',          icon: 'truck',     to: '/dispatch' },
+  { key: 'vehicles',   label: 'Vehicles',          icon: 'car',       to: '/vehicles' },
   { key: 'users',      label: 'Users',             icon: 'user',      to: '/users' },
   { key: 'company',    label: 'Company',           icon: 'building',  to: '/company-settings' },
 ];
@@ -69,6 +68,7 @@ const ROUTE_LABEL_BY_PATH = {
   '/bill-of-sale':     'Bill of Sale',
   '/funding':          'Funding',
   '/dispatch':         'Dispatch',
+  '/vehicles':         'Vehicles',
   '/users':            'Users',
   '/company-settings': 'Company Settings',
   '/logs':             'Activity Logs',
@@ -100,7 +100,7 @@ export function Sidebar({ onSignOut, mobileOpen, onMobileClose }) {
 
   return (
     <>
-      {mobileOpen && <div className="sb-backdrop" onClick={onMobileClose}/>}
+      {mobileOpen && <div className="sb-backdrop" onClick={onMobileClose}/>} 
       <aside className={`sidebar ${mobileOpen ? 'is-open' : ''}`}>
         <div className="sb-brand">
           <div className="sb-logo">V</div>

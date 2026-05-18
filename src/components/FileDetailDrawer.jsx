@@ -49,11 +49,14 @@ function formatDate(s) {
   return d.toLocaleString();
 }
 
-function StageCard({ stage, artifacts, isCurrent, fileStatus, canReupload, onReupload, fileVersion }) {
+function StageCard({ stage, artifacts, isCurrent, fileStatus, canReupload, onReupload, onDeleteArtifact, canDelete, fileVersion }) {
   const [expanded, setExpanded] = useState(false);
   const sorted = useMemo(() => [...artifacts].sort((a, b) => b.id - a.id), [artifacts]);
   const latest = sorted[0];
   const historic = sorted.slice(1);
+  const deleteTitle = stage === 'tlo'
+    ? 'Delete this TLO file and all leads imported from it'
+    : 'Delete this artifact';
 
   const isDone = artifacts.length > 0 && !isCurrent;
   const isCurrentDone = isCurrent && artifacts.length > 0;
@@ -113,15 +116,27 @@ function StageCard({ stage, artifacts, isCurrent, fileStatus, canReupload, onReu
                 {formatDate(latest.uploaded_at)} · {latest.uploaded_by_name}
               </div>
             </div>
-            <a
-              href={getArtifactDownloadUrl(latest.id)}
-              className="vv-btn vv-btn-secondary vv-btn-sm"
-              title="Download"
-              style={{ flexShrink: 0 }}
-            >
-              <Icon name="download" size={14}/>
-              Download
-            </a>
+            <div className="row" style={{ gap: 6, flexShrink: 0 }}>
+              <a
+                href={getArtifactDownloadUrl(latest.id)}
+                className="vv-btn vv-btn-secondary vv-btn-sm"
+                title="Download"
+              >
+                <Icon name="download" size={14}/>
+                Download
+              </a>
+              {canDelete && (
+                <button
+                  type="button"
+                  onClick={() => onDeleteArtifact?.(latest, stage)}
+                  className="vv-btn vv-btn-ghost vv-btn-sm"
+                  title={deleteTitle}
+                  style={{ color: 'var(--danger)' }}
+                >
+                  <Icon name="trash" size={14}/>
+                </button>
+              )}
+            </div>
           </div>
 
           {historic.length > 0 && (
@@ -159,14 +174,26 @@ function StageCard({ stage, artifacts, isCurrent, fileStatus, canReupload, onReu
                       {formatDate(a.uploaded_at)} · {a.uploaded_by_name}
                     </div>
                   </div>
-                  <a
-                    href={getArtifactDownloadUrl(a.id)}
-                    className="vv-btn vv-btn-ghost vv-btn-sm"
-                    style={{ flexShrink: 0 }}
-                  >
-                    <Icon name="download" size={12}/>
-                    Download
-                  </a>
+                  <div className="row" style={{ gap: 4, flexShrink: 0 }}>
+                    <a
+                      href={getArtifactDownloadUrl(a.id)}
+                      className="vv-btn vv-btn-ghost vv-btn-sm"
+                    >
+                      <Icon name="download" size={12}/>
+                      Download
+                    </a>
+                    {canDelete && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteArtifact?.(a, stage)}
+                        className="vv-btn vv-btn-ghost vv-btn-sm"
+                        title={deleteTitle}
+                        style={{ color: 'var(--danger)' }}
+                      >
+                        <Icon name="trash" size={12}/>
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -238,11 +265,13 @@ function hasSpreadsheetArtifact(file) {
   });
 }
 
-function FileDetailDrawerInner({ file, onClose, onReupload, onImport }) {
+function FileDetailDrawerInner({ file, onClose, onReupload, onImport, onArtifactDeleted }) {
   const { user } = useAuth();
   const [events, setEvents] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState('');
+  const [deletingId, setDeletingId] = useState(null);
+  const [deleteError, setDeleteError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -272,6 +301,50 @@ function FileDetailDrawerInner({ file, onClose, onReupload, onImport }) {
   const showImport = role === 'admin' && file.current_stage === 'tlo';
   const statusLabel = FILE_STATUS_LABEL[file.status] || file.status;
   const titleText = file.display_name || file.file_name;
+  const canDeleteArtifact = role === 'admin';
+
+  const handleDeleteArtifact = async (artifact, stage) => {
+    if (!artifact?.id) return;
+    const isTlo = stage === 'tlo';
+    const stageArtifacts = byStage[stage] || [];
+    const wipesStage = stageArtifacts.length <= 1;
+    const consequences = [];
+    if (isTlo) {
+      consequences.push('All leads imported from this TLO file will be deleted.');
+    }
+    if (wipesStage) {
+      consequences.push(
+        `The file will roll back to incomplete — you'll need to re-upload ${STAGE_LABEL[stage]} (and re-import if this was TLO) before it can be used again.`
+      );
+    }
+    consequences.push('This cannot be undone.');
+    const ok = window.confirm(
+      `Delete ${STAGE_LABEL[stage]} file "${artifact.original_filename}"?\n\n` +
+      consequences.join('\n\n')
+    );
+    if (!ok) return;
+    setDeletingId(artifact.id);
+    setDeleteError('');
+    try {
+      const res = await api.delete('/upload', { data: { artifact_id: artifact.id } });
+      const deletedLeads = res?.data?.deleted_leads ?? 0;
+      const rolledBackTo = res?.data?.rolled_back_to;
+      const msgs = [];
+      if (isTlo && deletedLeads > 0) {
+        msgs.push(`Deleted ${deletedLeads} lead${deletedLeads === 1 ? '' : 's'} from this TLO file.`);
+      }
+      if (rolledBackTo) {
+        msgs.push(`File rolled back to ${STAGE_LABEL[rolledBackTo] || rolledBackTo} — re-upload that stage to continue.`);
+      }
+      if (msgs.length) window.alert(msgs.join('\n\n'));
+      onArtifactDeleted?.();
+      onClose?.();
+    } catch (err) {
+      setDeleteError(extractApiError(err, 'Failed to delete artifact'));
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <>
@@ -352,6 +425,9 @@ function FileDetailDrawerInner({ file, onClose, onReupload, onImport }) {
           {/* Stages */}
           <div className="drawer-section">
             <div className="drawer-section-label">Stages</div>
+            {deleteError && (
+              <p style={{ fontSize: 12, color: 'var(--danger)', marginBottom: 8 }}>{deleteError}</p>
+            )}
             {STAGES.map((s) => (
               <StageCard
                 key={s}
@@ -361,6 +437,8 @@ function FileDetailDrawerInner({ file, onClose, onReupload, onImport }) {
                 fileStatus={file.status}
                 canReupload={canReuploadCurrent}
                 onReupload={() => onReupload?.(file, s)}
+                canDelete={canDeleteArtifact && deletingId === null}
+                onDeleteArtifact={handleDeleteArtifact}
                 fileVersion={file.version}
               />
             ))}
@@ -380,7 +458,16 @@ function FileDetailDrawerInner({ file, onClose, onReupload, onImport }) {
   );
 }
 
-export default function FileDetailDrawer({ file, onClose, onReupload, onImport }) {
+export default function FileDetailDrawer({ file, onClose, onReupload, onImport, onArtifactDeleted }) {
   if (!file) return null;
-  return <FileDetailDrawerInner key={file.id} file={file} onClose={onClose} onReupload={onReupload} onImport={onImport}/>;
+  return (
+    <FileDetailDrawerInner
+      key={file.id}
+      file={file}
+      onClose={onClose}
+      onReupload={onReupload}
+      onImport={onImport}
+      onArtifactDeleted={onArtifactDeleted}
+    />
+  );
 }

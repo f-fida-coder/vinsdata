@@ -1,20 +1,14 @@
-name: Build + sync to Hostinger
+name: Deploy frontend + api to Hostinger
 
-# What this does:
-# Checks out the repo on the GitHub runner, builds the React frontend,
-# opens an SSH connection to Hostinger, and rsyncs both the freshly
-# built frontend (dist/index.html + dist/assets/) AND the api/ folder.
-# Bypasses Hostinger's flaky git deploy — we send the files ourselves
-# over SSH. Frontend + backend deploy in lockstep on every push.
+# Push frontend build output and api code to Hostinger on every push to main.
+# Runtime upload files in api/uploads/ are preserved and never deleted.
 #
-# Required GitHub Secrets (Settings → Secrets and variables → Actions):
-#   HOSTINGER_SSH_HOST   - your SSH host (e.g. "srv2052.hstgr.io")
-#   HOSTINGER_SSH_USER   - your SSH username (e.g. "u487877829")
-#   HOSTINGER_SSH_PORT   - your SSH port (Hostinger default: 65002)
-#   HOSTINGER_SSH_KEY    - your PRIVATE ed25519 key (full file contents,
-#                          including BEGIN/END lines)
-#   HOSTINGER_DEPLOY_DIR - absolute path to public_html on the server,
-#                          e.g. "/home/u487877829/domains/yoursite.com/public_html"
+# Required GitHub Secrets:
+#   HOSTINGER_SSH_HOST   - SSH host, e.g. srv2052.hstgr.io
+#   HOSTINGER_SSH_USER   - SSH user, e.g. u487877829
+#   HOSTINGER_SSH_PORT   - SSH port, e.g. 65002
+#   HOSTINGER_SSH_KEY    - Private SSH key (full file contents)
+#   HOSTINGER_DEPLOY_DIR - Absolute public_html path on server
 
 on:
   push:
@@ -22,39 +16,33 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  sync-api:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Install PHP + composer (for mPDF / Bill of Sale PDF)
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup PHP + Composer
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
           tools: composer:v2
           coverage: none
 
-      - name: composer install (api/vendor)
-        # api/vendor is gitignored; install deps on the runner so the rsync
-        # step uploads them. Without this the Bill of Sale PDF endpoint 500s
-        # in production because vendor/autoload.php is missing.
+      - name: Install API composer dependencies
         working-directory: api
         run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
 
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: npm ci (install dev deps for the build)
-        run: npm ci
-
-      - name: Build frontend (vite)
-        # Produces dist/index.html + dist/assets/. The hashed filenames
-        # change on every meaningful source diff so cache-busting is
-        # automatic — operators just hard-refresh after the deploy.
+      - name: Build frontend only
         run: npm run build
 
       - name: Verify required secrets exist
@@ -67,10 +55,8 @@ jobs:
           [ -z "${{ secrets.HOSTINGER_DEPLOY_DIR }}" ] && missing="$missing HOSTINGER_DEPLOY_DIR"
           if [ -n "$missing" ]; then
             echo "::error::Missing required secrets:$missing"
-            echo "Add them at: https://github.com/${{ github.repository }}/settings/secrets/actions"
             exit 1
           fi
-          echo "All required secrets are set."
 
       - name: Setup SSH key
         env:
@@ -84,55 +70,26 @@ jobs:
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
-          # Aggressive whitespace stripping. GitHub-pasted secrets routinely
-          # carry trailing newlines / spaces / CR chars that break ssh tools.
           PORT=$(printf '%s' "$PORT_RAW" | tr -dc '0-9')
           HOST=$(printf '%s' "$HOST_RAW" | tr -d '[:space:]')
           USER=$(printf '%s' "$USER_RAW" | tr -d '[:space:]')
-          # Deploy dir keeps slashes but loses any whitespace incl. newlines.
           DEPLOY_DIR=$(printf '%s' "$DEPLOY_DIR_RAW" | tr -d '\r\n' | sed 's/[[:space:]]*$//' | sed 's/^[[:space:]]*//')
 
-          if [ -z "$PORT" ]; then
-            echo "::error::HOSTINGER_SSH_PORT secret is empty or contains no digits."
-            exit 1
-          fi
-          if [ -z "$HOST" ]; then
-            echo "::error::HOSTINGER_SSH_HOST secret is empty after trimming."
-            exit 1
-          fi
-          if [ -z "$USER" ]; then
-            echo "::error::HOSTINGER_SSH_USER secret is empty after trimming."
-            exit 1
-          fi
-          if [ -z "$DEPLOY_DIR" ]; then
-            echo "::error::HOSTINGER_DEPLOY_DIR secret is empty after trimming."
+          if [ -z "$PORT" ] || [ -z "$HOST" ] || [ -z "$USER" ] || [ -z "$DEPLOY_DIR" ]; then
+            echo "::error::One or more SSH secrets are empty after trimming"
             exit 1
           fi
 
-          # Show character counts (not values, since values are masked) so we
-          # can detect zero-width / invisible chars without leaking secrets.
-          echo "PORT length: $(echo -n "$PORT" | wc -c)"
-          echo "HOST length: $(echo -n "$HOST" | wc -c)"
-          echo "USER length: $(echo -n "$USER" | wc -c)"
-          echo "DEPLOY_DIR length: $(echo -n "$DEPLOY_DIR" | wc -c)"
-
-          # Strip Windows line endings from key
           printf '%s\n' "$KEY" | sed 's/\r$//' > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
 
           if ! ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null 2>&1; then
-            echo "::error::HOSTINGER_SSH_KEY is malformed. Re-copy 'cat ~/.ssh/hostinger_vinvault' and re-save the secret."
-            head -1 ~/.ssh/id_ed25519
-            tail -1 ~/.ssh/id_ed25519
+            echo "::error::HOSTINGER_SSH_KEY is malformed"
             exit 1
           fi
-          echo "Key parsed OK. Public counterpart:"
-          ssh-keygen -y -f ~/.ssh/id_ed25519
-          echo ""
-          echo "Adding host to known_hosts..."
+
           ssh-keyscan -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts
 
-          # Persist the cleaned values for later steps
           {
             echo "PORT=$PORT"
             echo "HOST=$HOST"
@@ -140,87 +97,50 @@ jobs:
             echo "DEPLOY_DIR=$DEPLOY_DIR"
           } >> "$GITHUB_ENV"
 
-      - name: Test SSH connection
+      - name: Ensure remote directories exist
         run: |
-          echo "Connecting (host/user/port masked)..."
           ssh -p "$PORT" -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
               "$USER@$HOST" \
-              "echo OK from \$(hostname); ls -la \"$DEPLOY_DIR\" | head -5"
+              "mkdir -p '$DEPLOY_DIR' '$DEPLOY_DIR/api' '$DEPLOY_DIR/api/uploads'"
 
-      - name: Rsync api/ to Hostinger
+      - name: Deploy dist to Hostinger (frontend)
         run: |
-          echo "Syncing $(pwd)/api/ → server:$DEPLOY_DIR/api/"
           rsync -avz --delete \
-            --exclude="uploads/" \
+            --exclude='api/' \
+            -e "ssh -p $PORT -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
+            ./dist/ \
+            "$USER@$HOST:$DEPLOY_DIR/"
+
+      - name: Deploy api to Hostinger (preserve runtime files)
+        run: |
+          rsync -avz \
+            --exclude='uploads/' \
+            --exclude='.env' \
+            --exclude='.user.ini' \
+            --exclude='.htaccess' \
             -e "ssh -p $PORT -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
             ./api/ \
             "$USER@$HOST:$DEPLOY_DIR/api/"
 
-      - name: Rsync frontend (dist/index.html + dist/assets/) to Hostinger
+      - name: Upload SPA rewrite config
         run: |
-          # dist/ is gitignored, so it only exists because we just ran the
-          # build step above. The runner-built copy is the authoritative
-          # source for what production should serve.
-          #
-          # We rsync index.html and assets/ separately so we don't blow
-          # away api/ (which lives at DEPLOY_DIR/api/ already and was
-          # synced in the previous step from ./api/, not from ./dist/api/).
-          echo "Syncing $(pwd)/dist/index.html → server:$DEPLOY_DIR/index.html"
-          rsync -avz \
-            -e "ssh -p $PORT -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
-            ./dist/index.html \
-            "$USER@$HOST:$DEPLOY_DIR/index.html"
-
-          echo "Syncing $(pwd)/dist/assets/ → server:$DEPLOY_DIR/assets/"
-          # --delete here is safe: vite renames bundles on every content
-          # change (hash in filename) so leaving old bundles around
-          # accumulates garbage. Wipe + re-upload each time.
-          rsync -avz --delete \
-            -e "ssh -p $PORT -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
-            ./dist/assets/ \
-            "$USER@$HOST:$DEPLOY_DIR/assets/"
-
-          # Static files that vite copies from public/ → dist/ root:
-          # favicon, icons sprite, robots.txt, etc. Sync them too if
-          # they exist; missing-source isn't an error.
-          for f in favicon.svg icons.svg robots.txt; do
-            if [ -f "./dist/$f" ]; then
-              echo "Syncing dist/$f"
-              rsync -avz \
-                -e "ssh -p $PORT -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
-                "./dist/$f" \
-                "$USER@$HOST:$DEPLOY_DIR/$f"
-            fi
-          done
-
-          # .htaccess controls the SPA routing fallback. Keep it in sync
-          # with whatever's in the repo so deep links (e.g. /leads/123)
-          # don't 404 on the server.
           if [ -f .htaccess ]; then
-            echo "Syncing .htaccess"
             rsync -avz \
               -e "ssh -p $PORT -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
               ./.htaccess \
               "$USER@$HOST:$DEPLOY_DIR/.htaccess"
+          else
+            echo "No .htaccess file found in repo root."
           fi
 
-      - name: Push .env to server (one level above public_html)
+      - name: Fix uploads folder permissions
         run: |
-          # config.php searches for .env at <domain root>/.env, which on
-          # Hostinger is the parent of public_html. DEPLOY_DIR points at
-          # public_html, so the destination is "$DEPLOY_DIR/../.env".
-          if [ -f .env ]; then
-            echo "Uploading .env → server:$DEPLOY_DIR/../.env"
-            rsync -avz \
-              -e "ssh -p $PORT -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
-              .env \
-              "$USER@$HOST:$DEPLOY_DIR/../.env"
-          else
-            echo "No .env in repo; skipping. config.php will 503 with env_missing."
-          fi
+          ssh -p "$PORT" -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
+              "$USER@$HOST" \
+              "chmod 0775 '$DEPLOY_DIR/api/uploads' || true && chown $USER '$DEPLOY_DIR/api/uploads' || true && ls -ld '$DEPLOY_DIR/api/uploads'"
 
       - name: Verify deployment
         run: |
           ssh -p "$PORT" -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
               "$USER@$HOST" \
-              "ls -la \"$DEPLOY_DIR/api/\" | head -20 && echo '---' && echo 'PHP files: '\$(ls \"$DEPLOY_DIR/api/\"*.php 2>/dev/null | wc -l)"
+              "echo 'Deployed files:' && ls -la '$DEPLOY_DIR' | head -30 && echo '---' && ls -la '$DEPLOY_DIR/assets' | head -20 && echo 'Uploads folder:' && ls -ld '$DEPLOY_DIR/api/uploads'"

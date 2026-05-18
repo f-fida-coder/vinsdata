@@ -942,6 +942,7 @@ export default function DashboardPage() {
         onClose={() => setDetailId(null)}
         onReupload={handleReupload}
         onImport={(f) => setImportFile(f)}
+        onArtifactDeleted={() => { setDetailId(null); fetchFiles(); }}
       />
 
       <ImportFinalFileModal
