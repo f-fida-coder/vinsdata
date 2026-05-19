@@ -234,6 +234,41 @@ $vehDesc = trim(implode(' ', array_filter([
 ]))) ?: 'Vehicle';
 $docName = 'Bill of Sale — ' . $vehDesc;
 
+// Placeholders are REQUIRED. PdfRequestFiles.jsx (the React component
+// that renders the signing UI) calls Placeholders.filter without a
+// null-guard — if the field is missing the page crashes with
+// "Cannot read properties of undefined" and the React error boundary
+// shows "Something went wrong, refreshing this page may solve this
+// issue." We seed a single default signature widget on page 2 of the
+// BoS (where the Seller Signature line lives in our template). The
+// signer can drag/resize it inside the OpenSign UI before signing if
+// the position needs nudging.
+$placeholderId = uniqid('p_', true);
+$widgetKey     = (int) (microtime(true) * 1000);
+$placeholders  = [[
+    'Id'           => $placeholderId,
+    'Role'         => 'signer',
+    'signerObjId'  => $contactId,
+    'signerPtr'    => ['__type' => 'Pointer', 'className' => 'contracts_Contactbook', 'objectId' => $contactId],
+    'email'        => $signerEmail,
+    'blockColor'   => '#93a3db',
+    'placeHolder'  => [[
+        'pageNumber' => 2,
+        'pos'        => [[
+            'key'       => $widgetKey,
+            'xPosition' => 120,
+            'yPosition' => 480,
+            'width'     => 180,
+            'height'    => 60,
+            'Width'     => 180,
+            'Height'    => 60,
+            'isStamp'   => false,
+            'type'      => 'signature',
+            'options'   => ['name' => 'Signature'],
+        ]],
+    ]],
+]];
+
 try {
     $doc = $parseRequest('POST', '/classes/contracts_Document', json_encode([
         'Name'                => $docName,
@@ -250,6 +285,7 @@ try {
         // owner. Points at the service user's contracts_Users wrapper.
         'ExtUserPtr'          => ['__type' => 'Pointer', 'className' => 'contracts_Users', 'objectId' => $serviceExtUser],
         'Signers'             => [['__type' => 'Pointer', 'className' => 'contracts_Contactbook', 'objectId' => $contactId]],
+        'Placeholders'        => $placeholders,
     ]), [
         'Content-Type: application/json',
     ]);
