@@ -113,11 +113,17 @@ if ($method === 'GET') {
             }
         }
         $filename = 'BoS-' . ($row['vehicle_vin'] ?: ($row['id'] ? ('bos-' . $row['id']) : ('lead-' . $leadId))) . '-' . date('Ymd') . '.pdf';
+        // Default to inline so the EmailBoSModal preview iframe renders
+        // the PDF in-browser. Opt into download via ?download=1 (used
+        // by the explicit "Download PDF" button in the BoS list row).
+        // Inline PDFs still let the user save via the browser's PDF
+        // viewer toolbar.
+        $disposition = !empty($_GET['download']) ? 'attachment' : 'inline';
         if (PHP_SAPI !== 'cli') {
             // Reset the JSON content-type header set by config.php.
             header_remove('Content-Type');
             header('Content-Type: application/pdf');
-            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Content-Disposition: ' . $disposition . '; filename="' . $filename . '"');
             header('Content-Length: ' . strlen($pdf));
         }
         echo $pdf;
