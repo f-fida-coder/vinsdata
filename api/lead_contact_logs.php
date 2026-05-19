@@ -44,6 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     assertContactOutcome($outcome);
     if ($notes !== null && mb_strlen($notes) > 5000) pipelineFail(400, 'notes too long', 'notes_too_long');
     loadLeadOrFail($db, $leadId);
+    assertCanMutateLead($db, $user, $leadId);
 
     try {
         $db->beginTransaction();

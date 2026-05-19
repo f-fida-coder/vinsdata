@@ -289,7 +289,10 @@ export default function UsersPage() {
 
   const openCreate = () => {
     setDrawerError('');
-    setDrawer({ mode: 'create', initial: { name: '', email: '', phone: '', password: '', role: 'admin' } });
+    // Default to Acquisition Agent. Operators add agents far more often
+    // than they add admins, and starting on `admin` makes accidental
+    // privilege escalation one stray click away on the role-card grid.
+    setDrawer({ mode: 'create', initial: { name: '', email: '', phone: '', password: '', role: 'sales_agent' } });
   };
   const openEdit = (u) => {
     setDrawerError('');

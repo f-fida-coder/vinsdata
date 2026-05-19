@@ -129,7 +129,6 @@ export default function NotificationBell({ tone = 'dark' }) {
               ) : data.notifications.length === 0 ? (
                 <div style={{ padding: '32px 14px', textAlign: 'center', fontSize: 13, color: 'var(--text-3)', fontStyle: 'italic' }}>You're all caught up.</div>
               ) : data.notifications.map((n) => {
-                const meta = NOTIFICATION_META[n.type] || { label: n.type };
                 return (
                   <div key={n.id} className="notif-item" onClick={() => handleRowClick(n)} style={n.is_read ? { opacity: 0.7 } : {}}>
                     <span className="notif-icon">

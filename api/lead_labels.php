@@ -23,6 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $followUpDueAt = parseDatetime($input['follow_up_due_at'] ?? null, 'follow_up_due_at');
     if ($leadId <= 0 || $labelId <= 0) pipelineFail(400, 'lead_id and label_id are required', 'missing_fields');
     loadLeadOrFail($db, $leadId);
+    assertCanMutateLead($db, $user, $leadId);
 
     $stmt = $db->prepare('SELECT id, name, auto_follow_up FROM lead_labels WHERE id = :id');
     $stmt->execute([':id' => $labelId]);
@@ -106,6 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
     $labelId = (int) ($input['label_id'] ?? 0);
     if ($leadId <= 0 || $labelId <= 0) pipelineFail(400, 'lead_id and label_id are required', 'missing_fields');
     loadLeadOrFail($db, $leadId);
+    assertCanMutateLead($db, $user, $leadId);
 
     $stmt = $db->prepare('SELECT name FROM lead_labels WHERE id = :id');
     $stmt->execute([':id' => $labelId]);

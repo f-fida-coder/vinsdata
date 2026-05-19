@@ -167,6 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($notes !== null && mb_strlen($notes) > 5000) pipelineFail(400, 'notes too long', 'notes_too_long');
     assertTaskType($type);
     loadLeadOrFail($db, $leadId);
+    assertCanMutateLead($db, $user, $leadId);
 
     if ($assignee !== null) {
         $stmt = $db->prepare('SELECT id FROM users WHERE id = :id');
@@ -231,6 +232,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'PATCH') {
     if (!$task) pipelineFail(404, 'Task not found', 'task_not_found');
 
     $leadId  = (int) $task['imported_lead_id'];
+    // Gate every mutation on lead ownership: agents can only touch
+    // tasks whose lead is assigned to them. Admins + marketers bypass.
+    assertCanMutateLead($db, $user, $leadId);
     $isAdmin = ($user['role'] ?? null) === 'admin';
     $isOwner = (int) $task['created_by'] === (int) $user['id'];
 
@@ -239,7 +243,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'PATCH') {
         $action = $input['action'];
 
         if ($action === 'complete') {
-            // Any authenticated user can complete a task.
+            // Lead ownership is already verified above. Any role with
+            // access to the lead can mark its tasks complete.
             if ($task['status'] !== 'open') {
                 pipelineFail(409, 'Only open tasks can be completed', 'task_not_editable');
             }

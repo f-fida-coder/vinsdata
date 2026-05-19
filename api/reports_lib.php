@@ -39,14 +39,14 @@ function leadsReport(PDO $db, int $currentUserId, bool $isAdmin): array
     };
 
     $total = $runScalar(
-        "SELECT COUNT(*) FROM imported_leads_raw r $scopeJoin WHERE r.import_status='imported'"
+        "SELECT COUNT(*) FROM imported_leads_raw r $scopeJoin WHERE r.import_status='imported' AND r.deleted_at IS NULL"
     );
 
     if ($isAdmin) {
         $unassigned = $runScalar(
             "SELECT COUNT(*) FROM imported_leads_raw r
                LEFT JOIN lead_states s ON s.imported_lead_id = r.id
-              WHERE r.import_status='imported' AND (s.id IS NULL OR s.assigned_user_id IS NULL)"
+              WHERE r.import_status='imported' AND r.deleted_at IS NULL AND (s.id IS NULL OR s.assigned_user_id IS NULL)"
         );
     } else {
         $unassigned = 0;
@@ -56,14 +56,14 @@ function leadsReport(PDO $db, int $currentUserId, bool $isAdmin): array
         "SELECT COUNT(*) FROM imported_leads_raw r
            JOIN lead_import_batches b ON b.id = r.batch_id
            $scopeJoin
-          WHERE r.import_status='imported' AND DATE(b.imported_at) = CURDATE()"
+          WHERE r.import_status='imported' AND r.deleted_at IS NULL AND DATE(b.imported_at) = CURDATE()"
     );
 
     $thisWeek = $runScalar(
         "SELECT COUNT(*) FROM imported_leads_raw r
            JOIN lead_import_batches b ON b.id = r.batch_id
            $scopeJoin
-          WHERE r.import_status='imported' AND b.imported_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)"
+          WHERE r.import_status='imported' AND r.deleted_at IS NULL AND b.imported_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)"
     );
 
     $statusRows = $runRows(
@@ -71,7 +71,7 @@ function leadsReport(PDO $db, int $currentUserId, bool $isAdmin): array
            FROM imported_leads_raw r
            LEFT JOIN lead_states s ON s.imported_lead_id = r.id
            $scopeJoin
-          WHERE r.import_status='imported'
+          WHERE r.import_status='imported' AND r.deleted_at IS NULL
           GROUP BY COALESCE(s.status, 'new')"
     );
 
@@ -80,7 +80,7 @@ function leadsReport(PDO $db, int $currentUserId, bool $isAdmin): array
            FROM imported_leads_raw r
            LEFT JOIN lead_states s ON s.imported_lead_id = r.id
            $scopeJoin
-          WHERE r.import_status='imported'
+          WHERE r.import_status='imported' AND r.deleted_at IS NULL
           GROUP BY COALESCE(s.priority, 'medium')"
     );
 
@@ -89,7 +89,7 @@ function leadsReport(PDO $db, int $currentUserId, bool $isAdmin): array
            FROM imported_leads_raw r
            JOIN lead_states s ON s.imported_lead_id = r.id
            $scopeJoin
-          WHERE r.import_status='imported' AND s.lead_temperature IS NOT NULL
+          WHERE r.import_status='imported' AND r.deleted_at IS NULL AND s.lead_temperature IS NOT NULL
           GROUP BY s.lead_temperature"
     );
 
@@ -98,7 +98,7 @@ function leadsReport(PDO $db, int $currentUserId, bool $isAdmin): array
            FROM imported_leads_raw r
            JOIN lead_import_batches b ON b.id = r.batch_id
            $scopeJoin
-          WHERE r.import_status='imported'
+          WHERE r.import_status='imported' AND r.deleted_at IS NULL
           GROUP BY b.source_stage"
     );
 
@@ -107,7 +107,7 @@ function leadsReport(PDO $db, int $currentUserId, bool $isAdmin): array
            FROM imported_leads_raw r
            JOIN lead_import_batches b ON b.id = r.batch_id
            $scopeJoin
-          WHERE r.import_status='imported'
+          WHERE r.import_status='imported' AND r.deleted_at IS NULL
           GROUP BY b.id, b.batch_name
           ORDER BY `count` DESC, b.batch_name
           LIMIT 10"

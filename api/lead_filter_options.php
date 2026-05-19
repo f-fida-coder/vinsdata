@@ -15,7 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 $batches = $db->query(
     'SELECT DISTINCT b.id, b.batch_name, b.imported_at
        FROM lead_import_batches b
-       JOIN imported_leads_raw r ON r.batch_id = b.id AND r.import_status = "imported"
+       JOIN imported_leads_raw r ON r.batch_id = b.id AND r.import_status = "imported" AND r.deleted_at IS NULL
       ORDER BY b.imported_at DESC, b.id DESC'
 )->fetchAll();
 
@@ -24,7 +24,7 @@ $files = $db->query(
        FROM lead_import_batches b
        JOIN files f    ON f.id = b.file_id
        JOIN vehicles v ON v.id = f.vehicle_id
-       JOIN imported_leads_raw r ON r.batch_id = b.id AND r.import_status = "imported"
+       JOIN imported_leads_raw r ON r.batch_id = b.id AND r.import_status = "imported" AND r.deleted_at IS NULL
       ORDER BY f.display_name'
 )->fetchAll();
 
@@ -33,56 +33,58 @@ $vehicles = $db->query(
        FROM lead_import_batches b
        JOIN files f    ON f.id = b.file_id
        JOIN vehicles v ON v.id = f.vehicle_id
-       JOIN imported_leads_raw r ON r.batch_id = b.id AND r.import_status = "imported"
+       JOIN imported_leads_raw r ON r.batch_id = b.id AND r.import_status = "imported" AND r.deleted_at IS NULL
       ORDER BY v.name'
 )->fetchAll();
 
 $stages = $db->query(
     'SELECT DISTINCT source_stage
        FROM lead_import_batches b
-       JOIN imported_leads_raw r ON r.batch_id = b.id AND r.import_status = "imported"
+       JOIN imported_leads_raw r ON r.batch_id = b.id AND r.import_status = "imported" AND r.deleted_at IS NULL
       ORDER BY source_stage'
 )->fetchAll(PDO::FETCH_COLUMN);
 
 $states = $db->query(
     "SELECT DISTINCT norm_state
        FROM imported_leads_raw
-      WHERE import_status = 'imported' AND norm_state IS NOT NULL AND norm_state <> ''
+      WHERE import_status = 'imported' AND deleted_at IS NULL AND norm_state IS NOT NULL AND norm_state <> ''
       ORDER BY norm_state"
 )->fetchAll(PDO::FETCH_COLUMN);
 
 $makes = $db->query(
     "SELECT DISTINCT norm_make
        FROM imported_leads_raw
-      WHERE import_status = 'imported' AND norm_make IS NOT NULL AND norm_make <> ''
+      WHERE import_status = 'imported' AND deleted_at IS NULL AND norm_make IS NOT NULL AND norm_make <> ''
       ORDER BY norm_make"
 )->fetchAll(PDO::FETCH_COLUMN);
 
 $models = $db->query(
     "SELECT DISTINCT norm_model
        FROM imported_leads_raw
-      WHERE import_status = 'imported' AND norm_model IS NOT NULL AND norm_model <> ''
+      WHERE import_status = 'imported' AND deleted_at IS NULL AND norm_model IS NOT NULL AND norm_model <> ''
       ORDER BY norm_model"
 )->fetchAll(PDO::FETCH_COLUMN);
 
 $years = $db->query(
     "SELECT DISTINCT norm_year
        FROM imported_leads_raw
-      WHERE import_status = 'imported' AND norm_year IS NOT NULL
+      WHERE import_status = 'imported' AND deleted_at IS NULL AND norm_year IS NOT NULL
       ORDER BY norm_year DESC"
 )->fetchAll(PDO::FETCH_COLUMN);
 
 // Trim lives in normalized_payload_json (CarFax + TLO populate it as "Trim").
-// Pull the distinct set so the filter dropdown stays bounded — there's no
-// promoted-column index for it, but the dropdown is bounded by distinct
-// values across imported leads so the query cost is per-distinct-trim.
+// There is no promoted column for it, so DISTINCT here means a full
+// table scan against imported_leads_raw. Cap with LIMIT so a 500K-row
+// table doesn't melt the dropdown loader; almost no real vehicle trim
+// catalog has more than a couple hundred distinct values anyway.
 $trims = $db->query(
     "SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(normalized_payload_json, '$.Trim')) AS t
        FROM imported_leads_raw
-      WHERE import_status = 'imported'
+      WHERE import_status = 'imported' AND deleted_at IS NULL
         AND JSON_EXTRACT(normalized_payload_json, '$.Trim') IS NOT NULL
         AND JSON_UNQUOTE(JSON_EXTRACT(normalized_payload_json, '$.Trim')) <> ''
-      ORDER BY t"
+      ORDER BY t
+      LIMIT 500"
 )->fetchAll(PDO::FETCH_COLUMN);
 
 $users = $db->query(
@@ -92,6 +94,14 @@ $users = $db->query(
 $labels = $db->query(
     'SELECT id, name, color FROM lead_labels ORDER BY name'
 )->fetchAll();
+
+// Cache the response client-side for 5 min. Filter dropdowns are
+// invalidated on import/label edits, but the page also re-fetches on
+// each LeadsPage mount, so a short cache cuts repeat scans against a
+// 500K-row table without hiding fresh values for long.
+if (PHP_SAPI !== 'cli') {
+    header('Cache-Control: private, max-age=300');
+}
 
 echo json_encode([
     'batches'    => $batches,

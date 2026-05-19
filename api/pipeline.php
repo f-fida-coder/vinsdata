@@ -105,6 +105,29 @@ function assertAdmin(array $user): void
     }
 }
 
+/**
+ * Ownership gate used by every endpoint that mutates a lead's child
+ * rows (labels, tasks, contact logs, notes…). Admin + marketer get
+ * unrestricted access — they manage the whole pipeline. Agents are
+ * scoped to leads where lead_states.assigned_user_id matches them.
+ *
+ * Bails with 403 on mismatch. Returns the user role for convenience.
+ */
+function assertCanMutateLead(PDO $db, array $user, int $leadId): string
+{
+    $role = $user['role'] ?? null;
+    if ($role === 'admin' || $role === 'marketer') return $role;
+
+    $stmt = $db->prepare('SELECT assigned_user_id FROM lead_states WHERE imported_lead_id = :lid');
+    $stmt->execute([':lid' => $leadId]);
+    $row = $stmt->fetch();
+    $assignee = isset($row['assigned_user_id']) ? (int) $row['assigned_user_id'] : null;
+    if ($assignee !== (int) $user['id']) {
+        pipelineFail(403, 'You can only modify leads assigned to you', 'lead_not_yours');
+    }
+    return $role ?? 'unknown';
+}
+
 function validateUploadedArtifact(array $phpFile): void
 {
     if (($phpFile['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {

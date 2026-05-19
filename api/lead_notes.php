@@ -38,6 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($note === '') pipelineFail(400, 'note is required', 'missing_fields');
     if (mb_strlen($note) > 5000) pipelineFail(400, 'note too long (max 5000 chars)', 'note_too_long');
     loadLeadOrFail($db, $leadId);
+    assertCanMutateLead($db, $user, $leadId);
 
     try {
         $db->beginTransaction();
