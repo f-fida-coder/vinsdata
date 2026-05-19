@@ -272,11 +272,13 @@ $placeholders   = [[
                 'type'      => 'signature',
                 'options'   => ['name' => 'Signature'],
             ],
-            // Odometer Disclosure → Seller Signature line
+            // Odometer Disclosure → Seller Signature line (final line on
+            // page 2). Sits ~y=700: after the H1, statement paragraph, two
+            // checkbox lines, and the pre-signed Buyer Signature row.
             [
                 'key'       => $widgetKeyOdom,
                 'xPosition' => 190,
-                'yPosition' => 580,
+                'yPosition' => 700,
                 'width'     => 220,
                 'height'    => 45,
                 'Width'     => 220,

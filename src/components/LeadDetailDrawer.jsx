@@ -17,6 +17,7 @@ import {
 import LeadTransportSection from './LeadTransportSection';
 import LeadBillOfSaleSection from './LeadBillOfSaleSection';
 import LeadOutreachSection from './LeadOutreachSection';
+import { Icon } from './ui';
 
 const FIELD_LABELS = Object.fromEntries(NORMALIZED_FIELDS.map((f) => [f.key, f.label]));
 const FIELD_ORDER = [
