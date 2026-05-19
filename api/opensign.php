@@ -237,15 +237,19 @@ $docName = 'Bill of Sale — ' . $vehDesc;
 // Placeholders are REQUIRED. PdfRequestFiles.jsx (the React component
 // that renders the signing UI) calls Placeholders.filter without a
 // null-guard — if the field is missing the page crashes with
-// "Cannot read properties of undefined" and the React error boundary
-// shows "Something went wrong, refreshing this page may solve this
-// issue." We seed a single default signature widget on page 2 of the
-// BoS (where the Seller Signature line lives in our template). The
-// signer can drag/resize it inside the OpenSign UI before signing if
-// the position needs nudging.
-$placeholderId = uniqid('p_', true);
-$widgetKey     = (int) (microtime(true) * 1000);
-$placeholders  = [[
+// "Cannot read properties of undefined."
+//
+// Our BoS template has TWO Seller Signature lines on page 2:
+//   1. Section 6 AUTHORIZATION — roughly mid-page
+//   2. Odometer Disclosure       — lower-right area of the page
+//
+// Both widgets go on page 2. Coordinates are in PDF points (Letter
+// size = 612×792) measured from the top-left of the page. xPosition
+// puts the widget just after the "Seller Signature:" label.
+$placeholderId  = uniqid('p_', true);
+$widgetKeyAuth  = (int) (microtime(true) * 1000);
+$widgetKeyOdom  = $widgetKeyAuth + 1;
+$placeholders   = [[
     'Id'           => $placeholderId,
     'Role'         => 'signer',
     'signerObjId'  => $contactId,
@@ -254,18 +258,34 @@ $placeholders  = [[
     'blockColor'   => '#93a3db',
     'placeHolder'  => [[
         'pageNumber' => 2,
-        'pos'        => [[
-            'key'       => $widgetKey,
-            'xPosition' => 120,
-            'yPosition' => 480,
-            'width'     => 180,
-            'height'    => 60,
-            'Width'     => 180,
-            'Height'    => 60,
-            'isStamp'   => false,
-            'type'      => 'signature',
-            'options'   => ['name' => 'Signature'],
-        ]],
+        'pos'        => [
+            // Authorization → Seller Signature line
+            [
+                'key'       => $widgetKeyAuth,
+                'xPosition' => 190,
+                'yPosition' => 240,
+                'width'     => 220,
+                'height'    => 45,
+                'Width'     => 220,
+                'Height'    => 45,
+                'isStamp'   => false,
+                'type'      => 'signature',
+                'options'   => ['name' => 'Signature'],
+            ],
+            // Odometer Disclosure → Seller Signature line
+            [
+                'key'       => $widgetKeyOdom,
+                'xPosition' => 190,
+                'yPosition' => 580,
+                'width'     => 220,
+                'height'    => 45,
+                'Width'     => 220,
+                'Height'    => 45,
+                'isStamp'   => false,
+                'type'      => 'signature',
+                'options'   => ['name' => 'Signature'],
+            ],
+        ],
     ]],
 ]];
 
