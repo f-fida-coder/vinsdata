@@ -78,6 +78,56 @@ function attachCrmToLeads(PDO $db, array &$leads): void
     }
 }
 
+/**
+ * Group leads by digit-only phone_primary and attach a `related_count`
+ * (other live leads sharing the same number). One round-trip regardless
+ * of page size — cheaper than a per-row subquery embedded in the data
+ * SQL, and the norm_phone_primary index makes the lookup fast.
+ *
+ * Leads without a phone get related_count = 0 — we don't match on name
+ * alone because that's too noisy at the carfax-import scale.
+ */
+function attachRelatedCounts(PDO $db, array &$leads): void
+{
+    if (empty($leads)) return;
+
+    // Collect the canonical phone for every lead on the page.
+    $phoneByLead = [];
+    foreach ($leads as $l) {
+        $raw = $l['normalized_payload']['phone_primary'] ?? null;
+        if (!$raw) continue;
+        $digits = preg_replace('/[^0-9]/', '', (string) $raw);
+        if ($digits === '') continue;
+        $phoneByLead[(int) $l['id']] = $digits;
+    }
+    if (empty($phoneByLead)) {
+        foreach ($leads as &$l) $l['related_count'] = 0;
+        return;
+    }
+
+    // One query: total live leads per phone across the whole table.
+    $uniqPhones = array_values(array_unique($phoneByLead));
+    $placeholders = implode(',', array_fill(0, count($uniqPhones), '?'));
+    $stmt = $db->prepare(
+        "SELECT REGEXP_REPLACE(norm_phone_primary, '[^0-9]', '') p, COUNT(*) c
+           FROM imported_leads_raw
+          WHERE import_status = 'imported'
+            AND deleted_at IS NULL
+            AND norm_phone_primary IS NOT NULL
+            AND REGEXP_REPLACE(norm_phone_primary, '[^0-9]', '') IN ($placeholders)
+          GROUP BY p"
+    );
+    $stmt->execute($uniqPhones);
+    $totalByPhone = [];
+    foreach ($stmt->fetchAll() as $r) $totalByPhone[(string) $r['p']] = (int) $r['c'];
+
+    foreach ($leads as &$l) {
+        $lid = (int) $l['id'];
+        $phone = $phoneByLead[$lid] ?? null;
+        $l['related_count'] = $phone === null ? 0 : max(0, ($totalByPhone[$phone] ?? 1) - 1);
+    }
+}
+
 // -- Detail mode: GET /api/leads?id=X --
 if (isset($_GET['id'])) {
     $id = (int) $_GET['id'];
@@ -118,6 +168,55 @@ if (isset($_GET['id'])) {
     $detailWrapper = [$row];
     attachCrmToLeads($db, $detailWrapper);
     $row = $detailWrapper[0];
+
+    // Sibling vehicles — every other live lead owned by the same person
+    // (digit-only phone match against this lead's phone_primary). Returns
+    // a compact row per sibling so the drawer can render "Also owns N
+    // other vehicles" without an extra round trip. Sorted newest-import
+    // first so the most recent intel surfaces at the top.
+    $rawPhone = $row['normalized_payload']['phone_primary'] ?? null;
+    $row['related_leads'] = [];
+    if ($rawPhone) {
+        $digits = preg_replace('/[^0-9]/', '', (string) $rawPhone);
+        if ($digits !== '') {
+            $sibStmt = $db->prepare(
+                "SELECT r.id, r.source_row_number, r.normalized_payload_json,
+                        b.batch_name, b.imported_at,
+                        f.display_name AS file_display_name, f.file_name,
+                        s.status AS crm_status, u.name AS assigned_user_name
+                   FROM imported_leads_raw r
+                   JOIN lead_import_batches b ON b.id = r.batch_id
+                   JOIN files f               ON f.id = b.file_id
+                   LEFT JOIN lead_states s    ON s.imported_lead_id = r.id
+                   LEFT JOIN users u          ON u.id = s.assigned_user_id
+                  WHERE r.import_status = 'imported'
+                    AND r.deleted_at IS NULL
+                    AND r.id <> :self
+                    AND r.norm_phone_primary IS NOT NULL
+                    AND REGEXP_REPLACE(r.norm_phone_primary, '[^0-9]', '') = :digits
+                  ORDER BY b.imported_at DESC, r.source_row_number ASC
+                  LIMIT 50"
+            );
+            $sibStmt->execute([':self' => $id, ':digits' => $digits]);
+            foreach ($sibStmt->fetchAll() as $sib) {
+                $np = json_decode($sib['normalized_payload_json'] ?? 'null', true) ?: [];
+                $row['related_leads'][] = [
+                    'id'                 => (int) $sib['id'],
+                    'source_row_number'  => (int) $sib['source_row_number'],
+                    'vin'                => $np['vin'] ?? null,
+                    'year'               => $np['year'] ?? null,
+                    'make'               => $np['make'] ?? null,
+                    'model'              => $np['model'] ?? null,
+                    'mileage'            => $np['mileage'] ?? null,
+                    'batch_name'         => $sib['batch_name'],
+                    'imported_at'        => $sib['imported_at'],
+                    'file_display_name'  => $sib['file_display_name'] ?: $sib['file_name'],
+                    'status'             => $sib['crm_status'] ?: 'new',
+                    'assigned_user_name' => $sib['assigned_user_name'],
+                ];
+            }
+        }
+    }
 
     // Agents may only view leads assigned to them. Admins and marketers see all.
     $r = $user['role'] ?? null;
@@ -656,6 +755,7 @@ $leads = array_map(function ($r) {
 }, $stmt->fetchAll());
 
 attachCrmToLeads($db, $leads);
+attachRelatedCounts($db, $leads);
 
 if ($isCsv) {
     // Strip the JSON Content-Type header set by config.php.

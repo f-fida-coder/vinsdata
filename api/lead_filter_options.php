@@ -12,10 +12,16 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 }
 
 // Only surface values for batches that actually have imported rows.
+// We also pull lead_count so the dropdown can show "<name> · n rows" —
+// the upload pipeline lets the same file be uploaded multiple times,
+// which produces a fresh batch row per upload with the same name, and
+// without a count + timestamp suffix the dropdown becomes a wall of
+// duplicates.
 $batches = $db->query(
-    'SELECT DISTINCT b.id, b.batch_name, b.imported_at
+    'SELECT b.id, b.batch_name, b.imported_at, COUNT(r.id) AS lead_count
        FROM lead_import_batches b
        JOIN imported_leads_raw r ON r.batch_id = b.id AND r.import_status = "imported" AND r.deleted_at IS NULL
+      GROUP BY b.id, b.batch_name, b.imported_at
       ORDER BY b.imported_at DESC, b.id DESC'
 )->fetchAll();
 

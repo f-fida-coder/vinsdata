@@ -588,7 +588,9 @@ export default function LeadsPage() {
 
   const batchLabel = (id) => {
     const b = options.batches.find((x) => String(x.id) === String(id));
-    return b ? b.batch_name : id;
+    if (!b) return id;
+    const stamp = b.imported_at ? new Date(String(b.imported_at).replace(' ', 'T')).toLocaleDateString() : '';
+    return stamp ? `${b.batch_name} (${stamp})` : b.batch_name;
   };
   const fileLabel = (id) => {
     const f = options.files.find((x) => String(x.id) === String(id));
@@ -832,7 +834,15 @@ export default function LeadsPage() {
               <FilterInput type="date" label="Imported to"   value={filters.imported_to}   onChange={(v) => updateFilter('imported_to',   v)} />
               <FilterSelect label="Batch" value={filters.batch_id} onChange={(v) => updateFilter('batch_id', v)}>
                 <option value="">Any batch</option>
-                {options.batches.map((b) => <option key={b.id} value={b.id}>{b.batch_name}</option>)}
+                {options.batches.map((b) => {
+                  // Several batches can share the same name (same file
+                  // uploaded twice), so suffix the import date + row
+                  // count to make the choice unambiguous.
+                  const stamp = b.imported_at ? new Date(String(b.imported_at).replace(' ', 'T')).toLocaleDateString() : '';
+                  const count = b.lead_count != null ? ` · ${b.lead_count} rows` : '';
+                  const suffix = stamp || count ? ` (${[stamp, count.trim().replace(/^· /, '')].filter(Boolean).join(' · ')})` : '';
+                  return <option key={b.id} value={b.id}>{b.batch_name}{suffix}</option>;
+                })}
               </FilterSelect>
               <FilterSelect label="Source file" value={filters.file_id} onChange={(v) => updateFilter('file_id', v)}>
                 <option value="">Any file</option>
@@ -1021,7 +1031,21 @@ export default function LeadsPage() {
                         />
                       </td>
                       <td className="px-2 py-2">
-                        <div className="text-sm font-semibold text-gray-900 truncate max-w-[220px]" title={name}>{name}</div>
+                        <div className="flex items-center gap-1.5 max-w-[240px]">
+                          <span className="text-sm font-semibold text-gray-900 truncate" title={name}>{name}</span>
+                          {/* "×N" chip when the same phone shows up on
+                              other live leads — clicking the row still
+                              opens this lead; the sibling list lives in
+                              the drawer banner. */}
+                          {lead.related_count > 0 && (
+                            <span
+                              title={`This person owns ${lead.related_count + 1} vehicles in the CRM (open to see the others)`}
+                              className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-100 text-violet-700"
+                            >
+                              ×{lead.related_count + 1}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       {BUILTIN_COLUMNS.map(([key]) => {
                         if (hiddenColumns.has(key)) return null;
@@ -1087,7 +1111,12 @@ export default function LeadsPage() {
         </div>
       </div>
 
-      <LeadDetailDrawer leadId={detailId} onClose={() => setDetailId(null)} onChanged={() => { fetchLeads(); fetchSummary(); }} />
+      <LeadDetailDrawer
+        leadId={detailId}
+        onClose={() => setDetailId(null)}
+        onChanged={() => { fetchLeads(); fetchSummary(); }}
+        onOpenLead={(id) => setDetailId(id)}
+      />
 
       <BulkActionModal
         open={!!bulkAction}

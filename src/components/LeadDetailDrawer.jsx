@@ -1220,7 +1220,67 @@ function ActivitySection({ leadId, reloadKey }) {
 
 // ---------- Drawer ----------
 
-function LeadDetailInner({ leadId, onClose, onChanged }) {
+/**
+ * Sibling-vehicles banner. Renders when the lead detail endpoint
+ * returns one or more other live leads on the same phone number.
+ * Clicking a row hands the sibling's id back to the parent so the
+ * drawer can swap to that lead in place (no remount).
+ */
+function RelatedLeadsBanner({ leads, onOpen }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50/60">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 text-left"
+      >
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-violet-700">
+          Owns {leads.length + 1} vehicles · {leads.length} other on file
+        </span>
+        <svg className={`w-3.5 h-3.5 text-violet-700 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+      {open && (
+        <ul className="border-t border-violet-200 divide-y divide-violet-100">
+          {leads.map((s) => {
+            const vehicle = [s.year, s.make, s.model].filter(Boolean).join(' ') || 'Vehicle';
+            const stamp = s.imported_at ? new Date(String(s.imported_at).replace(' ', 'T')).toLocaleDateString() : '';
+            const vinTail = s.vin ? String(s.vin).slice(-6) : '';
+            return (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  onClick={() => onOpen?.(s.id)}
+                  className="w-full text-left px-3 py-2 hover:bg-violet-100/50 transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-medium text-gray-900 truncate">{vehicle}</p>
+                      <p className="text-[10px] text-gray-500 mt-0.5 truncate">
+                        {vinTail && <span className="font-mono">VIN …{vinTail}</span>}
+                        {s.batch_name && <> · Batch {s.batch_name}{stamp ? ` (${stamp})` : ''}</>}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {s.assigned_user_name && (
+                        <span className="text-[10px] text-gray-500">→ {s.assigned_user_name}</span>
+                      )}
+                      <span className="text-[10px] font-semibold text-violet-700">Open →</span>
+                    </div>
+                  </div>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function LeadDetailInner({ leadId, onClose, onChanged, onOpenLead }) {
   const { user } = useAuth();
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1330,13 +1390,35 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
                     {notesSummary.length} {notesSummary.length === 1 ? 'note' : 'notes'}
                   </span>
                 )}
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                <span
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100"
+                  title={`Imported ${formatDate(detail.imported_at)}`}
+                >
+                  {/* Several batches can share a name when the same file
+                      was re-uploaded — append the import date so the
+                      drawer chip identifies the exact one. */}
                   Batch: {detail.batch_name}
+                  {detail.imported_at && (
+                    <span className="text-emerald-500 font-normal ml-1">
+                      ({new Date(String(detail.imported_at).replace(' ', 'T')).toLocaleDateString()})
+                    </span>
+                  )}
                 </span>
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-100">
                   Row #{detail.source_row_number}
                 </span>
               </div>
+
+              {/* Multi-vehicle banner. When the same phone shows up on
+                  other live leads, the operator usually wants to know
+                  before they call: this person also owns 2 Toyotas and
+                  a Silverado. Click any row to jump to that lead. */}
+              {(detail.related_leads || []).length > 0 && (
+                <RelatedLeadsBanner
+                  leads={detail.related_leads}
+                  onOpen={onOpenLead}
+                />
+              )}
               {(crmState.price_wanted !== null || crmState.price_offered !== null) && (
                 <div className="flex items-center gap-3 mt-2 text-[11px] text-gray-600">
                   <span><span className="text-gray-400">Wanted:</span> <span className="font-semibold text-gray-800">{formatPrice(crmState.price_wanted)}</span></span>
@@ -1540,7 +1622,15 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
   );
 }
 
-export default function LeadDetailDrawer({ leadId, onClose, onChanged }) {
+export default function LeadDetailDrawer({ leadId, onClose, onChanged, onOpenLead }) {
   if (!leadId) return null;
-  return <LeadDetailInner key={leadId} leadId={leadId} onClose={onClose} onChanged={onChanged} />;
+  return (
+    <LeadDetailInner
+      key={leadId}
+      leadId={leadId}
+      onClose={onClose}
+      onChanged={onChanged}
+      onOpenLead={onOpenLead}
+    />
+  );
 }
