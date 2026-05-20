@@ -2,7 +2,11 @@
 
 // File pipeline constants and validators. Single source of truth.
 
-const STAGES = ['generated', 'carfax', 'filter', 'tlo'];
+// 'manual' is set on lead_import_batches.source_stage when the lead
+// was added by an operator through the "+ New lead" form rather than
+// flowing through the upload pipeline. Files / vehicles for those
+// leads use the synthetic "Manual lead add" row created on first use.
+const STAGES = ['generated', 'carfax', 'filter', 'tlo', 'manual'];
 
 const NEXT_STAGE = [
     'generated' => 'carfax',

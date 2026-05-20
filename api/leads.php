@@ -147,7 +147,7 @@ if (isset($_GET['id'])) {
            FROM imported_leads_raw r
            JOIN lead_import_batches b ON b.id = r.batch_id
            JOIN files f               ON f.id = b.file_id
-           JOIN file_artifacts a      ON a.id = b.artifact_id
+           LEFT JOIN file_artifacts a ON a.id = b.artifact_id
            JOIN vehicles v            ON v.id = f.vehicle_id
            JOIN users u               ON u.id = b.imported_by
            LEFT JOIN column_mapping_templates t ON t.id = b.mapping_template_id
@@ -641,7 +641,7 @@ $whereSql = implode(' AND ', $where);
 $baseFrom = 'FROM imported_leads_raw r
              JOIN lead_import_batches b ON b.id = r.batch_id
              JOIN files f               ON f.id = b.file_id
-             JOIN file_artifacts a      ON a.id = b.artifact_id
+             LEFT JOIN file_artifacts a ON a.id = b.artifact_id
              JOIN vehicles v            ON v.id = f.vehicle_id
              JOIN users u               ON u.id = b.imported_by';
 

@@ -329,6 +329,7 @@ export default function LeadsPage() {
   const [bulkResult, setBulkResult] = useState(null);
   const [activeViewId, setActiveViewId] = useState(null);
   const [defaultApplied, setDefaultApplied] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
 
   // Debounce search input → filters.q
   useEffect(() => {
@@ -749,6 +750,15 @@ export default function LeadsPage() {
             <Button variant="ghost" size="sm" onClick={clearAll}>Clear all</Button>
           )}
           <span className="spacer"/>
+          {/* + New lead — opens a modal that POSTs to /api/lead_manual.
+              Lazy-creates a "Manual lead add" file + ongoing batch
+              under the hood. Only admins / marketers / acquisition
+              agents see the button (the backend enforces the same). */}
+          {['admin','marketer','sales_agent'].includes(user?.role) && (
+            <Button variant="primary" size="md" icon="plus" onClick={() => setManualOpen(true)}>
+              New lead
+            </Button>
+          )}
           <SavedViewsMenu
             viewType="leads"
             currentFilters={filters}
@@ -1189,6 +1199,19 @@ export default function LeadsPage() {
         onClose={() => setDetailId(null)}
         onChanged={() => { fetchLeads(); fetchSummary(); }}
         onOpenLead={(id) => setDetailId(id)}
+      />
+
+      <ManualLeadModal
+        open={manualOpen}
+        onClose={() => setManualOpen(false)}
+        onCreated={(newLeadId) => {
+          setManualOpen(false);
+          fetchLeads();
+          fetchSummary();
+          // Open the freshly-created lead in the drawer so the agent
+          // can immediately add notes, set status, etc.
+          if (newLeadId) setDetailId(newLeadId);
+        }}
       />
 
       <BulkActionModal
@@ -1708,6 +1731,191 @@ function NumberOfOwnersFilter({ min, max, onChangeMin, onChangeMax }) {
         </select>
       </div>
     </div>
+  );
+}
+
+/**
+ * Manual lead-add modal. Posts to /api/lead_manual which lazy-creates
+ * a "Manual lead add" file + today's batch + the lead row in one
+ * transaction. Required: a name (first or last) plus at least one
+ * contact channel (phone or email) — without that the lead would be
+ * caught by the empty-contact filter on the leads page.
+ *
+ * Defaults assign_to_self=true so the creator can immediately see
+ * their new lead under the agent-only visibility filter.
+ */
+function ManualLeadModal({ open, onClose, onCreated }) {
+  const [form, setForm] = useState({
+    first_name: '', last_name: '',
+    phone_primary: '', email_primary: '',
+    full_address: '', city: '', state: '', zip_code: '',
+    vin: '', year: '', make: '', model: '', trim: '', mileage: '',
+    notes: '',
+    assign_to_self: true,
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  // Reset on open so a stale draft doesn't survive a previous cancel.
+  useEffect(() => {
+    if (!open) return;
+    setForm({
+      first_name: '', last_name: '',
+      phone_primary: '', email_primary: '',
+      full_address: '', city: '', state: '', zip_code: '',
+      vin: '', year: '', make: '', model: '', trim: '', mileage: '',
+      notes: '',
+      assign_to_self: true,
+    });
+    setError('');
+  }, [open]);
+
+  if (!open) return null;
+
+  const canSubmit =
+    (form.first_name.trim() || form.last_name.trim()) &&
+    (form.phone_primary.trim() || form.email_primary.trim()) &&
+    !submitting;
+
+  const submit = async () => {
+    setSubmitting(true); setError('');
+    try {
+      const res = await api.post('/lead_manual', form);
+      onCreated?.(res.data?.lead_id);
+    } catch (err) {
+      setError(extractApiError(err, 'Failed to add lead'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const set = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value }));
+  const inputCls = 'w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-[13px] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-gray-900/60" />
+      <div
+        className="relative bg-white w-full max-w-xl sm:rounded-2xl rounded-t-2xl shadow-2xl max-h-[92vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Add a lead manually</h2>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              Walk-ins, referrals, anything not from a spreadsheet upload. Lands under the <strong>Manual lead add</strong> file.
+            </p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">&times;</button>
+        </div>
+
+        <div className="px-5 py-4 overflow-y-auto space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <FieldLabel label="First name" required>
+              <input type="text" value={form.first_name} onChange={set('first_name')} className={inputCls} autoFocus />
+            </FieldLabel>
+            <FieldLabel label="Last name">
+              <input type="text" value={form.last_name} onChange={set('last_name')} className={inputCls} />
+            </FieldLabel>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <FieldLabel label="Phone" required>
+              <input type="tel" value={form.phone_primary} onChange={set('phone_primary')} placeholder="(555) 123-4567" className={inputCls} />
+            </FieldLabel>
+            <FieldLabel label="Email">
+              <input type="email" value={form.email_primary} onChange={set('email_primary')} placeholder="name@domain.com" className={inputCls} />
+            </FieldLabel>
+          </div>
+          <p className="text-[10px] text-gray-500">First/last name + phone <em>or</em> email required.</p>
+
+          <FieldLabel label="Address">
+            <input type="text" value={form.full_address} onChange={set('full_address')} className={inputCls} />
+          </FieldLabel>
+          <div className="grid grid-cols-3 gap-2">
+            <FieldLabel label="City">
+              <input type="text" value={form.city} onChange={set('city')} className={inputCls} />
+            </FieldLabel>
+            <FieldLabel label="State">
+              <input type="text" value={form.state} onChange={set('state')} maxLength={2} className={inputCls} placeholder="TX" />
+            </FieldLabel>
+            <FieldLabel label="ZIP">
+              <input type="text" value={form.zip_code} onChange={set('zip_code')} className={inputCls} />
+            </FieldLabel>
+          </div>
+
+          <div className="border-t border-gray-100 pt-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-2">Vehicle</p>
+            <FieldLabel label="VIN">
+              <input type="text" value={form.vin} onChange={set('vin')} className={inputCls + ' font-mono'} maxLength={17} placeholder="17 chars" />
+            </FieldLabel>
+            <div className="grid grid-cols-4 gap-2 mt-2">
+              <FieldLabel label="Year">
+                <input type="number" value={form.year} onChange={set('year')} className={inputCls} placeholder="2008" />
+              </FieldLabel>
+              <FieldLabel label="Make">
+                <input type="text" value={form.make} onChange={set('make')} className={inputCls} placeholder="DODGE" />
+              </FieldLabel>
+              <FieldLabel label="Model">
+                <input type="text" value={form.model} onChange={set('model')} className={inputCls} placeholder="Viper" />
+              </FieldLabel>
+              <FieldLabel label="Trim">
+                <input type="text" value={form.trim} onChange={set('trim')} className={inputCls} placeholder="SRT" />
+              </FieldLabel>
+            </div>
+            <div className="mt-2">
+              <FieldLabel label="Miles">
+                <input type="text" inputMode="numeric" value={form.mileage} onChange={set('mileage')} className={inputCls} placeholder="87,500" />
+              </FieldLabel>
+            </div>
+          </div>
+
+          <FieldLabel label="Notes">
+            <textarea value={form.notes} onChange={set('notes')} rows={2} maxLength={5000} className={inputCls} placeholder="Optional — attached as the first note on the lead." />
+          </FieldLabel>
+
+          <label className="flex items-center gap-2 mt-2 text-[12px] text-gray-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.assign_to_self}
+              onChange={(e) => setForm((p) => ({ ...p, assign_to_self: e.target.checked }))}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            Assign to me so I can see it immediately
+          </label>
+
+          {error && (
+            <div className="text-[12px] px-3 py-2 rounded-md bg-red-50 text-red-700 border border-red-100">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2 shrink-0">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg">
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={!canSubmit}
+            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow disabled:opacity-40"
+          >
+            {submitting ? 'Adding…' : 'Add lead'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FieldLabel({ label, required, children }) {
+  return (
+    <label className="block">
+      <span className="block text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">
+        {label} {required && <span className="text-red-500">*</span>}
+      </span>
+      {children}
+    </label>
   );
 }
 
