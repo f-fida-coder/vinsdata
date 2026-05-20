@@ -126,12 +126,19 @@ try {
     $stmt->execute();
     $fileId = (int) ($stmt->fetchColumn() ?: 0);
     if ($fileId === 0) {
+        // Two distinct placeholders for created_by + added_by — PDO
+        // with ATTR_EMULATE_PREPARES=false (config.php) rejects the
+        // same name appearing twice in one statement (HY093).
         $db->prepare(
             "INSERT INTO files (vehicle_id, base_name, display_name, file_name,
                                 year, version, current_stage, status, created_by, added_by)
              VALUES (:vid, 'Manual lead add', 'Manual lead add', 'Manual lead add',
-                     NULL, NULL, 'manual', 'active', :uid, :uid)"
-        )->execute([':vid' => $vehicleId, ':uid' => (int) $user['id']]);
+                     NULL, NULL, 'manual', 'active', :uid_created, :uid_added)"
+        )->execute([
+            ':vid'         => $vehicleId,
+            ':uid_created' => (int) $user['id'],
+            ':uid_added'   => (int) $user['id'],
+        ]);
         $fileId = (int) $db->lastInsertId();
     }
 
