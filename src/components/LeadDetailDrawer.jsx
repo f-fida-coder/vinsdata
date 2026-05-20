@@ -1489,7 +1489,11 @@ function LeadDetailInner({ leadId, onClose, onChanged, onOpenLead }) {
           {detail && (() => {
             // Agents (carfax/filter/tlo) only need CRM state + Contact log + Marketing
             // open by default; collapsing the rest cuts the visual wall.
-            const isAgent = user?.role && !['admin','marketer'].includes(user.role);
+            // Sales agents (Acquisition Agents) work the full pipeline alongside
+            // admin/marketer — open every collab section by default. Only
+            // pipeline-stage agents (carfax / filter / tlo) get the trimmed
+            // sales_agent-style view.
+            const isAgent = user?.role && !['admin','marketer','sales_agent'].includes(user.role);
             return (
             <>
               <CrmStateSection

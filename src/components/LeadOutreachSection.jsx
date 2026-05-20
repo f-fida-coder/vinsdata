@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import api, { extractApiError } from '../api';
+import { useAuth } from '../context/AuthContext';
+
+// VinVault's shared callback number — same line that's printed on the
+// signed Bills of Sale + the auto-text in the outreach signoff. Living
+// here as a constant so we have one place to swap it if it moves.
+const VINVAULT_CALLBACK_PHONE = '469-971-2609';
 
 /**
  * In-drawer Email + Text composer.
@@ -11,6 +17,7 @@ import api, { extractApiError } from '../api';
  * endpoint (GET ?lead_id=X) so operators can audit what's been sent.
  */
 export default function LeadOutreachSection({ leadId, normalizedPayload, onChanged, focusKind, onFocusConsumed }) {
+  const { user } = useAuth();
   const np = normalizedPayload || {};
   const phones = ['phone_primary', 'phone_secondary', 'phone_3', 'phone_4']
     .map((k) => np[k]).filter(Boolean);
@@ -24,20 +31,39 @@ export default function LeadOutreachSection({ leadId, normalizedPayload, onChang
   ].filter(Boolean);
   const email = emails[0] || '';
   const ymm = [np.year, np.make, np.model].filter(Boolean).join(' ');
-  const vin = np.vin || '';
-  const greeting = np.first_name ? `Hi ${np.first_name},` : 'Hello,';
+  // Agent name comes from the signed-in user. Falls back to "Vin Vault"
+  // so the templates still read sensibly if user context is missing.
+  const agentName = (user?.name || '').trim() || 'Vin Vault';
+  const firstName = (np.first_name || '').trim();
+  const greetingName = firstName || 'there';
 
+  // Subject + body templates match the dream-car cold-outreach script the
+  // team is running. Year/make/model + first name interpolate so the
+  // operator can fire it as-is or tweak before sending.
   const defaultSubject = ymm
-    ? `Quick question about your ${ymm}`
-    : 'Quick question about your vehicle';
+    ? `Hey ${greetingName} — call me about your ${ymm}`
+    : `Hey ${greetingName} — call me about your vehicle`;
 
-  const defaultEmailBody = ymm
-    ? `${greeting}\n\nI'm reaching out about your ${ymm}${vin ? ` (VIN ${vin})` : ''}. We're actively buying vehicles like yours and would love to make you an offer.\n\nIs there a good time to chat?`
-    : `${greeting}\n\nReaching out from Vin Vault. We're actively buying vehicles in your area and would love to chat.`;
+  const ymmPhrase = ymm || 'vehicle';
+  const defaultEmailBody =
+    `Hi ${greetingName}, my name is ${agentName}\n`
+    + `\n`
+    + `I tried texting/calling you earlier today…\n`
+    + `\n`
+    + `I'm in search of a ${ymmPhrase} (my dream car).\n`
+    + `\n`
+    + `It may be a long shot, but I'm reaching out to see if you still have yours by chance?\n`
+    + `\n`
+    + `Please text, call, or email me back when you have time.\n`
+    + `\n`
+    + `- ${agentName}\n`
+    + `${VINVAULT_CALLBACK_PHONE}`;
 
-  const defaultSmsBody = ymm
-    ? `${greeting} reaching out from Vin Vault about your ${ymm}. We'd love to make you an offer — got a minute to chat?`
-    : `${greeting} reaching out from Vin Vault. We'd love to chat about your vehicle.`;
+  // SMS — same pitch, tightened to fit a couple of 160-char segments so
+  // we don't blow up segment cost on a long template.
+  const defaultSmsBody =
+    `Hi ${greetingName}, this is ${agentName}. I'm hunting a ${ymmPhrase} (my dream car). `
+    + `Long shot — do you still have yours? Text/call back when you have a minute. - ${agentName} ${VINVAULT_CALLBACK_PHONE}`;
 
   const [tab, setTab] = useState(email ? 'email' : phones.length > 0 ? 'sms' : 'email');
   const [history, setHistory] = useState([]);
