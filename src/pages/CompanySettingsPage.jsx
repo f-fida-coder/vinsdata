@@ -108,8 +108,139 @@ export default function CompanySettingsPage() {
         )}
       </div>
 
+      {isAdmin && <FeatureFlagsSection />}
+
       {isAdmin && <OutboundIntegrationsSection />}
     </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Feature flags — admin-toggleable booleans stored in the feature_flags
+// table. Each row is { key, enabled, label, description }; flipping a
+// toggle PUTs to /api/feature_flags and reloads the shared context so
+// the change shows up across the running app without a refresh.
+// -----------------------------------------------------------------------------
+
+function FeatureFlagsSection() {
+  const [rows, setRows]       = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState('');
+  const [savingKey, setSavingKey] = useState(null);
+
+  const load = useCallback(() => {
+    setLoading(true); setError('');
+    api.get('/feature_flags')
+      .then((res) => setRows(res.data?.flags || []))
+      .catch((err) => setError(extractApiError(err, 'Failed to load feature flags')))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load(); }, [load]);
+
+  const toggle = async (key, next) => {
+    setSavingKey(key); setError('');
+    try {
+      await api.put('/feature_flags', { key, enabled: !!next });
+      // Reload from server so updated_at + any concurrent edits land.
+      load();
+      // Ping the global context so RingingCallToast / TransportSMS /
+      // etc. pick up the new value without a page refresh.
+      try {
+        window.dispatchEvent(new CustomEvent('vv:feature-flags-changed'));
+      } catch { /* ignore */ }
+    } catch (err) {
+      setError(extractApiError(err, 'Failed to toggle flag'));
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900">Feature flags</h2>
+        <p className="text-xs text-gray-500 mt-0.5">
+          Roll features on / off across the team without a deploy. Changes take effect on the next page load (or immediately for components that subscribe live).
+        </p>
+      </div>
+
+      {error && <div className="bg-red-50 border border-red-100 text-red-700 rounded-xl p-3 text-sm">{error}</div>}
+
+      {loading ? (
+        <div className="text-sm text-gray-500">Loading feature flags…</div>
+      ) : rows.length === 0 ? (
+        <div className="text-sm text-gray-400 italic">
+          No feature flags defined yet. Apply migration 030 to seed the registry.
+        </div>
+      ) : (
+        <ul className="border border-gray-100 rounded-xl divide-y divide-gray-100">
+          {rows.map((flag) => (
+            <li key={flag.key} className="flex items-start justify-between gap-4 p-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-gray-900">{flag.label}</span>
+                  <span className="text-[10px] font-mono text-gray-400">{flag.key}</span>
+                </div>
+                {flag.description && (
+                  <p className="text-xs text-gray-600 mt-1">{flag.description}</p>
+                )}
+                {flag.updated_at && (
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    Last toggled {new Date(String(flag.updated_at).replace(' ', 'T')).toLocaleString()}
+                  </p>
+                )}
+              </div>
+              <FlagToggle
+                checked={!!flag.enabled}
+                disabled={savingKey === flag.key}
+                onChange={(next) => toggle(flag.key, next)}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function FlagToggle({ checked, disabled, onChange }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      disabled={disabled}
+      className="shrink-0 inline-flex items-center"
+      aria-pressed={checked}
+      style={{
+        width: 44,
+        height: 24,
+        borderRadius: 999,
+        background: checked ? '#10b981' : '#d1d5db',
+        position: 'relative',
+        transition: 'background 120ms',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.6 : 1,
+        border: 'none',
+        padding: 0,
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          top: 2,
+          left: checked ? 22 : 2,
+          width: 20,
+          height: 20,
+          borderRadius: '50%',
+          background: '#fff',
+          transition: 'left 120ms',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+        }}
+      />
+    </button>
   );
 }
 

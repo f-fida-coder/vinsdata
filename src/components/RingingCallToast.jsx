@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
+import { useFeatureFlag } from '../context/FeatureFlagsContext';
 
 /**
  * Floating "incoming call" surface.
@@ -19,24 +20,21 @@ import api from '../api';
  * Renders nothing if there are no active rings. Mounted once at the
  * DashboardLayout level so every page surfaces it consistently.
  */
-// Polling is gated behind the OpenPhone carrier-acceptance handshake.
-// Until that's approved by the carrier, the webhook can't deliver
-// call.* events, so polling the lookup endpoint is pure DB-connection
-// waste (the same Hostinger 500/hour cap we've been hitting all week).
+// Polling is gated behind the RINGING_CALLS feature flag (managed via
+// Company Settings → Feature Flags). Until OpenPhone's carrier
+// handshake is approved, the webhook can't deliver call.* events, so
+// polling /api/inbound_calls is pure DB-connection waste (Hostinger's
+// 500/hour cap has been the recurring outage). Admin toggles the flag
+// when ready; nothing else needs to change.
 //
-// To re-enable when carrier approval lands, set the flag to true.
-// The frontend will pick up the change on the next deploy without
-// any other code path needing to know.
-const RINGING_CALLS_ENABLED = false;
-
-// Cadence used when the feature flag is on. 30s idle keeps the cap
-// gentle while still surfacing a ring inside the typical 4–6 ring
-// rotation. 3s active poll once a card is on screen so status
-// transitions feel snappy.
+// Cadence when on: 30s idle keeps the cap gentle while still
+// surfacing a ring inside a typical 4–6 ring rotation. 3s active
+// once a card is on screen so status transitions feel snappy.
 const POLL_IDLE_MS   = 30000;
 const POLL_ACTIVE_MS = 3000;
 
 export default function RingingCallToast() {
+  const enabled = useFeatureFlag('RINGING_CALLS');
   const [calls, setCalls] = useState([]);
   const navigate = useNavigate();
   // Keep a ref so we can decide poll cadence without re-creating the
@@ -59,7 +57,7 @@ export default function RingingCallToast() {
     // Bail when the feature flag is off — no fetch, no timer, no
     // re-renders. The component still mounts (so flipping the flag
     // back on doesn't require a layout change), it just never polls.
-    if (!RINGING_CALLS_ENABLED) return;
+    if (!enabled) return;
 
     // Adaptive cadence: poll fast while a call is on-screen, slow
     // when idle. Chained setTimeout that re-evaluates per tick.
@@ -76,7 +74,7 @@ export default function RingingCallToast() {
     // Fire-and-forget first poll, then schedule the loop.
     tick();
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
-  }, [fetchCalls]);
+  }, [fetchCalls, enabled]);
 
   const ack = async (id) => {
     setCalls((prev) => prev.filter((c) => c.id !== id));

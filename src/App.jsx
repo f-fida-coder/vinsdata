@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
+import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import LoginPage from './pages/LoginPage';
 // DashboardPage is the legacy file-management surface. It moved to /files
 // when we split the two concerns; the new HomeDashboard owns / as the
@@ -151,7 +152,11 @@ export default function App() {
   return (
     <ThemeProvider>
       <BrowserRouter>
-        {user ? <DashboardLayout /> : <LoginPage />}
+        {user ? (
+          <FeatureFlagsProvider>
+            <DashboardLayout />
+          </FeatureFlagsProvider>
+        ) : <LoginPage />}
       </BrowserRouter>
     </ThemeProvider>
   );
