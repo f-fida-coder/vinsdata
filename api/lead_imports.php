@@ -92,11 +92,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!is_array($mapping) || empty($mapping)) {
         pipelineFail(400, 'mapping_json must be a non-empty object', 'invalid_mapping');
     }
+    // Normalize header keys. PHP's json_decode($s, true) coerces numeric-string
+    // keys to ints — so a spreadsheet column literally named "1" comes in as
+    // int(1), not string("1"). Cast everything back to string before
+    // validation + before propagating downstream so applyMapping() can do its
+    // raw-payload lookups by string header.
+    $normalizedMapping = [];
     foreach ($mapping as $h => $f) {
-        if (!is_string($h) || $h === '' || !is_string($f) || $f === '') {
+        $hStr = is_int($h) ? (string) $h : $h;
+        if (!is_string($hStr) || $hStr === '' || !is_string($f) || $f === '') {
             pipelineFail(400, 'Invalid mapping entry: ' . json_encode([$h => $f]), 'invalid_mapping');
         }
+        $normalizedMapping[$hStr] = $f;
     }
+    $mapping = $normalizedMapping;
     if (!is_array($rows) || count($rows) === 0) {
         pipelineFail(400, 'rows is empty', 'empty_rows');
     }
