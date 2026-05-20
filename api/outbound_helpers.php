@@ -118,9 +118,19 @@ function dispatchOpenPhoneJob(array $job): array
         return ['ok' => false, 'fail_reason' => 'openphone_not_configured'];
     }
 
+    // OpenPhone's /v1/messages requires recipients in E.164 form
+    // (e.g. +18173952397). Lead payloads carry phones in every shape
+    // imaginable — (817) 395-2397, 817-395-2397, 8173952397, etc. —
+    // so canonicalize here before serializing the request body,
+    // otherwise the API bounces with "The input was invalid".
+    $toCanonical = openPhoneToE164((string) $job['to_address']);
+    if ($toCanonical === '') {
+        return ['ok' => false, 'fail_reason' => 'openphone_invalid_recipient: ' . $job['to_address']];
+    }
+
     $payload = json_encode([
         'phoneNumberId' => $phoneId,
-        'to'            => [$job['to_address']],
+        'to'            => [$toCanonical],
         'content'       => (string) ($job['body'] ?? ''),
     ]);
 
@@ -160,6 +170,34 @@ const PROVIDER_DISPATCHERS = [
     'gmail'     => 'dispatchGmailJob',
     'openphone' => 'dispatchOpenPhoneJob',
 ];
+
+/**
+ * Normalize a phone string into E.164 (e.g. "+18173952397").
+ * Handles common US-style inputs:
+ *   "(817) 395-2397"   → "+18173952397"
+ *   "817-395-2397"     → "+18173952397"
+ *   "8173952397"       → "+18173952397"  (assumes US default)
+ *   "+18173952397"     → "+18173952397"  (pass-through)
+ *   "18173952397"      → "+18173952397"
+ * Returns '' when the input doesn't have enough digits to be a real
+ * phone — callers should treat that as a hard validation failure.
+ */
+function openPhoneToE164(string $raw): string
+{
+    $trimmed = trim($raw);
+    if ($trimmed === '') return '';
+    $startsWithPlus = ($trimmed[0] ?? '') === '+';
+    $digits = preg_replace('/\D+/', '', $trimmed);
+    if ($digits === '' || strlen($digits) < 10) return '';
+    if ($startsWithPlus) return '+' . $digits;
+    // US default — 10-digit numbers get a +1 prefix, 11-digit numbers
+    // starting with 1 are already country-coded.
+    if (strlen($digits) === 10) return '+1' . $digits;
+    if (strlen($digits) === 11 && $digits[0] === '1') return '+' . $digits;
+    // Anything else (e.g. a 13-digit number from outside the US) we
+    // pass through with a + so OpenPhone can decide what to do.
+    return '+' . $digits;
+}
 
 // -----------------------------------------------------------------------------
 // Email signature builder
