@@ -112,7 +112,7 @@ export default function LeadOutreachSection({ leadId, normalizedPayload, onChang
           Text
         </OutreachTab>
         <span className="ml-auto text-[10px] text-gray-400">
-          {tab === 'email' ? 'via Gmail' : tab === 'sms' ? 'via OpenPhone' : 'via system dialer'}
+          {tab === 'email' ? 'via Gmail' : tab === 'sms' ? 'via OpenPhone' : 'via OpenPhone'}
         </span>
       </div>
 
@@ -140,15 +140,16 @@ export default function LeadOutreachSection({ leadId, normalizedPayload, onChang
 }
 
 /**
- * Call panel — pick a phone number, hit "Call". Launches the system
- * dialer via tel: so it works equally well on a softphone / mobile /
- * desk phone. We don't initiate the call via OpenPhone's API because
- * (a) the agent's softphone is already wired up locally and (b) we
- * don't want to log a "sent" job until the agent actually picks up.
+ * Call panel — pick a phone number, hit "Call". Primary path opens
+ * OpenPhone desktop via the `openphone://call/<phone>` deep link so
+ * the agent's softphone takes over (rings the agent's connected
+ * device, then bridges to the lead's number). A fallback "Use
+ * system dialer" link sits underneath for cases where OpenPhone
+ * desktop isn't installed — that one is the original tel:.
  *
- * Right after launching the dialer we offer to log the call in the
- * Contact log with the outcome the agent picks (attempted / vm /
- * connected). Cancels out cleanly if they back out.
+ * Right after launching the call we offer to log the outcome in the
+ * Contact log (attempted / vm / connected). Cancels out cleanly if
+ * the agent backs out.
  */
 function CallPanel({ leadId, phones, agentName, onLogged }) {
   const [to, setTo] = useState(phones[0] || '');
@@ -158,12 +159,32 @@ function CallPanel({ leadId, phones, agentName, onLogged }) {
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState(null);
 
-  const dial = () => {
+  // E.164-ish form for the URL — strip everything that isn't digits
+  // or a leading +. OpenPhone's deep link works best with the +
+  // prefix in front of the country code.
+  const toE164 = (raw) => {
+    const cleaned = String(raw || '').replace(/[^0-9+]/g, '');
+    if (cleaned === '') return '';
+    if (cleaned.startsWith('+')) return cleaned;
+    // 10-digit US numbers → prepend +1 so OpenPhone routes correctly.
+    if (cleaned.length === 10) return '+1' + cleaned;
+    if (cleaned.length === 11 && cleaned.startsWith('1')) return '+' + cleaned;
+    return '+' + cleaned;
+  };
+
+  const dialOpenPhone = () => {
     if (!to) return;
-    // tel: with the digits-only number — handsets handle the
-    // formatting natively. The link launches the OS dialer (or
-    // OpenPhone desktop if it's set as the tel: handler), so the
-    // agent's existing softphone keeps working.
+    const e164 = toE164(to);
+    // openphone://call/<phone> opens the OpenPhone desktop app and
+    // queues the call. If OP isn't installed the browser shows a
+    // protocol-handler dialog the user can dismiss; they can then
+    // fall back via the "system dialer" link below.
+    window.location.href = `openphone://call/${encodeURIComponent(e164)}`;
+    setShowLog(true);
+  };
+
+  const dialSystem = () => {
+    if (!to) return;
     const digits = String(to).replace(/[^0-9+]/g, '');
     window.location.href = `tel:${digits}`;
     setShowLog(true);
@@ -211,14 +232,23 @@ function CallPanel({ leadId, phones, agentName, onLogged }) {
       </div>
 
       <button
-        onClick={dial}
+        onClick={dialOpenPhone}
         disabled={!to}
         className="w-full px-4 py-2.5 text-[13px] font-semibold rounded-md text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 transition-colors"
       >
-        Call {to}
+        Call {to} via OpenPhone
       </button>
-      <p className="text-[10px] text-gray-400">
-        Launches your system dialer (OpenPhone, mobile, desk phone) via <span className="font-mono">tel:</span>. The lead will see your caller ID, not VinVault's.
+      <p className="text-[10px] text-gray-400 text-center">
+        Opens OpenPhone desktop. If you don't have it installed, you can{' '}
+        <button
+          type="button"
+          onClick={dialSystem}
+          disabled={!to}
+          className="underline hover:text-gray-600 disabled:opacity-50"
+        >
+          use the system dialer instead
+        </button>
+        .
       </p>
 
       {showLog && (
