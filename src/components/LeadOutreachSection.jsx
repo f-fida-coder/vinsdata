@@ -172,17 +172,32 @@ function CallPanel({ leadId, phones, agentName, onLogged }) {
     return '+' + cleaned;
   };
 
-  const dialOpenPhone = () => {
+  // Reliable OpenPhone hand-off: open my.openphone.com in a new tab
+  // *and* drop the E.164 number on the clipboard so the agent can
+  // paste it into the OpenPhone dialer with one keystroke. Works
+  // regardless of whether OP desktop is installed, whether the
+  // openphone:// protocol is registered, or whether the OpenPhone
+  // Chrome extension is in play. The browser tab keeps OpenPhone
+  // authenticated across calls, so subsequent clicks just focus
+  // the existing tab.
+  const dialOpenPhone = async () => {
     if (!to) return;
     const e164 = toE164(to);
-    // openphone://call/<phone> opens the OpenPhone desktop app and
-    // queues the call. If OP isn't installed the browser shows a
-    // protocol-handler dialog the user can dismiss; they can then
-    // fall back via the "system dialer" link below.
-    window.location.href = `openphone://call/${encodeURIComponent(e164)}`;
+    try {
+      // Async clipboard API is the supported path on modern Chrome /
+      // Edge / Safari. Failures are silent — the new-tab still opens.
+      await navigator.clipboard.writeText(e164);
+    } catch { /* clipboard denied; the URL still opens */ }
+    // Open in a new tab with a stable target name so repeat clicks
+    // reuse the same OpenPhone tab instead of stacking new ones.
+    window.open('https://my.openphone.com/', 'vv-openphone');
     setShowLog(true);
   };
 
+  // Fallback: hand off to the OS-level tel: handler. If the agent
+  // has OpenPhone desktop installed AND set as default tel: handler
+  // — or has the OpenPhone Chrome extension installed — this opens
+  // OpenPhone directly. Otherwise it goes to the OS dialer.
   const dialSystem = () => {
     if (!to) return;
     const digits = String(to).replace(/[^0-9+]/g, '');
@@ -238,17 +253,19 @@ function CallPanel({ leadId, phones, agentName, onLogged }) {
       >
         Call {to} via OpenPhone
       </button>
-      <p className="text-[10px] text-gray-400 text-center">
-        Opens OpenPhone desktop. If you don't have it installed, you can{' '}
+      <p className="text-[10px] text-gray-400 text-center leading-relaxed">
+        Opens OpenPhone in a new tab and copies <span className="font-mono">{toE164(to)}</span> to your clipboard — paste into the dialer and press Enter.
+        <br />
+        Or{' '}
         <button
           type="button"
           onClick={dialSystem}
           disabled={!to}
           className="underline hover:text-gray-600 disabled:opacity-50"
         >
-          use the system dialer instead
+          use the system dialer
         </button>
-        .
+        {' '}(routes to OpenPhone if the Chrome extension or desktop app is installed).
       </p>
 
       {showLog && (
