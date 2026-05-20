@@ -218,9 +218,12 @@ if (isset($_GET['id'])) {
         }
     }
 
-    // Agents may only view leads assigned to them. Admins and marketers see all.
+    // Pipeline-stage agents (carfax / filter / tlo) only see leads
+    // assigned to them. Admins, marketers, and acquisition agents
+    // (sales_agent) work the full pipeline and can open any lead.
     $r = $user['role'] ?? null;
-    if ($r !== 'admin' && $r !== 'marketer') {
+    $fullOperator = in_array($r, ['admin', 'marketer', 'sales_agent'], true);
+    if (!$fullOperator) {
         $assignee = $row['crm_state']['assigned_user_id'] ?? null;
         if ((int) $assignee !== (int) $user['id']) {
             pipelineFail(403, 'Lead not assigned to you', 'lead_forbidden');
@@ -307,9 +310,16 @@ if (isset($_GET['lead_temperature']) && $_GET['lead_temperature'] !== '') {
 $userRole    = $user['role'] ?? null;
 $isAdmin     = $userRole === 'admin';
 $isMarketer  = $userRole === 'marketer';
-$isAgentOnly = !$isAdmin && !$isMarketer;
+// Acquisition Agents (sales_agent) work the full pipeline — they need to
+// browse + take action on any lead, not just the ones explicitly assigned
+// to them. Treated as "full operator" for visibility purposes alongside
+// admin and marketer. Only carfax / filter / tlo stage agents are still
+// scoped to their own assigned leads.
+$isFullOperator = $isAdmin || $isMarketer || $userRole === 'sales_agent';
+$isAgentOnly    = !$isFullOperator;
 if ($isAgentOnly) {
-    // Agents only ever see leads assigned to them — request params are ignored here.
+    // Pipeline-stage agents only ever see leads assigned to them — request
+    // params are ignored here.
     $where[] = 's.assigned_user_id = :me';
     $params[':me'] = (int) $user['id'];
     $needsStateJoin = true;
