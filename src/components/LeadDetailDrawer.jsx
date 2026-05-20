@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   LEAD_STATUSES, LEAD_PRIORITIES, LEAD_TEMPERATURES,
   STATUS_BY_KEY, PRIORITY_BY_KEY, TEMPERATURE_BY_KEY,
-  DEFAULT_LEAD_STATE, ACTIVITY_META, describeActivity, formatPrice,
+  DEFAULT_LEAD_STATE, ACTIVITY_META, describeActivity,
   CAMPAIGN_STATUS_META, RECIPIENT_STATUS_META, MARKETING_CHANNELS,
   LEAD_TIERS, TIER_BY_KEY, computeLeadTier, roleLabel,
 } from '../lib/crm';
@@ -1327,7 +1327,9 @@ function LeadDetailInner({ leadId, onClose, onChanged, onOpenLead }) {
   const [users, setUsers] = useState([]);
   const [availableLabels, setAvailableLabels] = useState([]);
   const [activityReloadKey, setActivityReloadKey] = useState(0);
-  const [notesSummary, setNotesSummary] = useState([]);
+  // notesSummary was used by the now-removed latest-note preview at the
+  // top of the drawer. NotesSection still has its own scoped list +
+  // editing UI below — the operator hits that directly.
 
   const loadDetail = useCallback(async () => {
     try {
@@ -1382,9 +1384,34 @@ function LeadDetailInner({ leadId, onClose, onChanged, onOpenLead }) {
             <div className="min-w-0">
               <p className="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">Lead</p>
               <h2 className="text-base sm:text-lg font-semibold text-gray-900 truncate mt-0.5">{title}</h2>
-              {detail?.normalized_payload?.vin && (
-                <p className="text-[11px] text-gray-500 mt-1 font-mono">VIN {detail.normalized_payload.vin}</p>
-              )}
+              {(() => {
+                const np = detail?.normalized_payload || {};
+                if (!detail) return null;
+                // Build the VIN line + vehicle quick-facts in the same
+                // small grey font. VIN keeps its monospace; year/make/
+                // model/miles run regular so they read as one sentence.
+                const ymm = [np.year, np.make, np.model].filter(Boolean).join(' ');
+                const milesNum = (() => {
+                  const raw = np.mileage ?? np.LastReportedMiles;
+                  if (raw === undefined || raw === null || raw === '') return null;
+                  const n = Number(String(raw).replace(/[,\s]/g, ''));
+                  return Number.isFinite(n) ? n.toLocaleString() : String(raw);
+                })();
+                if (!np.vin && !ymm && !milesNum) return null;
+                return (
+                  <p className="text-[11px] text-gray-500 mt-1 whitespace-nowrap truncate">
+                    {np.vin && (
+                      <>
+                        <span className="font-mono">VIN {np.vin}</span>
+                        {(ymm || milesNum) && <span className="text-gray-300"> · </span>}
+                      </>
+                    )}
+                    {ymm && <span>{ymm}</span>}
+                    {ymm && milesNum && <span className="text-gray-300"> · </span>}
+                    {milesNum && <span>{milesNum} mi</span>}
+                  </p>
+                );
+              })()}
             </div>
             <div className="flex items-center gap-1">
               {detail && (
@@ -1416,35 +1443,20 @@ function LeadDetailInner({ leadId, onClose, onChanged, onOpenLead }) {
           </div>
           {detail && (
             <>
+              {/* Header chips — intentionally just the five tags the
+                  operator cares about at a glance:
+                    Tier · Status · Priority · Temperature · Agent.
+                  Batch / Row # / notes-count / price / latest-note
+                  used to live here too; they were noise. Source file
+                  and batch metadata stay available in the Source
+                  section at the bottom of the drawer. */}
               <div className="flex items-center gap-2 mt-3 flex-wrap">
                 <TierPill tierKey={detail.tier || computeLeadTier(detail.normalized_payload || {})} />
                 <StatusPill statusKey={crmState.status} />
                 <PriorityPill priorityKey={crmState.priority} />
                 <TemperaturePill temperatureKey={crmState.lead_temperature} />
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-gray-50 text-gray-700 border border-gray-100">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-gray-50 text-gray-700 border border-gray-100 whitespace-nowrap">
                   {crmState.assigned_user_name ? `Agent: ${crmState.assigned_user_name}` : 'Unassigned'}
-                </span>
-                {notesSummary.length > 0 && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-100">
-                    {notesSummary.length} {notesSummary.length === 1 ? 'note' : 'notes'}
-                  </span>
-                )}
-                <span
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100"
-                  title={`Imported ${formatDate(detail.imported_at)}`}
-                >
-                  {/* Several batches can share a name when the same file
-                      was re-uploaded — append the import date so the
-                      drawer chip identifies the exact one. */}
-                  Batch: {detail.batch_name}
-                  {detail.imported_at && (
-                    <span className="text-emerald-500 font-normal ml-1">
-                      ({new Date(String(detail.imported_at).replace(' ', 'T')).toLocaleDateString()})
-                    </span>
-                  )}
-                </span>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-100">
-                  Row #{detail.source_row_number}
                 </span>
               </div>
 
@@ -1457,22 +1469,6 @@ function LeadDetailInner({ leadId, onClose, onChanged, onOpenLead }) {
                   leads={detail.related_leads}
                   onOpen={onOpenLead}
                 />
-              )}
-              {(crmState.price_wanted !== null || crmState.price_offered !== null) && (
-                <div className="flex items-center gap-3 mt-2 text-[11px] text-gray-600">
-                  <span><span className="text-gray-400">Wanted:</span> <span className="font-semibold text-gray-800">{formatPrice(crmState.price_wanted)}</span></span>
-                  <span className="text-gray-300">·</span>
-                  <span><span className="text-gray-400">Offered:</span> <span className="font-semibold text-gray-800">{formatPrice(crmState.price_offered)}</span></span>
-                </div>
-              )}
-              {notesSummary[0] && (
-                <div className="mt-2 rounded-lg bg-sky-50/60 border border-sky-100 px-2.5 py-1.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-sky-700">Latest note</p>
-                  <p className="text-xs text-gray-700 mt-0.5 line-clamp-2 whitespace-pre-wrap break-words">
-                    {notesSummary[0].note}
-                  </p>
-                  <p className="text-[10px] text-gray-500 mt-0.5">— {notesSummary[0].user_name}</p>
-                </div>
               )}
             </>
           )}
@@ -1533,7 +1529,6 @@ function LeadDetailInner({ leadId, onClose, onChanged, onOpenLead }) {
               <NotesSection
                 leadId={detail.id}
                 currentUser={user}
-                onNotesLoaded={setNotesSummary}
                 defaultOpen={!isAgent}
               />
 

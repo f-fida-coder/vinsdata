@@ -257,6 +257,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
             if (!in_array($type, LEAD_ACTIVITY_TYPES, true)) continue;
             logLeadActivity($db, $leadId, $user['id'], $type, $old, $new);
         }
+
+        // Person-level fan-out. When a single human owns multiple
+        // vehicles in the CRM, the operator expects "they're now
+        // contacted" / "assigned to Saad" to apply to that human, not
+        // to a specific car. We propagate the person-level fields to
+        // every other live lead sharing the same digit-only phone.
+        //
+        // Per-car fields (price_wanted, price_offered, vehicle_color,
+        // vehicle_odometer) stay local to the lead the operator was
+        // looking at.
+        $personLevelFieldsChanged = array_intersect(
+            array_map(fn($c) => $c[0], $changes),
+            ['status_changed', 'priority_changed', 'temperature_changed',
+             'assigned', 'unassigned', 'tier_override_changed']
+        );
+        if (!empty($personLevelFieldsChanged)) {
+            $phoneStmt = $db->prepare(
+                "SELECT REGEXP_REPLACE(norm_phone_primary, '[^0-9]', '') p
+                   FROM imported_leads_raw
+                  WHERE id = :id
+                    AND norm_phone_primary IS NOT NULL
+                    AND norm_phone_primary <> ''"
+            );
+            $phoneStmt->execute([':id' => $leadId]);
+            $digits = (string) ($phoneStmt->fetchColumn() ?: '');
+            if ($digits !== '') {
+                // Find every other live lead on the same number.
+                $sibStmt = $db->prepare(
+                    "SELECT id FROM imported_leads_raw
+                      WHERE import_status = 'imported'
+                        AND deleted_at IS NULL
+                        AND id <> :self
+                        AND norm_phone_primary IS NOT NULL
+                        AND REGEXP_REPLACE(norm_phone_primary, '[^0-9]', '') = :digits"
+                );
+                $sibStmt->execute([':self' => $leadId, ':digits' => $digits]);
+                $siblingIds = array_map('intval', $sibStmt->fetchAll(PDO::FETCH_COLUMN));
+
+                if (!empty($siblingIds)) {
+                    // Upsert person-level fields on each sibling, keeping
+                    // any per-car prices / color / odometer untouched.
+                    $upsert = $db->prepare(
+                        'INSERT INTO lead_states
+                           (imported_lead_id, status, priority, assigned_user_id,
+                            lead_temperature, tier_override)
+                         VALUES (:lid, :status, :priority, :assignee, :temp, :tier_override)
+                         ON DUPLICATE KEY UPDATE
+                           status           = VALUES(status),
+                           priority         = VALUES(priority),
+                           assigned_user_id = VALUES(assigned_user_id),
+                           lead_temperature = VALUES(lead_temperature),
+                           tier_override    = VALUES(tier_override)'
+                    );
+                    foreach ($siblingIds as $sibId) {
+                        $upsert->execute([
+                            ':lid'           => $sibId,
+                            ':status'        => $next['status'],
+                            ':priority'      => $next['priority'],
+                            ':assignee'      => $next['assigned_user_id'],
+                            ':temp'          => $next['lead_temperature'],
+                            ':tier_override' => $next['tier_override'],
+                        ]);
+                    }
+                }
+            }
+        }
+
         $db->commit();
     } catch (Throwable $e) {
         $db->rollBack();

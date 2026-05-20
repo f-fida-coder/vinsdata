@@ -14,7 +14,15 @@ export default function LeadOutreachSection({ leadId, normalizedPayload, onChang
   const np = normalizedPayload || {};
   const phones = ['phone_primary', 'phone_secondary', 'phone_3', 'phone_4']
     .map((k) => np[k]).filter(Boolean);
-  const email = np.email_primary || '';
+  // Two email slots on the lead: email_primary ("Email 1") and the
+  // CarFax-side "Email 2" (stored as either "Email 2" with space or
+  // "Email2" depending on the source spreadsheet). Operator picks
+  // which one to send to via the composer dropdown when both exist.
+  const emails = [
+    np.email_primary,
+    np['Email 2'] || np.Email2,
+  ].filter(Boolean);
+  const email = emails[0] || '';
   const ymm = [np.year, np.make, np.model].filter(Boolean).join(' ');
   const vin = np.vin || '';
   const greeting = np.first_name ? `Hi ${np.first_name},` : 'Hello,';
@@ -74,7 +82,7 @@ export default function LeadOutreachSection({ leadId, normalizedPayload, onChang
 
       {tab === 'email' && (
         email
-          ? <Composer kind="email" leadId={leadId} initialTo={email} initialSubject={defaultSubject} initialBody={defaultEmailBody} onSent={onSent} />
+          ? <Composer kind="email" leadId={leadId} initialTo={email} emails={emails} initialSubject={defaultSubject} initialBody={defaultEmailBody} onSent={onSent} />
           : <p className="text-xs text-gray-400 italic py-2">No email on file for this lead.</p>
       )}
 
@@ -114,7 +122,7 @@ function OutreachTab({ active, onClick, disabled, children }) {
   );
 }
 
-function Composer({ kind, leadId, initialTo, initialSubject, initialBody, phones, onSent }) {
+function Composer({ kind, leadId, initialTo, initialSubject, initialBody, phones, emails, onSent }) {
   const [to, setTo] = useState(initialTo || '');
   const [subject, setSubject] = useState(initialSubject || '');
   const [body, setBody] = useState(initialBody || '');
@@ -176,6 +184,15 @@ function Composer({ kind, leadId, initialTo, initialSubject, initialBody, phones
         {kind === 'sms' && phones && phones.length > 1 ? (
           <select value={to} onChange={(e) => setTo(e.target.value)} className={inputCls}>
             {phones.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        ) : kind === 'email' && emails && emails.length > 1 ? (
+          // Email 1 / Email 2 picker. Operator selects which address to
+          // send to; the first one is selected by default to match the
+          // legacy single-address behavior.
+          <select value={to} onChange={(e) => setTo(e.target.value)} className={inputCls}>
+            {emails.map((e, i) => (
+              <option key={e} value={e}>Email {i + 1} · {e}</option>
+            ))}
           </select>
         ) : (
           <input
