@@ -317,6 +317,7 @@ function AgentsPanel({ rows, isAdmin }) {
               <tr>
                 <th>Agent</th>
                 <th style={{ textAlign: 'right' }}>Leads</th>
+                <th style={{ textAlign: 'right' }}>Contacted</th>
                 <th style={{ textAlign: 'right' }}>Hot</th>
                 <th style={{ textAlign: 'right' }}>Closed</th>
                 <th style={{ textAlign: 'right' }}>Tasks</th>
@@ -333,6 +334,20 @@ function AgentsPanel({ rows, isAdmin }) {
                   </td>
                   <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
                     {r.total_assigned.toLocaleString()}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {/* Click → leads filtered to this agent + status=contacted
+                        so admins can drill straight into "who has Saad
+                        actually been working today". */}
+                    {r.contacted > 0 ? (
+                      <Link
+                        to={`/leads?assigned_user_id=${r.user_id}&status=contacted`}
+                        className="dash-pill"
+                        style={{ background: '#dbeafe', color: '#1d4ed8' }}
+                      >
+                        {r.contacted}
+                      </Link>
+                    ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     {r.hot > 0 ? <span className="dash-pill dash-pill-hot">{r.hot}</span> : <span style={{ color: 'var(--text-3)' }}>—</span>}
