@@ -139,6 +139,17 @@ jobs:
               "$USER@$HOST" \
               "chmod 0775 '$DEPLOY_DIR/api/uploads' || true && chown $USER '$DEPLOY_DIR/api/uploads' || true && ls -ld '$DEPLOY_DIR/api/uploads'"
 
+      - name: Force OPcache refresh on all PHP files
+        # rsync sometimes leaves LSPHP's OPcache out of sync with the new
+        # files on disk → every PHP endpoint 500s until workers cycle. Has
+        # hit production 4+ times (0fb1650, 3462188, 522bb97, a2fca50).
+        # Touching every .php file gives them a fresh mtime so OPcache
+        # invalidates and reloads from disk on the next request.
+        run: |
+          ssh -p "$PORT" -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
+              "$USER@$HOST" \
+              "find '$DEPLOY_DIR/api' -name '*.php' -type f -exec touch {} + && echo 'OPcache reset: touched' \$(find '$DEPLOY_DIR/api' -name '*.php' -type f | wc -l) 'PHP files'"
+
       - name: Verify deployment
         run: |
           ssh -p "$PORT" -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
