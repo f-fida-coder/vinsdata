@@ -111,10 +111,6 @@ function formatVehicle(s) {
     .join(' ');
 }
 
-function normValue(lead, key) {
-  return lead?.normalized_payload?.[key] ?? '';
-}
-
 /** Single consistent empty-cell marker. */
 const EmDash = () => <span className="text-gray-300">—</span>;
 
@@ -171,39 +167,86 @@ function VinCell({ vin }) {
   );
 }
 
-// Keys with dedicated hardcoded columns — all other keys surface as "custom" columns.
+// Keys with dedicated hardcoded columns — all other keys surface as
+// "custom" columns. Includes both the normalized post-mapping keys and
+// the raw CarFax / TLO payload keys that now have first-class columns.
 const HARDCODED_PAYLOAD_KEYS = new Set([
   'vin', 'first_name', 'last_name', 'full_name',
   'phone_primary', 'phone_secondary', 'email_primary',
   'full_address', 'city', 'state', 'zip_code',
   'make', 'model', 'year', 'mileage',
+  // Surfaced as their own first-class columns (CarFax / TLO):
+  'Phone Number 3', 'Phone Number3', 'Phone Number 4', 'Phone Number4',
+  'Email 2', 'Email2',
+  'LastServiceDate', 'LastServiceLocationOnCarFax', 'LastServiceCityOnCarFax',
+  'NumberOfOwners', 'MostRecentPurchaseDate',
+  'AccidentHistory', 'TitleStatus', 'LienHolder',
+  'ServiceRecordCount',
 ]);
 
-// User-toggleable built-in table columns. "name" is always visible (the row anchor).
-// Each entry: [key, label, defaultHidden]
+// User-toggleable built-in table columns. "name" is always visible (the
+// row anchor). The order here drives the on-screen column order. Each
+// entry: [key, label, defaultHidden, sortKey?] — sortKey is the value
+// sent to the API on header click (default: same as key).
 const BUILTIN_COLUMNS = [
-  ['tier',        'Tier',        false],
-  ['status',      'Status',      false],
-  ['priority',    'Priority',    true],
-  ['temperature', 'Temperature', true],
-  ['agent',       'Agent',       true],
-  ['labels',      'Labels',      true],
-  ['wanted',      'Wanted',      true],
-  ['offered',     'Offered',     true],
-  ['vin',         'VIN',         true],
-  ['phone',       'Phone',       false],
-  ['email',       'Email',       false],
-  ['location',    'Location',    true],
-  ['vehicle',     'Vehicle',     false],
-  ['source_file', 'Source file', true],
-  ['batch',       'Batch',       true],
-  ['stage',       'Stage',       true],
-  ['row_number',  'Row #',       true],
-  ['imported',    'Imported',    true],
+  ['tier',                     'Tier',                  false, 'tier'],
+  ['status',                   'Status',                false, 'status'],
+  ['vehicle',                  'Vehicle',               false, 'make'],
+  ['last_service_date',        'Last service date',     false, 'LastServiceDate'],
+  ['last_service_location',    'Last service location', false, 'LastServiceLocationOnCarFax'],
+  ['last_service_city',        'Last service city',     false, 'LastServiceCityOnCarFax'],
+  ['number_of_owners',         '# Owners',              false, 'NumberOfOwners'],
+  ['recent_registration_date', 'Most recent reg.',      false, 'MostRecentPurchaseDate'],
+  ['accident_history',         'Accident history',      false, 'AccidentHistory'],
+  ['title_status',             'Title status',          false, 'TitleStatus'],
+  ['lien_holder',              'Lien holder',           false, 'LienHolder'],
+  ['phone_1',                  'Phone 1',               false, 'phone_primary'],
+  ['phone_2',                  'Phone 2',               false, 'phone_secondary'],
+  ['phone_3',                  'Phone 3',               false, 'Phone Number 3'],
+  ['phone_4',                  'Phone 4',               false, 'Phone Number 4'],
+  ['email_1',                  'Email 1',               false, 'email_primary'],
+  ['email_2',                  'Email 2',               false, 'Email 2'],
+  ['service_record_count',     'Service records',       false, 'ServiceRecordCount'],
+  // ---- below: legacy / advanced columns, hidden by default ----
+  ['priority',    'Priority',    true,  'priority'],
+  ['temperature', 'Temperature', true,  'lead_temperature'],
+  ['agent',       'Agent',       true,  null],
+  ['labels',      'Labels',      true,  null],
+  ['wanted',      'Wanted',      true,  'price_wanted'],
+  ['offered',     'Offered',     true,  'price_offered'],
+  ['vin',         'VIN',         true,  'vin'],
+  ['location',    'Location',    true,  'state'],
+  ['source_file', 'Source file', true,  'source_file'],
+  ['batch',       'Batch',       true,  'batch_name'],
+  ['stage',       'Stage',       true,  null],
+  ['row_number',  'Row #',       true,  'source_row_number'],
+  ['imported',    'Imported',    true,  'imported_at'],
 ];
-const BUILTIN_COLUMN_KEYS = BUILTIN_COLUMNS.map(([k]) => k);
+const BUILTIN_COLUMN_KEYS   = BUILTIN_COLUMNS.map(([k]) => k);
 const BUILTIN_COLUMN_LABELS = Object.fromEntries(BUILTIN_COLUMNS.map(([k, l]) => [k, l]));
+const BUILTIN_SORT_KEYS     = Object.fromEntries(BUILTIN_COLUMNS.map(([k, , , s]) => [k, s ?? null]));
 const DEFAULT_HIDDEN_BUILTINS = BUILTIN_COLUMNS.filter(([, , h]) => h).map(([k]) => k);
+
+// Coalesce raw payload keys whose spelling drifts in the data:
+//   "Phone Number 3" vs "Phone Number3", "Email 2" vs "Email2".
+// First non-empty wins so a partially-imported row still renders.
+const PAYLOAD_READER = {
+  phone_1:                  (np) => np.phone_primary,
+  phone_2:                  (np) => np.phone_secondary,
+  phone_3:                  (np) => np['Phone Number 3'] || np['Phone Number3'],
+  phone_4:                  (np) => np['Phone Number 4'] || np['Phone Number4'],
+  email_1:                  (np) => np.email_primary,
+  email_2:                  (np) => np['Email 2'] || np.Email2,
+  last_service_date:        (np) => np.LastServiceDate,
+  last_service_location:    (np) => np.LastServiceLocationOnCarFax,
+  last_service_city:        (np) => np.LastServiceCityOnCarFax,
+  number_of_owners:         (np) => np.NumberOfOwners ?? np.number_of_owners,
+  recent_registration_date: (np) => np.MostRecentPurchaseDate,
+  accident_history:         (np) => np.AccidentHistory,
+  title_status:             (np) => np.TitleStatus,
+  lien_holder:              (np) => np.LienHolder,
+  service_record_count:     (np) => np.ServiceRecordCount,
+};
 
 export default function LeadsPage() {
   const { user } = useAuth();
@@ -228,11 +271,13 @@ export default function LeadsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(50);
-  // Click a column header to sort. Defaults to no explicit sort (server
-  // falls back to "newest import first, then row #"). Direction starts at
-  // 'desc' on each new field so "click Age" → highest first, matching
-  // the operator's mental model for numeric columns.
-  const [sort, setSort] = useState({ field: '', dir: 'desc' });
+  // Click a column header to sort. Two-key max so the user can layer
+  // "tier desc + Age desc" or "make asc + Age desc". Plain click sets a
+  // single primary key; shift-click adds the field as a secondary (or
+  // promotes it if already in the list). Direction defaults to desc on
+  // each new field — matches the "highest age first" instinct for
+  // numeric columns. Empty array = server-default ordering.
+  const [sort, setSort] = useState(/** @type {{field:string,dir:'asc'|'desc'}[]} */ ([]));
   const [data, setData] = useState({ leads: [], total: 0, page: 1, per_page: 50 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -243,8 +288,12 @@ export default function LeadsPage() {
   const [selection, setSelection] = useState(() => new Set());
   const [bulkAction, setBulkAction] = useState(null);
   const [hiddenColumns, setHiddenColumns] = useState(() => {
+    // localStorage key is versioned. v1 stored a pre-redesign column list
+    // ('phone' instead of phone_1..4 etc); reading it back would leave new
+    // users staring at a 6-column subset. Bumping the key forces a one-time
+    // reset to the new defaults without trying to migrate stale sets.
     try {
-      const stored = localStorage.getItem('lead_hidden_columns');
+      const stored = localStorage.getItem('lead_hidden_columns_v2');
       if (stored) return new Set(JSON.parse(stored));
     } catch { /* fall through */ }
     return new Set(DEFAULT_HIDDEN_BUILTINS);
@@ -276,9 +325,9 @@ export default function LeadsPage() {
       });
       // empty_op only matters when empty_field is populated.
       if (!filters.empty_field) delete params.empty_op;
-      if (sort.field) {
-        params.sort = sort.field;
-        params.dir  = sort.dir;
+      if (sort.length > 0) {
+        params.sort = sort.map((s) => s.field).join(',');
+        params.dir  = sort.map((s) => s.dir).join(',');
       }
       const res = await api.get('/leads', { params });
       setData(res.data);
@@ -337,7 +386,7 @@ export default function LeadsPage() {
   };
 
   useEffect(() => {
-    try { localStorage.setItem('lead_hidden_columns', JSON.stringify([...hiddenColumns])); } catch { /* ignore quota */ }
+    try { localStorage.setItem('lead_hidden_columns_v2', JSON.stringify([...hiddenColumns])); } catch { /* ignore quota */ }
   }, [hiddenColumns]);
 
   const customColumns = useMemo(() => {
@@ -427,7 +476,10 @@ export default function LeadsPage() {
     const qs = new URLSearchParams();
     qs.set('format', 'csv');
     Object.entries(filters).forEach(([k, v]) => { if (v !== '' && v !== null && v !== undefined) qs.set(k, String(v)); });
-    if (sort.field) { qs.set('sort', sort.field); qs.set('dir', sort.dir); }
+    if (sort.length > 0) {
+      qs.set('sort', sort.map((s) => s.field).join(','));
+      qs.set('dir',  sort.map((s) => s.dir).join(','));
+    }
     return `/api/leads?${qs.toString()}`;
   }, [filters, sort]);
 
@@ -453,20 +505,44 @@ export default function LeadsPage() {
     setPage(1);
     setActiveViewId(null);
   };
-  const clearAll = () => { setFilters(EMPTY_FILTERS); setSearchInput(''); setPage(1); setActiveViewId(null); setSort({ field: '', dir: 'desc' }); };
+  const clearAll = () => { setFilters(EMPTY_FILTERS); setSearchInput(''); setPage(1); setActiveViewId(null); setSort([]); };
   const updateFilter = (key, value) => { setFilters((prev) => ({ ...prev, [key]: value })); setPage(1); setActiveViewId(null); };
 
-  // Click a column header to toggle sort. First click → desc on that field
-  // (matches the "highest age first" instinct for numeric columns); second
-  // → asc; third → clear sort. Custom keys go through verbatim — server
-  // validates them against [A-Za-z0-9_ -] before building the ORDER BY.
-  const toggleSort = (field) => {
+  // Click a column header to toggle sort.
+  //   plain click → set as the only primary; cycles desc → asc → clear
+  //   shift-click → toggle as secondary (max 2 sort keys total):
+  //                 not present → add as desc at position 2
+  //                 already at position 2, desc → flip to asc
+  //                 already at position 2, asc → remove
+  //                 already at position 1 → cycle dir
+  // Server validates field names against [A-Za-z0-9_ -] before embedding.
+  const toggleSort = (field, additive = false) => {
     if (!field) return;
     setPage(1);
     setSort((prev) => {
-      if (prev.field !== field) return { field, dir: 'desc' };
-      if (prev.dir === 'desc')  return { field, dir: 'asc' };
-      return { field: '', dir: 'desc' };
+      const idx = prev.findIndex((s) => s.field === field);
+      if (!additive) {
+        if (idx === 0 && prev.length === 1) {
+          if (prev[0].dir === 'desc') return [{ field, dir: 'asc' }];
+          return []; // third click clears
+        }
+        return [{ field, dir: 'desc' }];
+      }
+      // additive (shift-click)
+      if (idx === -1) {
+        // Cap at 2 keys total — drop the oldest secondary if we'd overflow.
+        const base = prev.length >= 2 ? prev.slice(0, 1) : prev;
+        return [...base, { field, dir: 'desc' }];
+      }
+      const next = prev.slice();
+      const current = next[idx];
+      if (current.dir === 'desc') {
+        next[idx] = { field, dir: 'asc' };
+        return next;
+      }
+      // asc → remove
+      next.splice(idx, 1);
+      return next;
     });
   };
 
@@ -860,29 +936,32 @@ export default function LeadsPage() {
                     />
                   </th>
                   <SortableTh label="Name" sortKey="last_name" sort={sort} onSort={toggleSort} className="px-2" />
-                  {!hiddenColumns.has('tier')        && <SortableTh label="Tier"        sortKey="tier"             sort={sort} onSort={toggleSort} />}
-                  {!hiddenColumns.has('status')      && <SortableTh label="Status"      sortKey="status"           sort={sort} onSort={toggleSort} />}
-                  {!hiddenColumns.has('priority')    && <SortableTh label="Priority"    sortKey="priority"         sort={sort} onSort={toggleSort} className="hidden sm:table-cell" />}
-                  {!hiddenColumns.has('temperature') && <SortableTh label="Temperature" sortKey="lead_temperature" sort={sort} onSort={toggleSort} className="hidden sm:table-cell" />}
-                  {!hiddenColumns.has('agent')       && <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Agent</th>}
-                  {!hiddenColumns.has('labels')      && <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Labels</th>}
-                  {!hiddenColumns.has('wanted')      && <SortableTh label="Wanted"  sortKey="price_wanted"  sort={sort} onSort={toggleSort} className="hidden xl:table-cell" align="right" />}
-                  {!hiddenColumns.has('offered')     && <SortableTh label="Offered" sortKey="price_offered" sort={sort} onSort={toggleSort} className="hidden xl:table-cell" align="right" />}
-                  {!hiddenColumns.has('vin')         && <SortableTh label="VIN"     sortKey="vin"           sort={sort} onSort={toggleSort} className="hidden lg:table-cell" />}
-                  {!hiddenColumns.has('phone')       && <SortableTh label="Phone"   sortKey="phone_primary" sort={sort} onSort={toggleSort} />}
-                  {!hiddenColumns.has('email')       && <SortableTh label="Email"   sortKey="email_primary" sort={sort} onSort={toggleSort} className="hidden lg:table-cell" />}
-                  {!hiddenColumns.has('location')    && <SortableTh label="Location" sortKey="state"        sort={sort} onSort={toggleSort} className="hidden md:table-cell" />}
-                  {!hiddenColumns.has('vehicle')     && <SortableTh label="Vehicle"  sortKey="make"         sort={sort} onSort={toggleSort} className="hidden md:table-cell" />}
-                  {!hiddenColumns.has('source_file') && <SortableTh label="Source file" sortKey="source_file"  sort={sort} onSort={toggleSort} className="hidden lg:table-cell" />}
-                  {!hiddenColumns.has('batch')       && <SortableTh label="Batch"       sortKey="batch_name"   sort={sort} onSort={toggleSort} className="hidden lg:table-cell" />}
-                  {!hiddenColumns.has('stage')       && <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Stage</th>}
-                  {!hiddenColumns.has('row_number')  && <SortableTh label="Row #"       sortKey="source_row_number" sort={sort} onSort={toggleSort} className="hidden xl:table-cell" />}
-                  {!hiddenColumns.has('imported')    && <SortableTh label="Imported"    sortKey="imported_at"       sort={sort} onSort={toggleSort} className="hidden lg:table-cell" />}
+                  {BUILTIN_COLUMNS.map(([key, label]) => {
+                    if (hiddenColumns.has(key)) return null;
+                    const sortKey = BUILTIN_SORT_KEYS[key];
+                    // Columns without a sortable backing field (agent name,
+                    // labels list, stage badge) render as plain headers.
+                    if (!sortKey) {
+                      return (
+                        <th key={`h-${key}`} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                          {label}
+                        </th>
+                      );
+                    }
+                    return (
+                      <SortableTh
+                        key={`h-${key}`}
+                        label={label}
+                        sortKey={sortKey}
+                        sort={sort}
+                        onSort={toggleSort}
+                      />
+                    );
+                  })}
                   {visibleCustomColumns.map((k) => (
-                    // Custom columns (raw payload keys) are server-sortable.
-                    // Server casts to DECIMAL for numeric ordering; string
-                    // fallback is the tiebreaker, so "Age", "NumberOfOwners",
-                    // "ServiceRecordCount" sort numerically as expected.
+                    // Custom columns (raw payload keys not yet promoted to
+                    // built-ins) keep working — server validates the key
+                    // and casts to DECIMAL for numeric ordering.
                     <SortableTh
                       key={`h-${k}`}
                       label={k}
@@ -937,112 +1016,24 @@ export default function LeadsPage() {
                       <td className="px-2 py-2">
                         <div className="text-sm font-semibold text-gray-900 truncate max-w-[220px]" title={name}>{name}</div>
                       </td>
-                      {!hiddenColumns.has('tier') && (
-                        <td className="px-3 py-2">
-                          <span
-                            title={tierMeta.hint}
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${tierMeta.bg} ${tierMeta.text}`}
-                          >
-                            <span className={`w-1.5 h-1.5 rounded-full ${tierMeta.dot}`} />{tierMeta.short}
-                          </span>
-                        </td>
-                      )}
-                      {!hiddenColumns.has('status') && (
-                        <td className="px-3 py-2">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${statusMeta.bg} ${statusMeta.text}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dot}`} />{statusMeta.label}
-                          </span>
-                        </td>
-                      )}
-                      {!hiddenColumns.has('priority') && (
-                        <td className="hidden sm:table-cell px-3 py-2">
-                          <PriorityCell priorityKey={crm.priority} />
-                        </td>
-                      )}
-                      {!hiddenColumns.has('temperature') && (
-                        <td className="hidden sm:table-cell px-3 py-2">
-                          {temperatureMeta ? (
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${temperatureMeta.bg} ${temperatureMeta.text}`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${temperatureMeta.dot}`} />{temperatureMeta.label}
-                            </span>
-                          ) : <EmDash />}
-                        </td>
-                      )}
-                      {!hiddenColumns.has('agent') && (
-                        <td className="hidden md:table-cell px-3 py-2">
-                          <AgentCell name={crm.assigned_user_name} />
-                        </td>
-                      )}
-                      {!hiddenColumns.has('labels') && (
-                        <td className="hidden md:table-cell px-3 py-2">
-                          {labels.length === 0 ? <EmDash /> : (
-                            <div className="flex flex-wrap items-center gap-1 max-w-[220px]">
-                              {labels.slice(0, 3).map((l) => (
-                                <span key={l.id} className="inline-flex items-center text-[10px] font-medium text-white px-1.5 py-0.5 rounded" style={{ backgroundColor: l.color }}>
-                                  {l.name}
-                                </span>
-                              ))}
-                              {labels.length > 3 && (
-                                <span className="text-[10px] text-gray-500">+{labels.length - 3}</span>
-                              )}
-                            </div>
-                          )}
-                        </td>
-                      )}
-                      {!hiddenColumns.has('wanted') && (
-                        <td className="hidden xl:table-cell px-3 py-2 text-[13px] text-gray-700 text-right tabular-nums">
-                          {crm.price_wanted != null ? formatPrice(crm.price_wanted) : <EmDash />}
-                        </td>
-                      )}
-                      {!hiddenColumns.has('offered') && (
-                        <td className="hidden xl:table-cell px-3 py-2 text-[13px] text-gray-700 text-right tabular-nums">
-                          {crm.price_offered != null ? formatPrice(crm.price_offered) : <EmDash />}
-                        </td>
-                      )}
-                      {!hiddenColumns.has('vin') && (
-                        <td className="hidden lg:table-cell px-3 py-2"><VinCell vin={normValue(lead, 'vin')} /></td>
-                      )}
-                      {!hiddenColumns.has('phone') && (
-                        <td className="px-3 py-2 text-[13px] text-gray-700 tabular-nums whitespace-nowrap">
-                          {normValue(lead, 'phone_primary') ? formatPhone(normValue(lead, 'phone_primary')) : <EmDash />}
-                        </td>
-                      )}
-                      {!hiddenColumns.has('email') && (
-                        <td className="hidden lg:table-cell px-3 py-2 text-[13px] text-gray-700 truncate max-w-[180px]" title={normValue(lead, 'email_primary') || ''}>
-                          {normValue(lead, 'email_primary') || <EmDash />}
-                        </td>
-                      )}
-                      {!hiddenColumns.has('location') && (
-                        <td className="hidden md:table-cell px-3 py-2 text-[13px] text-gray-600 whitespace-nowrap">
-                          {location && location !== '—' ? location : <EmDash />}
-                        </td>
-                      )}
-                      {!hiddenColumns.has('vehicle') && (
-                        <td className="hidden md:table-cell px-3 py-2 text-[13px] text-gray-700 whitespace-nowrap truncate max-w-[200px]" title={vehicle}>
-                          {vehicle && vehicle !== '—' ? formatVehicle(vehicle) : <EmDash />}
-                        </td>
-                      )}
-                      {!hiddenColumns.has('source_file') && (
-                        <td className="hidden lg:table-cell px-3 py-2 text-[12px] text-gray-500 truncate max-w-[180px]" title={lead.file_display_name || lead.file_name || ''}>
-                          {lead.file_display_name || lead.file_name || <EmDash />}
-                        </td>
-                      )}
-                      {!hiddenColumns.has('batch') && (
-                        <td className="hidden lg:table-cell px-3 py-2 text-[12px] text-gray-500 truncate max-w-[180px]" title={lead.batch_name || ''}>
-                          {lead.batch_name || <EmDash />}
-                        </td>
-                      )}
-                      {!hiddenColumns.has('stage') && (
-                        <td className="hidden md:table-cell px-3 py-2">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 uppercase tracking-wide">{lead.source_stage}</span>
-                        </td>
-                      )}
-                      {!hiddenColumns.has('row_number') && (
-                        <td className="hidden xl:table-cell px-3 py-2 text-[11px] text-gray-400 tabular-nums">{lead.source_row_number}</td>
-                      )}
-                      {!hiddenColumns.has('imported') && (
-                        <td className="hidden lg:table-cell px-3 py-2 text-[11px] text-gray-400 whitespace-nowrap">{formatDate(lead.imported_at)}</td>
-                      )}
+                      {BUILTIN_COLUMNS.map(([key]) => {
+                        if (hiddenColumns.has(key)) return null;
+                        return (
+                          <BuiltinCell
+                            key={`c-${lead.id}-${key}`}
+                            colKey={key}
+                            lead={lead}
+                            np={np}
+                            crm={crm}
+                            labels={labels}
+                            location={location}
+                            vehicle={vehicle}
+                            tierMeta={tierMeta}
+                            statusMeta={statusMeta}
+                            temperatureMeta={temperatureMeta}
+                          />
+                        );
+                      })}
                       {visibleCustomColumns.map((k) => {
                         const v = np[k];
                         const display = v === undefined || v === null || v === '' ? null : String(v);
@@ -1184,23 +1175,152 @@ function ColumnsMenu({ open, onOpenChange, customColumns, hiddenColumns, onToggl
 }
 
 /**
- * Sortable column header. Click toggles desc → asc → off for that field;
- * an arrow indicator shows the active direction. Server side validates
+ * One built-in table cell. Centralizes per-column rendering so the row
+ * map stays compact and the column-order array in BUILTIN_COLUMNS is the
+ * single source of truth for "what shows up where" in the table.
+ *
+ * Anything not in the explicit switch falls through to a generic
+ * payload-key reader (via PAYLOAD_READER) for the new CarFax / TLO
+ * columns — keeps the per-column code in one place.
+ */
+function BuiltinCell({ colKey, lead, np, crm, labels, location, vehicle, tierMeta, statusMeta, temperatureMeta }) {
+  const td = (cls, children) => (
+    <td className={`px-3 py-2 ${cls}`}>{children}</td>
+  );
+  switch (colKey) {
+    case 'tier':
+      return td('', (
+        <span title={tierMeta.hint} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${tierMeta.bg} ${tierMeta.text}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${tierMeta.dot}`} />{tierMeta.short}
+        </span>
+      ));
+    case 'status':
+      return td('', (
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${statusMeta.bg} ${statusMeta.text}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dot}`} />{statusMeta.label}
+        </span>
+      ));
+    case 'priority':
+      return <td className="hidden sm:table-cell px-3 py-2"><PriorityCell priorityKey={crm.priority} /></td>;
+    case 'temperature':
+      return (
+        <td className="hidden sm:table-cell px-3 py-2">
+          {temperatureMeta ? (
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${temperatureMeta.bg} ${temperatureMeta.text}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${temperatureMeta.dot}`} />{temperatureMeta.label}
+            </span>
+          ) : <EmDash />}
+        </td>
+      );
+    case 'agent':
+      return <td className="hidden md:table-cell px-3 py-2"><AgentCell name={crm.assigned_user_name} /></td>;
+    case 'labels':
+      return (
+        <td className="hidden md:table-cell px-3 py-2">
+          {labels.length === 0 ? <EmDash /> : (
+            <div className="flex flex-wrap items-center gap-1 max-w-[220px]">
+              {labels.slice(0, 3).map((l) => (
+                <span key={l.id} className="inline-flex items-center text-[10px] font-medium text-white px-1.5 py-0.5 rounded" style={{ backgroundColor: l.color }}>
+                  {l.name}
+                </span>
+              ))}
+              {labels.length > 3 && <span className="text-[10px] text-gray-500">+{labels.length - 3}</span>}
+            </div>
+          )}
+        </td>
+      );
+    case 'wanted':
+      return <td className="hidden xl:table-cell px-3 py-2 text-[13px] text-gray-700 text-right tabular-nums">{crm.price_wanted != null ? formatPrice(crm.price_wanted) : <EmDash />}</td>;
+    case 'offered':
+      return <td className="hidden xl:table-cell px-3 py-2 text-[13px] text-gray-700 text-right tabular-nums">{crm.price_offered != null ? formatPrice(crm.price_offered) : <EmDash />}</td>;
+    case 'vin':
+      return <td className="hidden lg:table-cell px-3 py-2"><VinCell vin={np.vin || ''} /></td>;
+    case 'phone_1':
+    case 'phone_2':
+    case 'phone_3':
+    case 'phone_4': {
+      const v = PAYLOAD_READER[colKey](np);
+      return td('text-[13px] text-gray-700 tabular-nums whitespace-nowrap', v ? formatPhone(v) : <EmDash />);
+    }
+    case 'email_1':
+    case 'email_2': {
+      const v = PAYLOAD_READER[colKey](np);
+      return (
+        <td className="px-3 py-2 text-[13px] text-gray-700 truncate max-w-[180px]" title={v || ''}>
+          {v || <EmDash />}
+        </td>
+      );
+    }
+    case 'location':
+      return <td className="hidden md:table-cell px-3 py-2 text-[13px] text-gray-600 whitespace-nowrap">{location && location !== '—' ? location : <EmDash />}</td>;
+    case 'vehicle':
+      return <td className="hidden md:table-cell px-3 py-2 text-[13px] text-gray-700 whitespace-nowrap truncate max-w-[200px]" title={vehicle}>{vehicle && vehicle !== '—' ? formatVehicle(vehicle) : <EmDash />}</td>;
+    case 'source_file':
+      return <td className="hidden lg:table-cell px-3 py-2 text-[12px] text-gray-500 truncate max-w-[180px]" title={lead.file_display_name || lead.file_name || ''}>{lead.file_display_name || lead.file_name || <EmDash />}</td>;
+    case 'batch':
+      return <td className="hidden lg:table-cell px-3 py-2 text-[12px] text-gray-500 truncate max-w-[180px]" title={lead.batch_name || ''}>{lead.batch_name || <EmDash />}</td>;
+    case 'stage':
+      return (
+        <td className="hidden md:table-cell px-3 py-2">
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 uppercase tracking-wide">{lead.source_stage}</span>
+        </td>
+      );
+    case 'row_number':
+      return <td className="hidden xl:table-cell px-3 py-2 text-[11px] text-gray-400 tabular-nums">{lead.source_row_number}</td>;
+    case 'imported':
+      return <td className="hidden lg:table-cell px-3 py-2 text-[11px] text-gray-400 whitespace-nowrap">{formatDate(lead.imported_at)}</td>;
+    case 'number_of_owners':
+    case 'service_record_count': {
+      const v = PAYLOAD_READER[colKey](np);
+      return td('text-[13px] text-gray-700 tabular-nums text-right', v === null || v === undefined || v === '' ? <EmDash /> : String(v));
+    }
+    default: {
+      // Last-service / accident / title / lien / registration / etc.
+      const reader = PAYLOAD_READER[colKey];
+      const v = reader ? reader(np) : null;
+      const txt = v === null || v === undefined || v === '' ? null : String(v);
+      return (
+        <td className="px-3 py-2 text-[13px] text-gray-700 truncate max-w-[200px] whitespace-nowrap" title={txt || ''}>
+          {txt ?? <EmDash />}
+        </td>
+      );
+    }
+  }
+}
+
+/**
+ * Sortable column header. Plain-click cycles desc → asc → off for that
+ * field as the only primary sort. Shift-click adds the field as a
+ * secondary sort key (max 2). A small "1" / "2" badge next to the
+ * arrow shows the position in the multi-sort chain. Server validates
  * the field name, so custom payload keys (e.g. "Age") flow through.
  */
 function SortableTh({ label, sortKey, sort, onSort, className = '', align = 'left', title }) {
-  const isActive = sort.field === sortKey;
-  const arrow = isActive ? (sort.dir === 'asc' ? '↑' : '↓') : '';
+  const idx = sort.findIndex((s) => s.field === sortKey);
+  const isActive = idx !== -1;
+  const dir = isActive ? sort[idx].dir : null;
+  const arrow = dir === 'asc' ? '↑' : dir === 'desc' ? '↓' : '';
   const justify = align === 'right' ? 'justify-end' : 'justify-start';
+  // Hint about shift-click on hover the first time someone notices the
+  // sort markers. Tooltip is the only affordance — chip would clutter.
+  const tooltip = title || `Sort by ${label}` + (sort.length > 0 ? ' · Shift-click to add as secondary' : '');
   return (
     <th
-      onClick={() => onSort(sortKey)}
-      title={title || `Sort by ${label}`}
+      onClick={(e) => onSort(sortKey, e.shiftKey)}
+      title={tooltip}
       className={`${className} px-3 py-2 text-${align} text-[10px] font-semibold uppercase tracking-wider cursor-pointer select-none ${isActive ? 'text-gray-900' : 'text-gray-500 hover:text-gray-800'}`}
     >
       <span className={`inline-flex items-center gap-1 ${justify}`}>
         <span className="truncate">{label}</span>
         {arrow && <span aria-hidden="true" className="text-[11px] leading-none">{arrow}</span>}
+        {isActive && sort.length > 1 && (
+          <span
+            aria-hidden="true"
+            className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-gray-200 text-[9px] font-bold text-gray-700 leading-none"
+          >
+            {idx + 1}
+          </span>
+        )}
       </span>
     </th>
   );

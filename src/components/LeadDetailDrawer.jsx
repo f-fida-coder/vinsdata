@@ -1384,6 +1384,38 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
                 onChanged={handleChildChanged}
               />
 
+              {/* Operator-facing collab sections come first — these are
+                  the highest-traffic actions ("set a label", "add a note",
+                  "log the call"). Outreach + BoS + lead details sit
+                  below them. */}
+              <LabelsSection
+                leadId={detail.id}
+                initialLabels={detail.labels || []}
+                availableLabels={availableLabels}
+                onChanged={handleChildChanged}
+                defaultOpen={!isAgent}
+              />
+
+              <TasksSection
+                leadId={detail.id}
+                currentUser={user}
+                users={users}
+                onChanged={handleChildChanged}
+                defaultOpen={!isAgent}
+              />
+
+              <ContactLogSection
+                leadId={detail.id}
+                onChanged={handleChildChanged}
+              />
+
+              <NotesSection
+                leadId={detail.id}
+                currentUser={user}
+                onNotesLoaded={setNotesSummary}
+                defaultOpen={!isAgent}
+              />
+
               <CollapsibleSection title="Outreach" defaultOpen>
                 <LeadOutreachSection
                   leadId={detail.id}
@@ -1471,38 +1503,10 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
                 })()}
               </CollapsibleSection>
 
-              <LabelsSection
-                leadId={detail.id}
-                initialLabels={detail.labels || []}
-                availableLabels={availableLabels}
-                onChanged={handleChildChanged}
-                defaultOpen={!isAgent}
-              />
-
-              <TasksSection
-                leadId={detail.id}
-                currentUser={user}
-                users={users}
-                onChanged={handleChildChanged}
-                defaultOpen={!isAgent}
-              />
-
-              <ContactLogSection
-                leadId={detail.id}
-                onChanged={handleChildChanged}
-              />
-
               <MarketingSection
                 leadId={detail.id}
                 currentStatus={crmState?.status}
                 onChanged={handleChildChanged}
-              />
-
-              <NotesSection
-                leadId={detail.id}
-                currentUser={user}
-                onNotesLoaded={setNotesSummary}
-                defaultOpen={!isAgent}
               />
 
               <ActivitySection leadId={detail.id} reloadKey={activityReloadKey} />

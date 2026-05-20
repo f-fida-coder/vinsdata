@@ -547,20 +547,27 @@ if (!empty($_GET['preview_count'])) {
     exit();
 }
 
-// Sort — operator picks any column header in the table. Default keeps the
-// historical order (newest imports first, then row order inside a batch).
+// Sort — operator picks one or two column headers in the table. Default
+// keeps the historical order (newest imports first, then row order inside
+// a batch). Multi-column sort lets the user "look at the newest McLarens
+// AND sort by Age desc" without losing the batch grouping.
+//
+// Param shape:
+//   sort=Age              dir=desc                  (single)
+//   sort=tier,Age         dir=asc,desc              (multi — paired by index)
+//   sort=Age              dir=asc                   (single)
 //
 // Native columns and indexed norm_* fields are sorted directly. Anything
 // else is read out of normalized_payload_json with a numeric CAST so "Age"
 // / "NumberOfOwners" / "ServiceRecordCount" sort like numbers even though
 // JSON stores them as strings. Trailing comma strip handles "154,123".
-//
-// Direction defaults to DESC (matches the user's "highest age to lowest"
-// expectation for numeric fields).
-$sortField = isset($_GET['sort']) ? trim((string) $_GET['sort']) : '';
-$sortDir   = strtolower((string) ($_GET['dir'] ?? 'desc'));
-if (!in_array($sortDir, ['asc','desc'], true)) $sortDir = 'desc';
-$dirSql = strtoupper($sortDir);
+
+$rawSort = isset($_GET['sort']) ? trim((string) $_GET['sort']) : '';
+$rawDir  = (string) ($_GET['dir'] ?? '');
+$sortFields = $rawSort === '' ? [] : array_values(array_filter(array_map('trim', explode(',', $rawSort)), fn($s) => $s !== ''));
+$sortDirs   = $rawDir  === '' ? [] : array_map('strtolower', array_map('trim', explode(',', $rawDir)));
+// Cap at 2 sort keys — anything beyond is operator fat-finger or abuse.
+if (count($sortFields) > 2) $sortFields = array_slice($sortFields, 0, 2);
 
 $nativeSorts = [
     'imported_at'       => 'b.imported_at',
@@ -582,22 +589,35 @@ $nativeSorts = [
     'batch_name'        => 'b.batch_name',
     'source_file'       => 'f.display_name',
 ];
-if ($sortField !== '' && isset($nativeSorts[$sortField])) {
-    // tier is an aliased computed expression — MySQL accepts it in ORDER BY.
-    $orderBy = $nativeSorts[$sortField] . " $dirSql, r.source_row_number ASC";
-} elseif ($sortField !== '' && preg_match('/^[A-Za-z0-9_ -]{1,64}$/', $sortField)) {
-    // Dynamic JSON-payload sort. Numeric cast (DECIMAL handles ints + floats).
-    // Empty / unparseable values land last regardless of direction so the
-    // top of a "highest Age" sort is always real data.
-    $path = "'$." . $sortField . "'";
-    $rawExpr  = "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, $path))";
-    $numExpr  = "CAST(REPLACE(REPLACE($rawExpr, ',', ''), ' ', '') AS DECIMAL(20,2))";
-    // `$numExpr IS NULL` puts unparseable values at the bottom regardless
-    // of direction. Tiebreaker by text so identical numerics stay stable.
-    $orderBy  = "($numExpr IS NULL) ASC, $numExpr $dirSql, $rawExpr $dirSql, r.id $dirSql";
-} else {
-    $orderBy = "b.imported_at DESC, r.source_row_number ASC";
+
+$orderParts = [];
+foreach ($sortFields as $i => $field) {
+    $dir = $sortDirs[$i] ?? ($sortDirs[0] ?? 'desc');
+    if (!in_array($dir, ['asc', 'desc'], true)) $dir = 'desc';
+    $dirSql = strtoupper($dir);
+
+    if (isset($nativeSorts[$field])) {
+        // tier is the aliased CASE — MySQL accepts the alias in ORDER BY.
+        $orderParts[] = $nativeSorts[$field] . " $dirSql";
+    } elseif (preg_match('/^[A-Za-z0-9_ -]{1,64}$/', $field)) {
+        // Dynamic JSON-payload sort. Numeric cast (DECIMAL handles ints
+        // + floats). Empty / unparseable values land last regardless of
+        // direction so the top of a "highest Age" sort is always real
+        // data. Tiebreaker by text so identical numerics stay stable.
+        $path = "'$.\"" . $field . "\"'";
+        $rawExpr = "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, $path))";
+        $numExpr = "CAST(REPLACE(REPLACE($rawExpr, ',', ''), ' ', '') AS DECIMAL(20,2))";
+        $orderParts[] = "($numExpr IS NULL) ASC";
+        $orderParts[] = "$numExpr $dirSql";
+        $orderParts[] = "$rawExpr $dirSql";
+    }
+    // Unknown field → silently skip; falls back to default tail below.
 }
+// Always include a stable tail so paging through identical rows doesn't
+// re-order between page hits.
+$orderParts[] = "b.imported_at DESC";
+$orderParts[] = "r.source_row_number ASC";
+$orderBy = implode(', ', $orderParts);
 
 // Page rows. Include the computed `tier` column so frontends don't need to
 // re-derive it from the normalized payload.
