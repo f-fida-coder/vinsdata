@@ -118,6 +118,14 @@ export default function HomeDashboard() {
 
         .dash-grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
         @media (min-width: 1024px) { .dash-grid { grid-template-columns: 1fr 1fr; } }
+        /* Tap-friendly row sizes on phones for the agent / files / makes
+           tables — bigger padding + visible tap surface so the per-row
+           click-through works without zooming. */
+        @media (max-width: 640px) {
+          .dash-table td { padding: 10px 8px; }
+          .dash-table th { padding: 8px; }
+          .dash-table { font-size: 13px; }
+        }
 
         .dash-funnel { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; align-items: stretch; }
         .dash-funnel-step {
@@ -125,6 +133,15 @@ export default function HomeDashboard() {
           border-right: 1px solid var(--border-0);
         }
         .dash-funnel-step:last-child { border-right: 0; }
+        /* Phone: stack the funnel two-per-row so each step keeps its
+           own value column instead of squishing four numbers into a
+           narrow screen. */
+        @media (max-width: 640px) {
+          .dash-funnel { grid-template-columns: repeat(2, 1fr); }
+          .dash-funnel-step { border-right: 1px solid var(--border-0); border-bottom: 1px solid var(--border-0); }
+          .dash-funnel-step:nth-child(2n) { border-right: 0; }
+          .dash-funnel-step:nth-last-child(-n + 2) { border-bottom: 0; }
+        }
         .dash-funnel-step-label { font-size: 11px; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
         .dash-funnel-step-value { font-size: 22px; font-weight: 700; color: var(--text-0); font-variant-numeric: tabular-nums; }
         .dash-funnel-step-conv { font-size: 10px; color: var(--text-3); }
@@ -239,7 +256,7 @@ function FilesPanel({ rows, isAdmin }) {
       {rows.length === 0 ? (
         <p style={{ fontSize: 12, color: 'var(--text-3)', padding: 12 }}>No imports yet.</p>
       ) : (
-        <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+        <div style={{ maxHeight: 360, overflowY: 'auto', overflowX: 'auto' }}>
           <table className="dash-table">
             <thead>
               <tr>
@@ -311,7 +328,7 @@ function AgentsPanel({ rows, isAdmin }) {
       {rows.length === 0 ? (
         <p style={{ fontSize: 12, color: 'var(--text-3)', padding: 12 }}>No leads assigned yet.</p>
       ) : (
-        <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+        <div style={{ maxHeight: 360, overflowY: 'auto', overflowX: 'auto' }}>
           <table className="dash-table">
             <thead>
               <tr>

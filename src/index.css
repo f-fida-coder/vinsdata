@@ -322,10 +322,13 @@ body { font-family: var(--font-sans); }
   margin-bottom: 20px;
 }
 .section-title {
-  font-family: var(--font-display);
+  /* Was Instrument Serif at weight 400 — too thin to anchor the page
+     header. Switched to Inter at 700 with a tight tracking so the
+     title reads with more presence on both desktop + mobile. */
+  font-family: var(--font-sans);
   font-size: 32px;
-  font-weight: 400;
-  letter-spacing: -0.02em;
+  font-weight: 700;
+  letter-spacing: -0.025em;
   color: var(--text-0);
   line-height: 1.1;
 }
