@@ -372,15 +372,30 @@ export default function DispatchPage() {
     );
   }, [events, search]);
 
+  // Calendar events were rendering with a saturated background + the
+  // default white text — on the blue/violet/rose statuses that combo
+  // was nearly unreadable. Switch to a pastel background (`bgSoft`)
+  // with the saturated hex kept on the LEFT BORDER as a status
+  // stripe, and force black-leaning text so titles are legible.
+  const BG_SOFT = {
+    '#6b7280': '#f3f4f6', // new        → gray-100
+    '#f59e0b': '#fef3c7', // notified   → amber-100
+    '#3b82f6': '#dbeafe', // assigned   → blue-100
+    '#8b5cf6': '#ede9fe', // in_transit → violet-100
+    '#10b981': '#d1fae5', // delivered  → emerald-100
+    '#f43f5e': '#ffe4e6', // cancelled  → rose-100
+  };
   const fcEvents = filteredEvents.map((e) => {
     const meta = TRANSPORT_STATUS_BY_KEY[e.status] || TRANSPORT_STATUS_BY_KEY.new;
+    const bgSoft = BG_SOFT[meta.hex] || '#f3f4f6';
     return {
       id:           String(e.id),
       title:        e.title,
       start:        e.start,
       allDay:       e.all_day,
-      backgroundColor: meta.hex,
+      backgroundColor: bgSoft,
       borderColor:     meta.hex,
+      textColor:       '#111827', // gray-900 — readable on every pastel
       extendedProps:   e,
     };
   });

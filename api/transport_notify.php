@@ -5,6 +5,10 @@ require_once __DIR__ . '/pipeline.php';
 require_once __DIR__ . '/marketing_send.php';
 initSession();
 
+// Open to every authenticated role: admin, marketer, sales_agent
+// (Acquisition Agent), carfax, filter, tlo. Acquisition agents
+// notify their own transporters for the leads they're working;
+// dispatch / stage agents notify on behalf of their pipeline.
 $user = requireAuth();
 $db   = getDBConnection();
 
