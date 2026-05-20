@@ -201,23 +201,35 @@ $byFile = array_map(function ($r) {
 // Every active user with at least one assigned lead. Agents see only
 // themselves (the scope filter is implicit: they can't have anyone
 // else's lead rows showing up). Admins/marketers see the full team.
-$agentScopeWhere = $isAdmin ? '' : 'AND s.assigned_user_id = :me';
+// We list every operator-role user (admin / marketer / sales_agent),
+// even those with zero leads assigned, so a brand-new acquisition
+// agent surfaces on the dashboard the moment they're created — the
+// previous INNER JOIN hid them until they had at least one lead.
+//
+// Pipeline-stage agents (carfax / filter / tlo) are intentionally
+// hidden — their work isn't pooled lead acquisition. If you ever
+// want to surface them too, widen the role filter.
+$agentScopeWhere = $isAdmin ? '' : 'AND (s.assigned_user_id IS NULL OR s.assigned_user_id = :me)';
 $agentParams     = $isAdmin ? [] : [':me' => (int) $user['id']];
 
+// COUNT(r.id) instead of COUNT(s.id) so deleted-lead assignments
+// don't inflate the per-agent total — the LEFT JOIN to
+// imported_leads_raw with the predicate yields NULL for archived
+// leads, and COUNT(non-null) skips them.
 $agentSql =
     "SELECT u.id AS user_id, u.name, u.role,
-            COUNT(s.id) AS total_assigned,
-            SUM(CASE WHEN s.status     = 'contacted'   THEN 1 ELSE 0 END) AS contacted,
-            SUM(CASE WHEN s.status     = 'interested'  THEN 1 ELSE 0 END) AS interested,
-            SUM(CASE WHEN s.lead_temperature = 'hot'   THEN 1 ELSE 0 END) AS hot,
-            SUM(CASE WHEN s.status     = 'deal_closed' THEN 1 ELSE 0 END) AS closed
+            COUNT(r.id) AS total_assigned,
+            SUM(CASE WHEN s.status     = 'contacted'   AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS contacted,
+            SUM(CASE WHEN s.status     = 'interested'  AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS interested,
+            SUM(CASE WHEN s.lead_temperature = 'hot'   AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS hot,
+            SUM(CASE WHEN s.status     = 'deal_closed' AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS closed
        FROM users u
-       JOIN lead_states s ON s.assigned_user_id = u.id
-       JOIN imported_leads_raw r ON r.id = s.imported_lead_id
+       LEFT JOIN lead_states s          ON s.assigned_user_id = u.id
+       LEFT JOIN imported_leads_raw r   ON r.id = s.imported_lead_id
         AND r.import_status = 'imported' AND r.deleted_at IS NULL
-      WHERE 1=1 $agentScopeWhere
+      WHERE u.role IN ('admin','marketer','sales_agent') $agentScopeWhere
       GROUP BY u.id, u.name, u.role
-      ORDER BY total_assigned DESC";
+      ORDER BY total_assigned DESC, u.name ASC";
 $agentStmt = $db->prepare($agentSql);
 $agentStmt->execute($agentParams);
 $agentRows = $agentStmt->fetchAll();
