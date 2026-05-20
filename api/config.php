@@ -146,6 +146,16 @@ function initSession(): void
 
 function getDBConnection(): PDO
 {
+    // Reuse one PDO per request — every PHP entrypoint that calls
+    // getDBConnection() multiple times (lead detail loaders, bulk
+    // actions, etc.) would otherwise open a fresh MySQL connection
+    // each time. Hostinger's max_connections_per_hour cap is 500 per
+    // user — every saved connection counts.
+    static $shared = null;
+    if ($shared instanceof PDO) {
+        return $shared;
+    }
+
     $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4";
 
     $options = [
@@ -153,13 +163,18 @@ function getDBConnection(): PDO
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES   => false,
         PDO::ATTR_TIMEOUT            => 5,
+        // Persistent so PHP-FPM keeps the underlying socket open
+        // across requests where the worker is reused. This is the
+        // single biggest lever against Hostinger's 500 conn/hour cap.
+        PDO::ATTR_PERSISTENT         => true,
         // Keep session collation aligned with schema defaults to avoid
         // "illegal mix of collations" on string comparisons.
         PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
     ];
 
     try {
-        return new PDO($dsn, DB_USER, DB_PASS, $options);
+        $shared = new PDO($dsn, DB_USER, DB_PASS, $options);
+        return $shared;
     } catch (PDOException $e) {
         // Without this, a DB outage manifests as a silent 500 with empty body
         // (display_errors is off in production). Catch and emit a clean JSON

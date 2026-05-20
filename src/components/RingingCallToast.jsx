@@ -19,8 +19,14 @@ import api from '../api';
  * Renders nothing if there are no active rings. Mounted once at the
  * DashboardLayout level so every page surfaces it consistently.
  */
-const POLL_IDLE_MS   = 5000;
-const POLL_ACTIVE_MS = 2000;
+// Hostinger MySQL caps the DB user at 500 connections per hour. The
+// previous 5s idle cadence burned ~720 polls/hour per signed-in user
+// — two or three operators online and we'd hit the cap. 30s idle is
+// gentle on the cap while still surfacing a ring inside the typical
+// rotation of a 4–6 ring incoming call. Once a card is on screen we
+// poll fast (3s) so the status transitions are snappy.
+const POLL_IDLE_MS   = 30000;
+const POLL_ACTIVE_MS = 3000;
 
 export default function RingingCallToast() {
   const [calls, setCalls] = useState([]);
