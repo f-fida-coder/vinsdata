@@ -146,16 +146,19 @@ function initSession(): void
 
 function getDBConnection(): PDO
 {
-    // Reuse one PDO per request — every PHP entrypoint that calls
-    // getDBConnection() multiple times (lead detail loaders, bulk
-    // actions, etc.) would otherwise open a fresh MySQL connection
-    // each time. Hostinger's max_connections_per_hour cap is 500 per
-    // user — every saved connection counts.
-    static $shared = null;
-    if ($shared instanceof PDO) {
-        return $shared;
-    }
-
+    // Fresh PDO per call. We tried two flavors of connection-reuse on
+    // Hostinger:
+    //   (a) PDO::ATTR_PERSISTENT — segfaulted PHP-FPM workers mid-
+    //       request when the cached socket was no longer valid;
+    //       symptom was generic LiteSpeed 500 with no JSON body.
+    //   (b) static $shared inside this function — kept the PDO alive
+    //       across requests because the worker stays warm, so stale
+    //       connections fataled subsequent requests until the worker
+    //       finally got cycled.
+    // Both produced the same "every endpoint suddenly 500s" outage.
+    // Connection cost on shared MariaDB is small enough to just pay
+    // it per request; we control churn with the polling cadence on
+    // the front end instead.
     $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4";
 
     $options = [
@@ -163,20 +166,13 @@ function getDBConnection(): PDO
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES   => false,
         PDO::ATTR_TIMEOUT            => 5,
-        // NOT persistent on Hostinger. PDO::ATTR_PERSISTENT with the
-        // shared-MariaDB plan was causing PHP-FPM workers to segfault
-        // mid-request when the cached socket was no longer valid —
-        // shows as a generic LiteSpeed 500 with no JSON body. The
-        // same-request static cache above still cuts the connection
-        // count enough for the 500/hour cap.
         // Keep session collation aligned with schema defaults to avoid
         // "illegal mix of collations" on string comparisons.
         PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
     ];
 
     try {
-        $shared = new PDO($dsn, DB_USER, DB_PASS, $options);
-        return $shared;
+        return new PDO($dsn, DB_USER, DB_PASS, $options);
     } catch (PDOException $e) {
         // Without this, a DB outage manifests as a silent 500 with empty body
         // (display_errors is off in production). Catch and emit a clean JSON
