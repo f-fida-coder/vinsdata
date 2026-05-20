@@ -154,19 +154,35 @@ function initSession(): void
 
 function getDBConnection(): PDO
 {
-    // Fresh PDO per call. We tried two flavors of connection-reuse on
-    // Hostinger:
-    //   (a) PDO::ATTR_PERSISTENT — segfaulted PHP-FPM workers mid-
-    //       request when the cached socket was no longer valid;
-    //       symptom was generic LiteSpeed 500 with no JSON body.
-    //   (b) static $shared inside this function — kept the PDO alive
-    //       across requests because the worker stays warm, so stale
-    //       connections fataled subsequent requests until the worker
-    //       finally got cycled.
-    // Both produced the same "every endpoint suddenly 500s" outage.
-    // Connection cost on shared MariaDB is small enough to just pay
-    // it per request; we control churn with the polling cadence on
-    // the front end instead.
+    // Worker-scoped reuse with a health probe. Background on the
+    // trade-offs we've burned through:
+    //
+    //   (a) PDO::ATTR_PERSISTENT — segfaulted PHP-FPM workers when
+    //       the cached socket went stale. Generic 500 outage.
+    //   (b) Static cache, no probe — workers kept reusing a dead
+    //       connection until they happened to bounce. Same outage.
+    //   (c) Fresh PDO per call — clean correctness, but on shared
+    //       Hostinger MariaDB the 500-connections-per-hour cap is
+    //       trivial to hit (3 operators clicking around for half
+    //       a day blow it). Lots of "Database is unreachable" UX.
+    //
+    // The fix: cache the PDO inside the worker (so a single FPM
+    // worker only opens one socket for its lifetime), but probe
+    // `SELECT 1` before handing it back. If the probe throws,
+    // reconnect. Cost: ~1 round-trip per request, but a TCP
+    // connect+TLS+handshake costs ~10–30 round-trips, so we still
+    // come out ~one order of magnitude ahead on connection volume.
+    static $cached = null;
+    if ($cached instanceof PDO) {
+        try {
+            $cached->query('SELECT 1')->fetchColumn();
+            return $cached;
+        } catch (Throwable $e) {
+            // Stale handle. Fall through to reconnect below.
+            $cached = null;
+        }
+    }
+
     $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4";
 
     $options = [
@@ -180,7 +196,8 @@ function getDBConnection(): PDO
     ];
 
     try {
-        return new PDO($dsn, DB_USER, DB_PASS, $options);
+        $cached = new PDO($dsn, DB_USER, DB_PASS, $options);
+        return $cached;
     } catch (PDOException $e) {
         // Without this, a DB outage manifests as a silent 500 with empty body
         // (display_errors is off in production). Catch and emit a clean JSON

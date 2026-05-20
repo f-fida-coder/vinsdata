@@ -19,12 +19,20 @@ import api from '../api';
  * Renders nothing if there are no active rings. Mounted once at the
  * DashboardLayout level so every page surfaces it consistently.
  */
-// Hostinger MySQL caps the DB user at 500 connections per hour. The
-// previous 5s idle cadence burned ~720 polls/hour per signed-in user
-// — two or three operators online and we'd hit the cap. 30s idle is
-// gentle on the cap while still surfacing a ring inside the typical
-// rotation of a 4–6 ring incoming call. Once a card is on screen we
-// poll fast (3s) so the status transitions are snappy.
+// Polling is gated behind the OpenPhone carrier-acceptance handshake.
+// Until that's approved by the carrier, the webhook can't deliver
+// call.* events, so polling the lookup endpoint is pure DB-connection
+// waste (the same Hostinger 500/hour cap we've been hitting all week).
+//
+// To re-enable when carrier approval lands, set the flag to true.
+// The frontend will pick up the change on the next deploy without
+// any other code path needing to know.
+const RINGING_CALLS_ENABLED = false;
+
+// Cadence used when the feature flag is on. 30s idle keeps the cap
+// gentle while still surfacing a ring inside the typical 4–6 ring
+// rotation. 3s active poll once a card is on screen so status
+// transitions feel snappy.
 const POLL_IDLE_MS   = 30000;
 const POLL_ACTIVE_MS = 3000;
 
@@ -48,6 +56,11 @@ export default function RingingCallToast() {
   }, []);
 
   useEffect(() => {
+    // Bail when the feature flag is off — no fetch, no timer, no
+    // re-renders. The component still mounts (so flipping the flag
+    // back on doesn't require a layout change), it just never polls.
+    if (!RINGING_CALLS_ENABLED) return;
+
     // Adaptive cadence: poll fast while a call is on-screen, slow
     // when idle. Chained setTimeout that re-evaluates per tick.
     let cancelled = false;
