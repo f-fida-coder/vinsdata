@@ -184,6 +184,18 @@ const HARDCODED_PAYLOAD_KEYS = new Set([
   'ServiceRecordCount',
 ]);
 
+// Raw payload keys we explicitly never want surfaced as table columns.
+// The TLO / CarFax feeds carry workflow scratch columns like
+// "1 = Interested" or "1= Hand Dial" — those are flags an analyst sets
+// before handoff to the CRM and are noise once a lead lives in here.
+// Hidden completely (not even in the Columns menu) so the operator
+// can't accidentally re-add them.
+const CUSTOM_COLUMN_BLOCKLIST = new Set([
+  '1 = Interested', '1= Interested',
+  '1 = handcall',   '1= handcall',
+  '1 = Hand Dial',  '1= Hand Dial', 'Hand Dial',
+]);
+
 // User-toggleable built-in table columns. "name" is always visible (the
 // row anchor). The order here drives the on-screen column order. Each
 // entry: [key, label, defaultHidden, sortKey?] — sortKey is the value
@@ -406,6 +418,7 @@ export default function LeadsPage() {
       const np = lead.normalized_payload || {};
       for (const k of Object.keys(np)) {
         if (HARDCODED_PAYLOAD_KEYS.has(k) || seen.has(k)) continue;
+        if (CUSTOM_COLUMN_BLOCKLIST.has(k)) continue;
         seen.add(k);
         order.push(k);
       }
