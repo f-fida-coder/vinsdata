@@ -27,17 +27,13 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 }
 
 $role    = $user['role'] ?? null;
-// Full operators see the whole CRM — admin, marketer, and acquisition
-// agents (sales_agent). Pipeline-stage agents (carfax / filter / tlo)
-// are scoped to their own assigned leads.
-$isFullOperator = in_array($role, ['admin', 'marketer', 'sales_agent'], true);
-// isAdmin is reused below as "should we show whole-business stats like
-// Unassigned and the multi-agent table". Keep it true for sales_agents
-// too — an acquisition agent needs the same dashboard to do their job.
-$isAdmin = $isFullOperator;
+$isAdmin = in_array($role, ['admin', 'marketer'], true);
 
-$selfScope  = $isFullOperator ? '' : 'JOIN lead_states ls_scope ON ls_scope.imported_lead_id = r.id AND ls_scope.assigned_user_id = :me';
-$selfParams = $isFullOperator ? [] : [':me' => (int) $user['id']];
+// Agents (including acquisition agents) see their own scope only —
+// the dashboard's "Total leads", funnel, files, makes are all scoped
+// to their assigned slice. Admins + marketers see the full CRM.
+$selfScope  = $isAdmin ? '' : 'JOIN lead_states ls_scope ON ls_scope.imported_lead_id = r.id AND ls_scope.assigned_user_id = :me';
+$selfParams = $isAdmin ? [] : [':me' => (int) $user['id']];
 
 // ---- KPIs ----
 $total = (int) (function () use ($db, $selfScope, $selfParams) {

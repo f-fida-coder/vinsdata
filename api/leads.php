@@ -218,12 +218,10 @@ if (isset($_GET['id'])) {
         }
     }
 
-    // Pipeline-stage agents (carfax / filter / tlo) only see leads
-    // assigned to them. Admins, marketers, and acquisition agents
-    // (sales_agent) work the full pipeline and can open any lead.
+    // Agents (including acquisition agents) may only view leads
+    // assigned to them. Admins and marketers see all.
     $r = $user['role'] ?? null;
-    $fullOperator = in_array($r, ['admin', 'marketer', 'sales_agent'], true);
-    if (!$fullOperator) {
+    if ($r !== 'admin' && $r !== 'marketer') {
         $assignee = $row['crm_state']['assigned_user_id'] ?? null;
         if ((int) $assignee !== (int) $user['id']) {
             pipelineFail(403, 'Lead not assigned to you', 'lead_forbidden');
@@ -261,6 +259,40 @@ if ($includeArchived === '1' || $includeArchived === 'only') {
     $where[] = 'r.deleted_at IS NOT NULL';
 } elseif ($includeArchived !== 'both') {
     $where[] = 'r.deleted_at IS NULL';
+}
+
+// Empty-contact filter. Roughly half of TLO-imported rows come back
+// with no phone / email / name (the TLO lookup failed — VIN field is
+// literally "No"). Those rows are noise in the working surface
+// because there's no one to call. Default to hiding them; the
+// operator can flip include_empty=1 to bring them back for a triage
+// pass (e.g. to re-run the TLO step).
+//
+// A lead is "has contact" if any of these is non-empty:
+//   norm_phone_primary, norm_email_primary,
+//   phone_secondary, "Phone Number 3", "Phone Number 4",
+//   "Email 2" / Email2
+//
+// CSV exports never filter — admin wants the full set there.
+if (!$isCsv) {
+    $includeEmpty = $_GET['include_empty'] ?? '';
+    if ($includeEmpty !== '1' && $includeEmpty !== 'true') {
+        $hasContact = "(
+            (r.norm_phone_primary IS NOT NULL AND r.norm_phone_primary <> '')
+         OR (r.norm_email_primary IS NOT NULL AND r.norm_email_primary <> '')
+         OR (JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '\$.phone_secondary')) IS NOT NULL
+             AND JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '\$.phone_secondary')) <> '')
+         OR (JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '\$.\"Phone Number 3\"')) IS NOT NULL
+             AND JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '\$.\"Phone Number 3\"')) <> '')
+         OR (JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '\$.\"Phone Number 4\"')) IS NOT NULL
+             AND JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '\$.\"Phone Number 4\"')) <> '')
+         OR (JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '\$.\"Email 2\"')) IS NOT NULL
+             AND JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '\$.\"Email 2\"')) <> '')
+         OR (JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '\$.Email2')) IS NOT NULL
+             AND JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '\$.Email2')) <> '')
+        )";
+        $where[] = $hasContact;
+    }
 }
 
 // Exact IDs
@@ -310,16 +342,14 @@ if (isset($_GET['lead_temperature']) && $_GET['lead_temperature'] !== '') {
 $userRole    = $user['role'] ?? null;
 $isAdmin     = $userRole === 'admin';
 $isMarketer  = $userRole === 'marketer';
-// Acquisition Agents (sales_agent) work the full pipeline — they need to
-// browse + take action on any lead, not just the ones explicitly assigned
-// to them. Treated as "full operator" for visibility purposes alongside
-// admin and marketer. Only carfax / filter / tlo stage agents are still
-// scoped to their own assigned leads.
-$isFullOperator = $isAdmin || $isMarketer || $userRole === 'sales_agent';
-$isAgentOnly    = !$isFullOperator;
+// Every agent role — including Acquisition Agents (sales_agent) — is
+// scoped to leads assigned to them. Admins + marketers see the full
+// pool. Acquisition agents are still owner-of-the-lead operators;
+// they just don't browse pools that aren't theirs.
+$isAgentOnly = !$isAdmin && !$isMarketer;
 if ($isAgentOnly) {
-    // Pipeline-stage agents only ever see leads assigned to them — request
-    // params are ignored here.
+    // Agents only ever see leads assigned to them — request params are
+    // ignored here.
     $where[] = 's.assigned_user_id = :me';
     $params[':me'] = (int) $user['id'];
     $needsStateJoin = true;

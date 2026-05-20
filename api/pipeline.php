@@ -116,15 +116,11 @@ function assertAdmin(array $user): void
 function assertCanMutateLead(PDO $db, array $user, int $leadId): string
 {
     $role = $user['role'] ?? null;
-    // Full operators (admin / marketer / sales_agent) can add notes,
-    // tasks, labels, and contact logs to any lead. Acquisition agents
-    // (sales_agent) work the whole pipeline — they aren't a stage-bound
-    // role like carfax / filter / tlo, so they get the same mutation
-    // surface as admin/marketer for these low-risk collaboration
-    // actions. Reassignment + lead deletion still go through their own
-    // admin-only gates elsewhere.
-    if (in_array($role, ['admin', 'marketer', 'sales_agent'], true)) return $role;
+    if ($role === 'admin' || $role === 'marketer') return $role;
 
+    // Every other role (sales_agent / carfax / filter / tlo) must own
+    // the lead. Sales agents add notes / tasks / labels / contact
+    // logs on their own assigned leads; they're not pooled operators.
     $stmt = $db->prepare('SELECT assigned_user_id FROM lead_states WHERE imported_lead_id = :lid');
     $stmt->execute([':lid' => $leadId]);
     $row = $stmt->fetch();

@@ -50,6 +50,10 @@ const EMPTY_FILTERS = {
   in_campaign_id: '',
   tier: '',
   include_archived: '', // '' = live only; '1' = archived only
+  // Empty-contact filter: '' (default) hides leads with no phone /
+  // email — they're TLO-lookup failures that can't be worked. '1'
+  // brings them back for a triage pass (e.g. re-running TLO).
+  include_empty: '',
   // Empty / has-value filter (CSV-joined list of column keys).
   // empty_op picks the polarity: '' / 'is_not_empty' = "has value",
   // 'is_empty' = "blank". Each field check uses the indexed norm_*
@@ -509,8 +513,9 @@ export default function LeadsPage() {
   const totalPages = Math.max(1, Math.ceil(data.total / perPage));
   const activeChips = useMemo(() => {
     // empty_op is a modifier — it renders alongside empty_field, not on
-    // its own chip. include_archived is the Archive toggle in the toolbar.
-    const skip = new Set(['q', 'empty_op', 'include_archived']);
+    // its own chip. include_archived + include_empty are toggle buttons
+    // in the toolbar; their own chip would be redundant.
+    const skip = new Set(['q', 'empty_op', 'include_archived', 'include_empty']);
     return Object.entries(filters)
       .filter(([k, v]) => v !== '' && !skip.has(k))
       // Default empty_op (is_not_empty) doesn't deserve a chip with no
@@ -759,6 +764,19 @@ export default function LeadsPage() {
           >
             <Icon name={filters.include_archived === '1' ? 'eye' : 'archive'} size={14} />
             <span style={{ marginLeft: 6 }}>{filters.include_archived === '1' ? 'Archived' : 'Archive'}</span>
+          </button>
+          {/* Empty-contact toggle. By default the server hides leads
+              with no phone / email (TLO-lookup failures). Flip on to
+              surface them — useful when triaging which files need a
+              re-run, but noise in the day-to-day working surface. */}
+          <button
+            type="button"
+            onClick={() => updateFilter('include_empty', filters.include_empty === '1' ? '' : '1')}
+            className={`vv-btn ${filters.include_empty === '1' ? 'vv-btn-primary' : 'vv-btn-ghost'}`}
+            title={filters.include_empty === '1' ? 'Currently showing leads with no contact info — click to hide them' : 'Include leads with no phone / email (TLO-lookup failures)'}
+          >
+            <Icon name="eye" size={14} />
+            <span style={{ marginLeft: 6 }}>{filters.include_empty === '1' ? 'Empty on' : 'Empty off'}</span>
           </button>
         </div>
 
