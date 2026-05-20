@@ -59,13 +59,19 @@ export default function LeadOutreachSection({ leadId, normalizedPayload, onChang
     + `- ${agentName}\n`
     + `${VINVAULT_CALLBACK_PHONE}`;
 
-  // SMS — same pitch, tightened to fit a couple of 160-char segments so
-  // we don't blow up segment cost on a long template.
+  // SMS — the voicemail follow-up script the team is running. Keeps
+  // the same dream-car pitch but explicitly references the voicemail
+  // that was just left, which converts better than a cold text.
   const defaultSmsBody =
-    `Hi ${greetingName}, this is ${agentName}. I'm hunting a ${ymmPhrase} (my dream car). `
-    + `Long shot — do you still have yours? Text/call back when you have a minute. - ${agentName} ${VINVAULT_CALLBACK_PHONE}`;
+    `Hi ${greetingName}, I just left you a voicemail about your ${ymmPhrase}. `
+    + `Not sure if you still have yours, but, I'm a cash buyer and I'm looking to add one to my personal collection. `
+    + `Call or txt me back when you can please.\n`
+    + `- ${agentName}`;
 
-  const [tab, setTab] = useState(email ? 'email' : phones.length > 0 ? 'sms' : 'email');
+  // Call tab is the default when there's a phone on file — calling is
+  // the highest-converting touch for cold acquisitions and we want it
+  // one click in.
+  const [tab, setTab] = useState(phones.length > 0 ? 'call' : email ? 'email' : 'sms');
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
 
@@ -93,6 +99,10 @@ export default function LeadOutreachSection({ leadId, normalizedPayload, onChang
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-1 text-[12px] border-b border-gray-200">
+        <OutreachTab active={tab === 'call'} onClick={() => setTab('call')} disabled={phones.length === 0}>
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 5a2 2 0 012-2h2.28a2 2 0 011.94 1.515l.66 2.64a2 2 0 01-.45 1.949L7.91 11.09a16 16 0 005 5l1.986-1.52a2 2 0 011.95-.45l2.64.66A2 2 0 0121 16.72V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+          Call
+        </OutreachTab>
         <OutreachTab active={tab === 'email'} onClick={() => setTab('email')} disabled={!email}>
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
           Email
@@ -102,9 +112,15 @@ export default function LeadOutreachSection({ leadId, normalizedPayload, onChang
           Text
         </OutreachTab>
         <span className="ml-auto text-[10px] text-gray-400">
-          {tab === 'email' ? 'via Gmail' : 'via OpenPhone'}
+          {tab === 'email' ? 'via Gmail' : tab === 'sms' ? 'via OpenPhone' : 'via system dialer'}
         </span>
       </div>
+
+      {tab === 'call' && (
+        phones.length > 0
+          ? <CallPanel leadId={leadId} phones={phones} agentName={agentName} onLogged={onSent} />
+          : <p className="text-xs text-gray-400 italic py-2">No phone on file for this lead.</p>
+      )}
 
       {tab === 'email' && (
         email
@@ -119,6 +135,143 @@ export default function LeadOutreachSection({ leadId, normalizedPayload, onChang
       )}
 
       <OutreachHistoryList items={history} loading={historyLoading} />
+    </div>
+  );
+}
+
+/**
+ * Call panel — pick a phone number, hit "Call". Launches the system
+ * dialer via tel: so it works equally well on a softphone / mobile /
+ * desk phone. We don't initiate the call via OpenPhone's API because
+ * (a) the agent's softphone is already wired up locally and (b) we
+ * don't want to log a "sent" job until the agent actually picks up.
+ *
+ * Right after launching the dialer we offer to log the call in the
+ * Contact log with the outcome the agent picks (attempted / vm /
+ * connected). Cancels out cleanly if they back out.
+ */
+function CallPanel({ leadId, phones, agentName, onLogged }) {
+  const [to, setTo] = useState(phones[0] || '');
+  const [showLog, setShowLog] = useState(false);
+  const [outcome, setOutcome] = useState('voicemail');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const dial = () => {
+    if (!to) return;
+    // tel: with the digits-only number — handsets handle the
+    // formatting natively. The link launches the OS dialer (or
+    // OpenPhone desktop if it's set as the tel: handler), so the
+    // agent's existing softphone keeps working.
+    const digits = String(to).replace(/[^0-9+]/g, '');
+    window.location.href = `tel:${digits}`;
+    setShowLog(true);
+  };
+
+  const logCall = async () => {
+    setSaving(true); setResult(null);
+    try {
+      await api.post('/lead_contact_logs', {
+        lead_id: leadId,
+        channel: 'phone',
+        outcome,
+        notes: notes.trim() || null,
+      });
+      setResult({ ok: true, message: 'Call logged in contact history.' });
+      setShowLog(false);
+      setNotes('');
+      onLogged?.();
+    } catch (err) {
+      setResult({ ok: false, message: extractApiError(err, 'Failed to log call.') });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputCls = 'w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-2 text-[13px] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none';
+
+  return (
+    <div className="space-y-3 pt-2">
+      <div>
+        <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">Number</label>
+        {phones.length > 1 ? (
+          <select value={to} onChange={(e) => setTo(e.target.value)} className={inputCls}>
+            {phones.map((p, i) => <option key={p} value={p}>Phone {i + 1} · {p}</option>)}
+          </select>
+        ) : (
+          <input
+            type="tel"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            className={inputCls}
+            placeholder="+1 555 123 4567"
+          />
+        )}
+      </div>
+
+      <button
+        onClick={dial}
+        disabled={!to}
+        className="w-full px-4 py-2.5 text-[13px] font-semibold rounded-md text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+      >
+        Call {to}
+      </button>
+      <p className="text-[10px] text-gray-400">
+        Launches your system dialer (OpenPhone, mobile, desk phone) via <span className="font-mono">tel:</span>. The lead will see your caller ID, not VinVault's.
+      </p>
+
+      {showLog && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3 space-y-2">
+          <p className="text-[12px] font-medium text-emerald-900">
+            Just made the call? Log how it went so {agentName || 'the team'} doesn't redial cold.
+          </p>
+          <div>
+            <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">Outcome</label>
+            <select value={outcome} onChange={(e) => setOutcome(e.target.value)} className={inputCls}>
+              <option value="attempted">No answer</option>
+              <option value="voicemail">Left voicemail</option>
+              <option value="connected">Connected — spoke with lead</option>
+              <option value="wrong_number">Wrong number</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">Notes (optional)</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              className={inputCls}
+              placeholder="What did they say? Best time to call back?"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => { setShowLog(false); setNotes(''); }}
+              className="px-3 py-1.5 text-[11px] text-gray-600 hover:text-gray-900"
+            >
+              Skip
+            </button>
+            <button
+              onClick={logCall}
+              disabled={saving}
+              className="px-3 py-1.5 text-[11px] font-semibold rounded-md text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {saving ? 'Logging…' : 'Log call'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {result && (
+        <div
+          className={`text-[12px] px-3 py-2 rounded-md ${
+            result.ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-700 border border-red-100'
+          }`}
+        >
+          {result.message}
+        </div>
+      )}
     </div>
   );
 }

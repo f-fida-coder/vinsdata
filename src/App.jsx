@@ -27,6 +27,7 @@ import FundingPage from './pages/FundingPage';
 import DispatchPage from './pages/DispatchPage';
 import CompanySettingsPage from './pages/CompanySettingsPage';
 import { Sidebar, Topbar, CommandPalette, QuickAddMenu, ShortcutsOverlay } from './components/Shell';
+import RingingCallToast from './components/RingingCallToast';
 
 const LANDING_BY_ROLE = {
   admin:       '/',
@@ -123,6 +124,9 @@ function DashboardLayout() {
       <CommandPalette open={cmdkOpen} onClose={() => setCmdkOpen(false)} />
       <QuickAddMenu open={qaOpen} onClose={() => setQaOpen(false)} />
       <ShortcutsOverlay open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      {/* Incoming-call toast — polls /api/inbound_calls every few seconds.
+          Mounted at the layout level so it's visible on every page. */}
+      <RingingCallToast />
     </div>
   );
 }
