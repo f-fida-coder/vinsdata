@@ -1,47 +1,33 @@
 <?php
-// Step-by-step boot diagnostic. Each phase is wrapped in a fresh
-// process via passthru-like shell so we see the *first* file to crash.
+// Step-by-step boot probe. Flushes after each step so we see exactly
+// the last file whose require_once succeeded before the worker died.
 header('Content-Type: text/plain');
+@ini_set('display_errors', '1');
+error_reporting(E_ALL);
 
-echo "PHP " . PHP_VERSION . "\n";
-echo "Working dir: " . __DIR__ . "\n\n";
-
-$tests = [
-    'config.php'           => __DIR__ . '/config.php',
-    'pipeline.php'         => __DIR__ . '/pipeline.php',
-    'lib/smtp.php'         => __DIR__ . '/lib/smtp.php',
-    'outbound_helpers.php' => __DIR__ . '/outbound_helpers.php',
-];
-
-foreach ($tests as $label => $path) {
-    if (!file_exists($path)) {
-        echo "[$label] MISSING ($path)\n";
-        continue;
-    }
-    // Lint the file in a subprocess so a parse error doesn't kill us.
-    $lint = shell_exec('php -l ' . escapeshellarg($path) . ' 2>&1');
-    $clean = trim((string) $lint);
-    if (str_contains($clean, 'No syntax errors')) {
-        echo "[$label] lint: OK (" . filesize($path) . " bytes)\n";
-    } else {
-        echo "[$label] lint: FAIL\n  $clean\n";
+function step(string $label, callable $fn): void {
+    echo "[step] $label …\n"; flush(); ob_flush();
+    try {
+        $fn();
+        echo "[ok]   $label\n"; flush(); ob_flush();
+    } catch (Throwable $e) {
+        echo "[ERR]  $label: " . $e->getMessage() . " (" . $e->getFile() . ":" . $e->getLine() . ")\n";
+        flush(); ob_flush();
+        throw $e;
     }
 }
 
-echo "\n--- Now actually requiring config.php inline (will crash if it crashes) ---\n";
-require_once __DIR__ . '/config.php';
-echo "config.php: included OK\n";
+echo "PHP " . PHP_VERSION . "\n";
+echo "Working dir: " . __DIR__ . "\n";
+echo "loaded.ini: " . (php_ini_loaded_file() ?: '(none)') . "\n\n";
+flush(); @ob_flush();
 
-echo "--- pipeline.php ---\n";
-require_once __DIR__ . '/pipeline.php';
-echo "pipeline.php: included OK\n";
-
-echo "--- outbound_helpers.php ---\n";
-require_once __DIR__ . '/outbound_helpers.php';
-echo "outbound_helpers.php: included OK\n";
-
-echo "--- marketing_send.php (will run its top-level requireAuth + exit) ---\n";
-// Skipping: this one has top-level requireAuth that exits 401.
-echo "(skipping — would exit 401)\n";
+step('require config.php',           function () { require_once __DIR__ . '/config.php'; });
+step('require pipeline.php',         function () { require_once __DIR__ . '/pipeline.php'; });
+step('require lib/smtp.php',         function () { require_once __DIR__ . '/lib/smtp.php'; });
+step('require outbound_helpers.php', function () { require_once __DIR__ . '/outbound_helpers.php'; });
+step('getDBConnection()',            function () { $pdo = getDBConnection(); $pdo->query('SELECT 1')->fetchColumn(); });
+step('app_secrets table read',       function () { $pdo = getDBConnection(); $pdo->query('SELECT COUNT(*) FROM app_secrets')->fetchColumn(); });
+step('getEnvValue OPENPHONE_API_KEY', function () { $v = getEnvValue('OPENPHONE_API_KEY'); echo "      value-len=" . strlen($v) . "\n"; });
 
 echo "\nDone. Boot chain healthy.\n";
