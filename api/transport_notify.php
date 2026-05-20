@@ -3,6 +3,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/pipeline.php';
 require_once __DIR__ . '/marketing_send.php';
+require_once __DIR__ . '/outbound_helpers.php';
 initSession();
 
 // Open to every authenticated role: admin, marketer, sales_agent
@@ -104,13 +105,27 @@ foreach ($transporters as $t) {
     try {
         if ($channel === 'email') {
             if (!$recipient) throw new RuntimeException('Transporter has no email');
-            if (defined('MARKETING_EMAIL_PROVIDER') && MARKETING_EMAIL_PROVIDER === 'sendgrid') {
-                sendEmailViaSendGrid($recipient, $subject, $body, null);
-            }
-            // else: stub mode — log only.
+            // sendEmailViaSendGrid() is misnamed — it auto-picks SendGrid
+            // when SENDGRID_API_KEY is set, otherwise falls back to the
+            // Gmail SMTP path that powers the rest of the CRM. Either
+            // works for transporter blasts. Throws on transport failure;
+            // we catch into the failed-row branch below.
+            sendEmailViaSendGrid($recipient, $subject, $body, null);
         } elseif ($channel === 'sms') {
             if (!$recipient) throw new RuntimeException('Transporter has no phone');
-            // SMS provider not yet wired; treat as logged manual send.
+            // SMS via OpenPhone — reuse the same dispatcher the lead
+            // outreach SMS uses so transporter texts benefit from the
+            // E.164 canonicalization fix we just shipped.
+            $smsResult = dispatchOpenPhoneJob([
+                'kind'       => 'sms',
+                'to_address' => $recipient,
+                'body'       => $body,
+            ]);
+            if (empty($smsResult['ok'])) {
+                throw new RuntimeException(
+                    'OpenPhone send failed: ' . ($smsResult['fail_reason'] ?? 'unknown_error')
+                );
+            }
         }
         // 'manual' is always logged as sent.
     } catch (Throwable $e) {
