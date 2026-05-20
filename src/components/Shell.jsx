@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { Icon, Avatar, Button, Kbd } from './ui';
 import NotificationBellRaw from './NotificationBell';
+import { roleLabel } from '../lib/crm';
 
 // Tailwind's `sm` breakpoint: anything below this is a phone-sized layout that
 // gets the off-canvas sidebar treatment.
@@ -128,7 +129,7 @@ export function Sidebar({ onSignOut, mobileOpen, onMobileClose }) {
           <Avatar name={user?.name || '?'} size={28} color="#fff" style={{ color: '#0a0a0b' }}/>
           <div className="sb-user-info">
             <span className="sb-user-name">{user?.name || 'User'}</span>
-            <span className="sb-user-role">{user?.role || ''} · vin.com</span>
+            <span className="sb-user-role">{roleLabel(user?.role)}</span>
           </div>
         </div>
 
