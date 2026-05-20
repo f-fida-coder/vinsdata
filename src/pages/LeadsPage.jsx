@@ -958,14 +958,17 @@ export default function LeadsPage() {
             <table className="w-full leads-table" style={{ minWidth: undefined }}>
               <thead className="leads-thead sticky top-0 z-10">
                 <tr>
-                  <th className="pl-5 pr-1 py-2 w-8">
+                  <th
+                    className="pl-5 pr-1 py-2 w-8"
+                    title="Check rows to enable bulk actions: assign agent, change status, add labels, create tasks, send to marketing."
+                  >
                     <input
                       type="checkbox"
                       checked={allPageSelected}
                       ref={(el) => { if (el) el.indeterminate = somePageSelected; }}
                       onChange={togglePageSelection}
                       className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      aria-label="Select all on page"
+                      aria-label="Select all on page · enables bulk actions"
                     />
                   </th>
                   <SortableTh label="Name" sortKey="last_name" sort={sort} onSort={toggleSort} className="px-2" />

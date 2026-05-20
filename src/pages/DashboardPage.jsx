@@ -238,9 +238,15 @@ export default function DashboardPage() {
   const [showModal, setShowModal] = useState(false);
   // Multi-row Add File modal: each entry is one upload. status is per-entry
   // so we can show ✓ / × per row when the bulk submit runs.
+  // Each upload row now captures the vehicle by its four facets
+  // (make/model/year/trim) instead of forcing the operator to pre-create
+  // a vehicle in a separate flow. The server-side /api/files POST
+  // resolves these to an existing vehicle_id or inserts one inline.
   const makeEmptyEntry = () => ({
     rid: `r${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-    vehicle_id: '',
+    make:       '',
+    model:      '',
+    trim:       '',
     file_name:  '',
     year:       '',
     version:    'v1',
@@ -385,8 +391,15 @@ export default function DashboardPage() {
 
     // Validate first — surface row-level errors without starting any uploads.
     const validation = entries.map((entry) => {
-      if (!entry.vehicle_id) return 'Vehicle is required';
-      if (!entry.file_name || !entry.file_name.trim()) return 'File name is required';
+      // Vehicle is now identified by make/model/year (trim optional).
+      // File name auto-fills server-side if omitted, so we no longer block
+      // submit on it — the only hard requirement is the vehicle facets.
+      const make  = (entry.make  || '').trim();
+      const model = (entry.model || '').trim();
+      const year  = (entry.year  || '').toString().trim();
+      if (!make || !model || !year) {
+        return 'Make, Model, and Year are required';
+      }
       return null;
     });
     if (validation.some((v) => v)) {
@@ -407,8 +420,13 @@ export default function DashboardPage() {
     for (const entry of entries) {
       try {
         const res = await api.post('/files', {
-          vehicle_id: Number(entry.vehicle_id),
-          file_name:  entry.file_name.trim(),
+          // Server resolves these to an existing vehicle row or creates
+          // a new one. The legacy vehicle_id field is intentionally
+          // omitted — the four facets are the new contract.
+          make:       (entry.make  || '').trim(),
+          model:      (entry.model || '').trim(),
+          trim:       (entry.trim  || '').trim(),
+          file_name:  (entry.file_name || '').trim(),
           year:       entry.year ? Number(entry.year) : null,
           version:    entry.version || null,
         });
@@ -669,6 +687,20 @@ export default function DashboardPage() {
         title={entries.length > 1 ? `Add ${entries.length} files` : 'Add New File'}
       >
         <form onSubmit={handleAddFile} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Datalists feed the Make / Model / Trim inputs above. We
+              dedupe against the existing vehicles list — operators can
+              still type a brand-new value if they're hunting something
+              not yet in the catalog. */}
+          <datalist id="dash-makes">
+            {[...new Set(vehicles.map((v) => v.make).filter(Boolean))].sort().map((m) => <option key={m} value={m} />)}
+          </datalist>
+          <datalist id="dash-models">
+            {[...new Set(vehicles.map((v) => v.model).filter(Boolean))].sort().map((m) => <option key={m} value={m} />)}
+          </datalist>
+          <datalist id="dash-trims">
+            {[...new Set(vehicles.map((v) => v.trim).filter(Boolean))].sort().map((t) => <option key={t} value={t} />)}
+          </datalist>
+
           <div className="row" style={{ justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
             <p style={{ fontSize: 12, color: 'var(--text-2)', margin: 0 }}>
               Each row becomes one file. Pick multiple at once to fill rows in bulk.
@@ -735,29 +767,34 @@ export default function DashboardPage() {
                     )}
                   </div>
 
-                  <div>
-                    <label className="field-label">Vehicle</label>
-                    <select
-                      className="vv-input"
-                      value={entry.vehicle_id}
-                      onChange={(e) => updateEntry(entry.rid, { vehicle_id: e.target.value, status: 'pending', error: null })}
-                      disabled={isUploading || isSuccess}
-                      required
-                    >
-                      <option value="">Select vehicle</option>
-                      {vehicles.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="field-label">File Name</label>
-                    <Input
-                      value={entry.file_name}
-                      onChange={(e) => updateEntry(entry.rid, { file_name: e.target.value, status: 'pending', error: null })}
-                      disabled={isUploading || isSuccess}
-                      placeholder="LandCruiser_2003_VIN_v1"
-                      required
-                    />
+                  {/* Vehicle facets — server resolves these to an
+                      existing vehicle row or inserts a new one. The
+                      datalists offer recently-imported makes/models/
+                      trims as soft autocomplete, but free text is fine
+                      so the operator can hunt a brand-new vehicle. */}
+                  <div className="grid-2">
+                    <div>
+                      <label className="field-label">Make</label>
+                      <Input
+                        list="dash-makes"
+                        value={entry.make}
+                        onChange={(e) => updateEntry(entry.rid, { make: e.target.value, status: 'pending', error: null })}
+                        disabled={isUploading || isSuccess}
+                        placeholder="DODGE"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="field-label">Model</label>
+                      <Input
+                        list="dash-models"
+                        value={entry.model}
+                        onChange={(e) => updateEntry(entry.rid, { model: e.target.value, status: 'pending', error: null })}
+                        disabled={isUploading || isSuccess}
+                        placeholder="Viper"
+                        required
+                      />
+                    </div>
                   </div>
 
                   <div className="grid-2">
@@ -766,20 +803,42 @@ export default function DashboardPage() {
                       <Input
                         type="number"
                         value={entry.year}
-                        onChange={(e) => updateEntry(entry.rid, { year: e.target.value })}
+                        onChange={(e) => updateEntry(entry.rid, { year: e.target.value, status: 'pending', error: null })}
                         disabled={isUploading || isSuccess}
-                        placeholder="2003"
+                        placeholder="2008"
+                        required
                       />
                     </div>
                     <div>
-                      <label className="field-label">Version</label>
+                      <label className="field-label">Trim</label>
                       <Input
-                        value={entry.version}
-                        onChange={(e) => updateEntry(entry.rid, { version: e.target.value })}
+                        list="dash-trims"
+                        value={entry.trim}
+                        onChange={(e) => updateEntry(entry.rid, { trim: e.target.value, status: 'pending', error: null })}
                         disabled={isUploading || isSuccess}
-                        placeholder="v1"
+                        placeholder="SRT (optional)"
                       />
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="field-label">File Name <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(auto if blank)</span></label>
+                    <Input
+                      value={entry.file_name}
+                      onChange={(e) => updateEntry(entry.rid, { file_name: e.target.value, status: 'pending', error: null })}
+                      disabled={isUploading || isSuccess}
+                      placeholder="Auto: <Make><Model>_<Year>_<Version>"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="field-label">Version</label>
+                    <Input
+                      value={entry.version}
+                      onChange={(e) => updateEntry(entry.rid, { version: e.target.value })}
+                      disabled={isUploading || isSuccess}
+                      placeholder="v1"
+                    />
                   </div>
 
                   <div>

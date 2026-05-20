@@ -105,6 +105,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $year        = $input['year']    ?? null;
     $version     = $input['version'] ?? null;
 
+    // Caller may skip vehicle_id and instead supply make/model/year/trim.
+    // Resolve to an existing vehicle by case-insensitive match on the four
+    // facets, or create a new one. Lets the upload modal stop forcing the
+    // operator to pre-create vehicles in a separate flow.
+    if ($vehicleId <= 0) {
+        $vMake  = trim((string) ($input['make']  ?? ''));
+        $vModel = trim((string) ($input['model'] ?? ''));
+        $vYear  = isset($input['year']) && $input['year'] !== '' ? (int) $input['year'] : null;
+        $vTrim  = trim((string) ($input['trim']  ?? ''));
+
+        // Make + Model + Year are the minimum identity. Trim is optional —
+        // a vehicle row with no trim matches a request with no trim.
+        if ($vMake === '' || $vModel === '' || $vYear === null) {
+            pipelineFail(
+                400,
+                'vehicle_id or make+model+year (with optional trim) are required',
+                'missing_fields'
+            );
+        }
+
+        // Case-insensitive lookup. `<=> NULL` lets us match a NULL trim
+        // without falling out of the index.
+        $lookup = $db->prepare(
+            "SELECT id FROM vehicles
+              WHERE LOWER(make)  = LOWER(:make)
+                AND LOWER(model) = LOWER(:model)
+                AND year         = :year
+                AND COALESCE(LOWER(`trim`), '') = COALESCE(LOWER(:trim), '')
+                AND is_active    = 1
+              LIMIT 1"
+        );
+        $lookup->execute([
+            ':make'  => $vMake,
+            ':model' => $vModel,
+            ':year'  => $vYear,
+            ':trim'  => $vTrim === '' ? null : $vTrim,
+        ]);
+        $vehicleId = (int) ($lookup->fetchColumn() ?: 0);
+
+        if ($vehicleId <= 0) {
+            // Auto-build the display name in the "Year Make Model Trim" form
+            // the rest of the app already uses for vehicle display.
+            $vehicleName = trim(implode(' ', array_filter([(string) $vYear, $vMake, $vModel, $vTrim])));
+            $ins = $db->prepare(
+                "INSERT INTO vehicles (name, make, model, year, `trim`, is_active)
+                 VALUES (:name, :make, :model, :year, :trim, 1)"
+            );
+            $ins->execute([
+                ':name'  => $vehicleName,
+                ':make'  => $vMake,
+                ':model' => $vModel,
+                ':year'  => $vYear,
+                ':trim'  => $vTrim === '' ? null : $vTrim,
+            ]);
+            $vehicleId = (int) $db->lastInsertId();
+        }
+
+        // Auto-build a file base name if the operator didn't supply one.
+        // Default: "<Make><Model>_<Year>_v<version>".
+        if ($baseName === '') {
+            $defaultName = preg_replace('/\s+/', '', $vMake . $vModel)
+                . '_' . $vYear
+                . '_' . ($version ?: 'v1');
+            $baseName    = $defaultName;
+            $displayName = $displayName === '' ? $defaultName : $displayName;
+        }
+    }
+
     if ($vehicleId <= 0 || $baseName === '') {
         pipelineFail(400, 'vehicle_id and base_name are required', 'missing_fields');
     }
