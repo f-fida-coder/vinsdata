@@ -23,19 +23,24 @@ function useIsMobile() {
 
 // Per-role visibility for sidebar entries.
 const NAV_VISIBILITY = {
-  admin:        ['dashboard','leads','pipeline','tasks','reports','duplicates','mergePrep','marketing','billOfSale','funding','dispatch','users','company'],
-  marketer:     ['dashboard','leads','pipeline','marketing','reports'],
-  carfax:       ['dashboard','leads','pipeline','tasks','billOfSale','funding','dispatch'],
-  filter:       ['dashboard','leads','pipeline','tasks','billOfSale','funding','dispatch'],
-  tlo:          ['dashboard','leads','pipeline','tasks','billOfSale','funding','dispatch'],
+  // Files (the legacy upload-pipeline page) is admin/marketer/CarFax/
+  // Filter/TLO/sales — anyone who needs to see "where in the pipeline
+  // is this file" or hunt orphan imports. Dashboard is the new
+  // high-level business overview that lives at /.
+  admin:        ['dashboard','files','leads','pipeline','tasks','reports','duplicates','mergePrep','marketing','billOfSale','funding','dispatch','users','company'],
+  marketer:     ['dashboard','files','leads','pipeline','marketing','reports'],
+  carfax:       ['dashboard','files','leads','pipeline','tasks','billOfSale','funding','dispatch'],
+  filter:       ['dashboard','files','leads','pipeline','tasks','billOfSale','funding','dispatch'],
+  tlo:          ['dashboard','files','leads','pipeline','tasks','billOfSale','funding','dispatch'],
   // Sales agents work assigned leads end-to-end. They see the operator
-  // surface (Dashboard → Leads → Pipeline → Tasks → Reports → post-close
-  // tabs) and never see Users / Company / Marketing / Duplicates / Merge
-  // Prep, which stay admin-only.
-  sales_agent:  ['dashboard','leads','pipeline','tasks','reports','billOfSale','funding','dispatch'],
+  // surface (Dashboard → Files → Leads → Pipeline → Tasks → Reports →
+  // post-close tabs) and never see Users / Company / Marketing /
+  // Duplicates / Merge Prep, which stay admin-only.
+  sales_agent:  ['dashboard','files','leads','pipeline','tasks','reports','billOfSale','funding','dispatch'],
 };
 const ALL_NAV = [
   { key: 'dashboard',  label: 'Dashboard',         icon: 'home',      to: '/' },
+  { key: 'files',      label: 'Files',             icon: 'file',      to: '/files' },
   { key: 'leads',      label: 'Leads',             icon: 'users',     to: '/leads' },
   { key: 'pipeline',   label: 'Pipeline',          icon: 'pipeline',  to: '/pipeline' },
   { key: 'reports',    label: 'Reports',           icon: 'chart',     to: '/reports' },
@@ -59,6 +64,7 @@ const ALL_NAV = [
 
 const ROUTE_LABEL_BY_PATH = {
   '/':                 'Dashboard',
+  '/files':            'Files',
   '/leads':            'CRM Leads',
   '/pipeline':         'Pipeline',
   '/reports':          'Reports',

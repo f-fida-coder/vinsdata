@@ -3,9 +3,13 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-route
 import { useAuth } from './context/AuthContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import LoginPage from './pages/LoginPage';
+// DashboardPage is the legacy file-management surface. It moved to /files
+// when we split the two concerns; the new HomeDashboard owns / as the
+// true high-level business overview.
 import DashboardPage from './pages/DashboardPage';
+import HomeDashboard from './pages/HomeDashboard';
 // Vehicles tab removed — operators filter leads by Make/Model/Year/Trim
-// from the Dashboard. /vehicles route still exists below as a redirect
+// from the Files page. /vehicles route still exists below as a redirect
 // to /leads so old bookmarks + g+v shortcut don't 404.
 import UsersPage from './pages/UsersPage';
 import LogsPage from './pages/LogsPage';
@@ -53,7 +57,7 @@ function DashboardLayout() {
   const navigate = useNavigate();
   const landing = LANDING_BY_ROLE[user?.role] || '/';
 
-  const rootElement = landing === '/' ? <DashboardPage /> : <Navigate to={landing} replace />;
+  const rootElement = landing === '/' ? <HomeDashboard /> : <Navigate to={landing} replace />;
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -68,7 +72,7 @@ function DashboardLayout() {
       else if (!meta && !isInput) {
         if (e.key.toLowerCase() === 'g') { window.__gWaiting = true; setTimeout(() => { window.__gWaiting = false; }, 800); return; }
         if (window.__gWaiting) {
-          const map = { d: '/', l: '/leads', p: '/pipeline', t: '/tasks', r: '/reports', m: '/marketing', u: '/users' };
+          const map = { d: '/', f: '/files', l: '/leads', p: '/pipeline', t: '/tasks', r: '/reports', m: '/marketing', u: '/users' };
           const r = map[e.key.toLowerCase()];
           if (r) { navigate(r); window.__gWaiting = false; }
         }
@@ -90,6 +94,11 @@ function DashboardLayout() {
         />
         <Routes>
           <Route path="/" element={rootElement} />
+          {/* Files = the legacy file-management surface (upload pipeline,
+              stage progression, import-to-CRM). Lives at /files now; the
+              true dashboard owns /. Old bookmarks to / still work — they
+              hit the new HomeDashboard via rootElement above. */}
+          <Route path="/files" element={<DashboardPage />} />
           {/* /vehicles legacy route — redirect to /leads */}
           <Route path="/vehicles" element={<Navigate to="/leads" replace />} />
           <Route path="/leads" element={<LeadsPage />} />
