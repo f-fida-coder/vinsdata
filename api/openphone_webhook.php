@@ -40,7 +40,50 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $rawBody = file_get_contents('php://input');
+
+// Stamp every POST in webhook_hits before any signature / payload
+// check runs. This is the only way to tell "OpenPhone never hit us"
+// apart from "OpenPhone hit us but the signature didn't match" on
+// shared hosting where we can't tail PHP's error log.
+//
+// We never let the logger throw — observability shouldn't bring the
+// real handler down on a transient DB blip.
+$hitId = null;
+$logHit = function (array $patch) use ($db, &$hitId) {
+    try {
+        if ($hitId === null) {
+            $stmt = $db->prepare(
+                "INSERT INTO webhook_hits
+                   (source, remote_ip, user_agent, has_signature, body_preview)
+                 VALUES
+                   ('openphone', :ip, :ua, :sig, :body)"
+            );
+            $stmt->execute([
+                ':ip'   => $_SERVER['REMOTE_ADDR'] ?? null,
+                ':ua'   => substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255),
+                ':sig'  => ($_SERVER['HTTP_OPENPHONE_SIGNATURE'] ?? '') !== '' ? 1 : 0,
+                ':body' => substr($patch['body_preview'] ?? '', 0, 2000),
+            ]);
+            $hitId = (int) $db->lastInsertId();
+            unset($patch['body_preview']);
+        }
+        if (!empty($patch)) {
+            $sets = [];
+            $params = [':id' => $hitId];
+            foreach ($patch as $k => $v) {
+                $sets[] = "$k = :$k";
+                $params[":$k"] = $v;
+            }
+            $db->prepare("UPDATE webhook_hits SET " . implode(', ', $sets) . " WHERE id = :id")->execute($params);
+        }
+    } catch (Throwable $e) {
+        error_log('[openphone_webhook] logHit failed: ' . $e->getMessage());
+    }
+};
+$logHit(['body_preview' => (string) $rawBody]);
+
 if ($rawBody === '' || $rawBody === false) {
+    $logHit(['reject_reason' => 'empty_body', 'http_status' => 400]);
     http_response_code(400);
     echo json_encode(['ok' => false, 'message' => 'Empty body']);
     exit();
@@ -56,12 +99,14 @@ $sigHeader = $_SERVER['HTTP_OPENPHONE_SIGNATURE'] ?? '';
 $openphoneSecret = getEnvValue('OPENPHONE_WEBHOOK_SECRET');
 if ($openphoneSecret === '') {
     error_log('[openphone_webhook] rejecting: OPENPHONE_WEBHOOK_SECRET not configured in .env');
+    $logHit(['reject_reason' => 'secret_not_configured', 'http_status' => 503]);
     http_response_code(503);
     echo json_encode(['ok' => false, 'message' => 'Webhook secret not configured']);
     exit();
 }
 
 if ($sigHeader === '') {
+    $logHit(['reject_reason' => 'missing_signature', 'http_status' => 401]);
     http_response_code(401);
     echo json_encode(['ok' => false, 'message' => 'Missing signature']);
     exit();
@@ -69,6 +114,7 @@ if ($sigHeader === '') {
 
 $parts = explode(';', $sigHeader);
 if (count($parts) !== 4 || $parts[0] !== 'hmac') {
+    $logHit(['reject_reason' => 'malformed_signature', 'http_status' => 401]);
     http_response_code(401);
     echo json_encode(['ok' => false, 'message' => 'Malformed signature header']);
     exit();
@@ -78,6 +124,7 @@ if (count($parts) !== 4 || $parts[0] !== 'hmac') {
 $secretBytes = base64_decode($openphoneSecret, true);
 if ($secretBytes === false) {
     error_log('[openphone_webhook] OPENPHONE_WEBHOOK_SECRET is not valid base64');
+    $logHit(['reject_reason' => 'secret_not_base64', 'http_status' => 503]);
     http_response_code(503);
     echo json_encode(['ok' => false, 'message' => 'Webhook secret malformed']);
     exit();
@@ -85,6 +132,7 @@ if ($secretBytes === false) {
 
 $expectedSig = base64_encode(hash_hmac('sha256', $timestampMs . '.' . $rawBody, $secretBytes, true));
 if (!hash_equals($expectedSig, $providedSig)) {
+    $logHit(['reject_reason' => 'bad_signature', 'http_status' => 401]);
     http_response_code(401);
     echo json_encode(['ok' => false, 'message' => 'Bad signature']);
     exit();
@@ -92,6 +140,7 @@ if (!hash_equals($expectedSig, $providedSig)) {
 
 // Optional replay guard: reject events older than 5 min.
 if (abs(((int) (microtime(true) * 1000)) - (int) $timestampMs) > 5 * 60 * 1000) {
+    $logHit(['reject_reason' => 'stale_signature', 'http_status' => 401]);
     http_response_code(401);
     echo json_encode(['ok' => false, 'message' => 'Stale signature']);
     exit();
@@ -116,12 +165,22 @@ try {
     } elseif (str_starts_with($type, 'call.')) {
         handleCallEvent($db, $type, $message, $rawBody);
     }
+    // Signature checks passed and the handler didn't blow up. Tag the
+    // hit row so the debug query reads as "received + verified +
+    // dispatched ok".
+    $logHit(['verified' => 1, 'event_type' => $type, 'http_status' => 200]);
     // Anything else: silently ack so OpenPhone doesn't keep retrying.
     echo json_encode(['ok' => true]);
 } catch (Throwable $e) {
     // Keep returning 200 so we don't get retry-stormed for a soft failure
     // (no matching lead, etc.). Log so a human can investigate.
     error_log('[openphone_webhook] handler error: ' . $e->getMessage());
+    $logHit([
+        'verified'      => 1,
+        'event_type'    => $type,
+        'reject_reason' => 'handler_threw: ' . substr($e->getMessage(), 0, 80),
+        'http_status'   => 200,
+    ]);
     echo json_encode(['ok' => true, 'note' => 'handler_soft_failed']);
 }
 
