@@ -347,10 +347,13 @@ function CrmStateSection({ leadId, initialState, autoTier, users, isAdmin, onCha
 function LabelsSection({ leadId, initialLabels, availableLabels, onChanged, defaultOpen = true }) {
   const [labels, setLabels] = useState(initialLabels || []);
   const [selectedAdd, setSelectedAdd] = useState('');
+  // The add-label picker is hidden by default — the drawer renders just
+  // the attached labels so it doesn't read as "here is every label in
+  // the system". An explicit "+ Add label" button reveals the dropdown
+  // only when the operator actually wants to attach one.
+  const [adding, setAdding] = useState(false);
   // Local follow-up due date for the next attach. Only meaningful when the
   // selected label has auto_follow_up=true; ignored on submit otherwise.
-  // <input type="date"> uses yyyy-mm-dd; we append T23:59 server-side via
-  // parseDatetime so a date-only pick still produces a valid DATETIME.
   // datetime-local format: yyyy-mm-ddThh:mm (operator picks date + time).
   // Blank = no due date (open task with no deadline).
   const [followUpDate, setFollowUpDate] = useState('');
@@ -385,6 +388,7 @@ function LabelsSection({ leadId, initialLabels, availableLabels, onChanged, defa
       setLabels((prev) => [...prev, label].sort((a, b) => a.name.localeCompare(b.name)));
       setSelectedAdd('');
       setFollowUpDate('');
+      setAdding(false);
       onChanged?.();
     } catch (err) {
       setError(extractApiError(err, 'Failed to attach label'));
@@ -408,37 +412,72 @@ function LabelsSection({ leadId, initialLabels, availableLabels, onChanged, defa
 
   return (
     <CollapsibleSection title="Labels" count={labels.length} defaultOpen={defaultOpen}>
+      {/* Attached labels only — the full catalog is intentionally NOT
+          listed by default so the section reads as "what's on this lead"
+          instead of "every label in the system". */}
       <div className="flex flex-wrap items-center gap-1.5">
-        {labels.length === 0 && <p className="text-xs text-gray-400 italic">No labels attached.</p>}
+        {labels.length === 0 && !adding && (
+          <p className="text-xs text-gray-400 italic">No labels attached.</p>
+        )}
         {labels.map((l) => (
-          <span key={l.id} className="inline-flex items-center gap-1 text-[11px] font-medium text-white px-2 py-0.5 rounded-md" style={{ backgroundColor: l.color }}>
+          <span
+            key={l.id}
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-white px-2 py-0.5 rounded-md whitespace-nowrap"
+            style={{ backgroundColor: l.color }}
+          >
             {l.name}
-            <button onClick={() => detach(l.id)} disabled={working} className="hover:opacity-70 disabled:opacity-40" aria-label="Remove">&times;</button>
+            <button
+              onClick={() => detach(l.id)}
+              disabled={working}
+              className="hover:opacity-70 disabled:opacity-40"
+              aria-label="Remove"
+            >&times;</button>
           </span>
         ))}
+        {!adding && candidates.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="inline-flex items-center text-[11px] font-medium text-gray-600 hover:text-gray-900 border border-dashed border-gray-300 hover:border-gray-400 rounded-md px-2 py-0.5"
+          >
+            + Add label
+          </button>
+        )}
       </div>
-      <div className="flex items-center gap-2 mt-3">
-        <select
-          value={selectedAdd}
-          onChange={(e) => { setSelectedAdd(e.target.value); setFollowUpDate(''); }}
-          disabled={candidates.length === 0 || working}
-          className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:opacity-50"
-        >
-          <option value="">{candidates.length === 0 ? 'No more labels available' : 'Select a label to add'}</option>
-          {candidates.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-        </select>
-        <button
-          onClick={attach}
-          disabled={!selectedAdd || working}
-          className="px-3 py-1.5 text-xs font-medium bg-gray-900 hover:bg-gray-700 text-white rounded-lg disabled:opacity-40"
-        >
-          Add
-        </button>
-      </div>
+
+      {adding && (
+        <div className="flex items-center gap-2 mt-3">
+          <select
+            value={selectedAdd}
+            onChange={(e) => { setSelectedAdd(e.target.value); setFollowUpDate(''); }}
+            disabled={candidates.length === 0 || working}
+            autoFocus
+            className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:opacity-50"
+          >
+            <option value="">{candidates.length === 0 ? 'No more labels available' : 'Select a label to add'}</option>
+            {candidates.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+          <button
+            onClick={attach}
+            disabled={!selectedAdd || working}
+            className="px-3 py-1.5 text-xs font-medium bg-gray-900 hover:bg-gray-700 text-white rounded-lg disabled:opacity-40"
+          >
+            Add
+          </button>
+          <button
+            onClick={() => { setAdding(false); setSelectedAdd(''); setFollowUpDate(''); }}
+            disabled={working}
+            className="px-2 py-1.5 text-xs text-gray-500 hover:text-gray-800"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       {/* Auto-follow-up affordance: only renders once the operator has
           picked a label that carries the flag. Leaving the date blank is
           deliberately valid → creates an open task with no due date. */}
-      {isAutoFollowUp && (
+      {adding && isAutoFollowUp && (
         <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/60 px-2.5 py-2">
           <p className="text-[11px] text-amber-900 mb-1.5">
             This label auto-creates a follow-up task. Pick a due date &amp; time or leave blank.

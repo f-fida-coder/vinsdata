@@ -191,6 +191,11 @@ const HARDCODED_PAYLOAD_KEYS = new Set([
 const BUILTIN_COLUMNS = [
   ['tier',                     'Tier',                  false, 'tier'],
   ['status',                   'Status',                false, 'status'],
+  // Assigned-to lives right after Status per operator request. The
+  // underlying key is still 'agent' so existing localStorage entries
+  // and the bulk-action wiring don't need a parallel migration; we
+  // just relabel it in the header.
+  ['agent',                    'Assigned to',           false, 'assigned_user_id'],
   ['vehicle',                  'Vehicle',               false, 'make'],
   ['miles',                    'Miles',                 false, 'mileage'],
   ['last_service_date',        'Last service date',     false, 'LastServiceDate'],
@@ -214,7 +219,6 @@ const BUILTIN_COLUMNS = [
   // ---- below: legacy / advanced columns, hidden by default ----
   ['priority',    'Priority',    true,  'priority'],
   ['temperature', 'Temperature', true,  'lead_temperature'],
-  ['agent',       'Agent',       true,  null],
   ['labels',      'Labels',      true,  null],
   ['wanted',      'Wanted',      true,  'price_wanted'],
   ['offered',     'Offered',     true,  'price_offered'],
@@ -295,12 +299,11 @@ export default function LeadsPage() {
   const [selection, setSelection] = useState(() => new Set());
   const [bulkAction, setBulkAction] = useState(null);
   const [hiddenColumns, setHiddenColumns] = useState(() => {
-    // localStorage key is versioned (currently v3). v1 stored a pre-redesign
-    // column list ('phone' instead of phone_1..4 etc); v2 added the CarFax
-    // columns but missed Miles. Bumping the key forces a one-time reset to
-    // the new defaults rather than migrating stale sets.
+    // localStorage key is versioned (currently v4). Each bump triggers a
+    // one-time reset to the new defaults rather than trying to migrate a
+    // stale set. v4 adds the Assigned-to column right after Status.
     try {
-      const stored = localStorage.getItem('lead_hidden_columns_v3');
+      const stored = localStorage.getItem('lead_hidden_columns_v4');
       if (stored) return new Set(JSON.parse(stored));
     } catch { /* fall through */ }
     return new Set(DEFAULT_HIDDEN_BUILTINS);
@@ -393,7 +396,7 @@ export default function LeadsPage() {
   };
 
   useEffect(() => {
-    try { localStorage.setItem('lead_hidden_columns_v3', JSON.stringify([...hiddenColumns])); } catch { /* ignore quota */ }
+    try { localStorage.setItem('lead_hidden_columns_v4', JSON.stringify([...hiddenColumns])); } catch { /* ignore quota */ }
   }, [hiddenColumns]);
 
   const customColumns = useMemo(() => {
@@ -960,7 +963,7 @@ export default function LeadsPage() {
                     // labels list, stage badge) render as plain headers.
                     if (!sortKey) {
                       return (
-                        <th key={`h-${key}`} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                        <th key={`h-${key}`} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
                           {label}
                         </th>
                       );
@@ -1030,9 +1033,22 @@ export default function LeadsPage() {
                           aria-label={`Select lead ${lead.id}`}
                         />
                       </td>
-                      <td className="px-2 py-2">
-                        <div className="flex items-center gap-1.5 max-w-[240px]">
+                      <td className="px-2 py-2 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5 max-w-[260px]">
                           <span className="text-sm font-semibold text-gray-900 truncate" title={name}>{name}</span>
+                          {/* Collector indicator. The label was set up as
+                              a CarFax convention for high-value contacts
+                              (see migration 020) — we surface it inline
+                              by the name, no separate column, so it's
+                              one glance from the leads list. */}
+                          {(labels || []).some((l) => l.name === 'Collector') && (
+                            <span
+                              title="This lead is flagged Collector"
+                              className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700 whitespace-nowrap"
+                            >
+                              Collector
+                            </span>
+                          )}
                           {/* "×N" chip when the same phone shows up on
                               other live leads — clicking the row still
                               opens this lead; the sibling list lives in
@@ -1040,7 +1056,7 @@ export default function LeadsPage() {
                           {lead.related_count > 0 && (
                             <span
                               title={`This person owns ${lead.related_count + 1} vehicles in the CRM (open to see the others)`}
-                              className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-100 text-violet-700"
+                              className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-100 text-violet-700 whitespace-nowrap"
                             >
                               ×{lead.related_count + 1}
                             </span>
@@ -1069,7 +1085,11 @@ export default function LeadsPage() {
                         const v = np[k];
                         const display = v === undefined || v === null || v === '' ? null : String(v);
                         return (
-                          <td key={`c-${lead.id}-${k}`} className="px-3 py-2.5 text-[13px] text-gray-700 truncate max-w-[200px]" title={display ?? ''}>
+                          <td
+                            key={`c-${lead.id}-${k}`}
+                            className="px-3 py-2.5 text-[13px] text-gray-700 truncate max-w-[200px] whitespace-nowrap"
+                            title={display ?? ''}
+                          >
                             {display ?? <EmDash />}
                           </td>
                         );
@@ -1220,8 +1240,11 @@ function ColumnsMenu({ open, onOpenChange, customColumns, hiddenColumns, onToggl
  * columns — keeps the per-column code in one place.
  */
 function BuiltinCell({ colKey, lead, np, crm, labels, location, vehicle, tierMeta, statusMeta, temperatureMeta }) {
+  // Every built-in cell defaults to whitespace-nowrap so long values
+  // ellipsis-truncate instead of pushing the row to two lines. Pair with
+  // a max-width on cells that hold free text so they collapse nicely.
   const td = (cls, children) => (
-    <td className={`px-3 py-2 ${cls}`}>{children}</td>
+    <td className={`px-3 py-2 whitespace-nowrap ${cls}`}>{children}</td>
   );
   switch (colKey) {
     case 'tier':
@@ -1237,40 +1260,46 @@ function BuiltinCell({ colKey, lead, np, crm, labels, location, vehicle, tierMet
         </span>
       ));
     case 'priority':
-      return <td className="hidden sm:table-cell px-3 py-2"><PriorityCell priorityKey={crm.priority} /></td>;
+      return <td className="px-3 py-2 whitespace-nowrap"><PriorityCell priorityKey={crm.priority} /></td>;
     case 'temperature':
       return (
-        <td className="hidden sm:table-cell px-3 py-2">
+        <td className="px-3 py-2 whitespace-nowrap">
           {temperatureMeta ? (
-            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${temperatureMeta.bg} ${temperatureMeta.text}`}>
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${temperatureMeta.bg} ${temperatureMeta.text} whitespace-nowrap`}>
               <span className={`w-1.5 h-1.5 rounded-full ${temperatureMeta.dot}`} />{temperatureMeta.label}
             </span>
           ) : <EmDash />}
         </td>
       );
     case 'agent':
-      return <td className="hidden md:table-cell px-3 py-2"><AgentCell name={crm.assigned_user_name} /></td>;
+      return <td className="px-3 py-2 whitespace-nowrap"><AgentCell name={crm.assigned_user_name} /></td>;
     case 'labels':
+      // Single horizontal line of chips — overflow hides past the
+      // 240px cap, matching the no-wrap directive on every other cell.
       return (
-        <td className="hidden md:table-cell px-3 py-2">
+        <td className="px-3 py-2 whitespace-nowrap">
           {labels.length === 0 ? <EmDash /> : (
-            <div className="flex flex-wrap items-center gap-1 max-w-[220px]">
+            <div className="inline-flex items-center gap-1 max-w-[240px] overflow-hidden">
               {labels.slice(0, 3).map((l) => (
-                <span key={l.id} className="inline-flex items-center text-[10px] font-medium text-white px-1.5 py-0.5 rounded" style={{ backgroundColor: l.color }}>
+                <span
+                  key={l.id}
+                  className="inline-flex items-center text-[10px] font-medium text-white px-1.5 py-0.5 rounded whitespace-nowrap"
+                  style={{ backgroundColor: l.color }}
+                >
                   {l.name}
                 </span>
               ))}
-              {labels.length > 3 && <span className="text-[10px] text-gray-500">+{labels.length - 3}</span>}
+              {labels.length > 3 && <span className="text-[10px] text-gray-500 shrink-0">+{labels.length - 3}</span>}
             </div>
           )}
         </td>
       );
     case 'wanted':
-      return <td className="hidden xl:table-cell px-3 py-2 text-[13px] text-gray-700 text-right tabular-nums">{crm.price_wanted != null ? formatPrice(crm.price_wanted) : <EmDash />}</td>;
+      return <td className="px-3 py-2 text-[13px] text-gray-700 text-right tabular-nums whitespace-nowrap">{crm.price_wanted != null ? formatPrice(crm.price_wanted) : <EmDash />}</td>;
     case 'offered':
-      return <td className="hidden xl:table-cell px-3 py-2 text-[13px] text-gray-700 text-right tabular-nums">{crm.price_offered != null ? formatPrice(crm.price_offered) : <EmDash />}</td>;
+      return <td className="px-3 py-2 text-[13px] text-gray-700 text-right tabular-nums whitespace-nowrap">{crm.price_offered != null ? formatPrice(crm.price_offered) : <EmDash />}</td>;
     case 'vin':
-      return <td className="hidden lg:table-cell px-3 py-2"><VinCell vin={np.vin || ''} /></td>;
+      return <td className="px-3 py-2 whitespace-nowrap"><VinCell vin={np.vin || ''} /></td>;
     case 'phone_1':
     case 'phone_2':
     case 'phone_3':
@@ -1288,23 +1317,23 @@ function BuiltinCell({ colKey, lead, np, crm, labels, location, vehicle, tierMet
       );
     }
     case 'location':
-      return <td className="hidden md:table-cell px-3 py-2 text-[13px] text-gray-600 whitespace-nowrap">{location && location !== '—' ? location : <EmDash />}</td>;
+      return <td className="px-3 py-2 text-[13px] text-gray-600 whitespace-nowrap">{location && location !== '—' ? location : <EmDash />}</td>;
     case 'vehicle':
-      return <td className="hidden md:table-cell px-3 py-2 text-[13px] text-gray-700 whitespace-nowrap truncate max-w-[200px]" title={vehicle}>{vehicle && vehicle !== '—' ? formatVehicle(vehicle) : <EmDash />}</td>;
+      return <td className="px-3 py-2 text-[13px] text-gray-700 whitespace-nowrap" title={vehicle}>{vehicle && vehicle !== '—' ? formatVehicle(vehicle) : <EmDash />}</td>;
     case 'source_file':
-      return <td className="hidden lg:table-cell px-3 py-2 text-[12px] text-gray-500 truncate max-w-[180px]" title={lead.file_display_name || lead.file_name || ''}>{lead.file_display_name || lead.file_name || <EmDash />}</td>;
+      return <td className="px-3 py-2 text-[12px] text-gray-500 whitespace-nowrap truncate max-w-[200px]" title={lead.file_display_name || lead.file_name || ''}>{lead.file_display_name || lead.file_name || <EmDash />}</td>;
     case 'batch':
-      return <td className="hidden lg:table-cell px-3 py-2 text-[12px] text-gray-500 truncate max-w-[180px]" title={lead.batch_name || ''}>{lead.batch_name || <EmDash />}</td>;
+      return <td className="px-3 py-2 text-[12px] text-gray-500 whitespace-nowrap truncate max-w-[200px]" title={lead.batch_name || ''}>{lead.batch_name || <EmDash />}</td>;
     case 'stage':
       return (
-        <td className="hidden md:table-cell px-3 py-2">
+        <td className="px-3 py-2 whitespace-nowrap">
           <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 uppercase tracking-wide">{lead.source_stage}</span>
         </td>
       );
     case 'row_number':
-      return <td className="hidden xl:table-cell px-3 py-2 text-[11px] text-gray-400 tabular-nums">{lead.source_row_number}</td>;
+      return <td className="px-3 py-2 text-[11px] text-gray-400 tabular-nums whitespace-nowrap">{lead.source_row_number}</td>;
     case 'imported':
-      return <td className="hidden lg:table-cell px-3 py-2 text-[11px] text-gray-400 whitespace-nowrap">{formatDate(lead.imported_at)}</td>;
+      return <td className="px-3 py-2 text-[11px] text-gray-400 whitespace-nowrap">{formatDate(lead.imported_at)}</td>;
     case 'miles': {
       const v = PAYLOAD_READER.miles(np);
       if (v === null || v === undefined || v === '') return td('text-[13px] text-gray-700 tabular-nums text-right', <EmDash />);
@@ -1353,9 +1382,9 @@ function SortableTh({ label, sortKey, sort, onSort, className = '', align = 'lef
     <th
       onClick={(e) => onSort(sortKey, e.shiftKey)}
       title={tooltip}
-      className={`${className} px-3 py-2 text-${align} text-[10px] font-semibold uppercase tracking-wider cursor-pointer select-none ${isActive ? 'text-gray-900' : 'text-gray-500 hover:text-gray-800'}`}
+      className={`${className} px-3 py-2 text-${align} text-[10px] font-semibold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap ${isActive ? 'text-gray-900' : 'text-gray-500 hover:text-gray-800'}`}
     >
-      <span className={`inline-flex items-center gap-1 ${justify}`}>
+      <span className={`inline-flex items-center gap-1 whitespace-nowrap ${justify}`}>
         <span className="truncate">{label}</span>
         {arrow && <span aria-hidden="true" className="text-[11px] leading-none">{arrow}</span>}
         {isActive && sort.length > 1 && (
