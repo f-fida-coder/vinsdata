@@ -462,15 +462,19 @@ function matchLeadIdByPhone(PDO $db, string $rawPhone): ?int
     $third   = $stripDigits("JSON_UNQUOTE(JSON_EXTRACT(normalized_payload_json, '$.phone_3'))");
     $fourth  = $stripDigits("JSON_UNQUOTE(JSON_EXTRACT(normalized_payload_json, '$.phone_4'))");
 
+    // Each placeholder occurrence needs its own name — PDO with
+    // ATTR_EMULATE_PREPARES=false (which we enforce in config.php)
+    // uses native MySQL prepares that treat repeated `:n` as a bind
+    // error (HY093). Same pattern used in leads.php's global search.
     $sql = "SELECT id FROM imported_leads_raw
-             WHERE  $primary LIKE :n
-                OR $second  LIKE :n
-                OR $third   LIKE :n
-                OR $fourth  LIKE :n
+             WHERE  $primary LIKE :n1
+                OR $second  LIKE :n2
+                OR $third   LIKE :n3
+                OR $fourth  LIKE :n4
              ORDER BY id DESC
              LIMIT 1";
     $stmt = $db->prepare($sql);
-    $stmt->execute([':n' => $needle]);
+    $stmt->execute([':n1' => $needle, ':n2' => $needle, ':n3' => $needle, ':n4' => $needle]);
     $row = $stmt->fetch();
     return $row ? (int) $row['id'] : null;
 }
