@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     $stmt = $db->prepare(
         'SELECT s.status, s.priority, s.lead_temperature, s.price_wanted, s.price_offered,
-                s.vehicle_color, s.vehicle_odometer,
+                s.vehicle_color, s.vehicle_odometer, s.tier_override,
                 s.assigned_user_id, u.name AS assigned_user_name,
                 s.created_at, s.updated_at
            FROM lead_states s
@@ -39,6 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'price_offered'      => null,
             'vehicle_color'      => null,
             'vehicle_odometer'   => null,
+            'tier_override'      => null,
             'assigned_user_id'   => null,
             'assigned_user_name' => null,
             'is_default'         => true,
@@ -63,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
     // Load current (or defaults). Fetch every column we may touch.
     $stmt = $db->prepare(
         'SELECT status, priority, assigned_user_id, lead_temperature, price_wanted, price_offered,
-                vehicle_color, vehicle_odometer
+                vehicle_color, vehicle_odometer, tier_override
            FROM lead_states WHERE imported_lead_id = :lid'
     );
     $stmt->execute([':lid' => $leadId]);
@@ -78,6 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
     $currentColor       = $current['vehicle_color'] ?? null;
     $currentOdometer    = isset($current['vehicle_odometer']) && $current['vehicle_odometer'] !== null
         ? (int) $current['vehicle_odometer'] : null;
+    $currentTierOverride = $current['tier_override'] ?? null;
 
     $next = [
         'status'           => $current['status'],
@@ -88,6 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
         'price_offered'    => $currentOffered,
         'vehicle_color'    => $currentColor,
         'vehicle_odometer' => $currentOdometer,
+        'tier_override'    => $currentTierOverride,
     ];
 
     $changes = [];  // [activity_type, old, new]
@@ -172,6 +175,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
         }
     }
 
+    // Manual tier override. NULL / '' / 'auto' clears the override and
+    // returns the lead to the auto-computed tier. Any LEAD_TIERS value
+    // pins the lead to that tier permanently (until next override).
+    if (array_key_exists('tier_override', $input)) {
+        $raw = $input['tier_override'];
+        if ($raw === null || $raw === '' || $raw === 'auto') {
+            $newTier = null;
+        } else {
+            assertLeadTier((string) $raw);
+            $newTier = (string) $raw;
+        }
+        if ($newTier !== $currentTierOverride) {
+            // Not recorded in the activity timeline yet — the
+            // lead_activities ENUM doesn't include tier_override_changed
+            // and tier_override is visible on the tier badge itself.
+            $next['tier_override'] = $newTier;
+            $changes[] = ['tier_override_changed', $currentTierOverride, $newTier];
+        }
+    }
+
     if (array_key_exists('vehicle_odometer', $input)) {
         // Accept null/'' to clear, plus integer-ish strings ("123,456" → 123456).
         $rawOdo = $input['vehicle_odometer'];
@@ -200,9 +223,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
         $stmt = $db->prepare(
             'INSERT INTO lead_states
                (imported_lead_id, status, priority, assigned_user_id, lead_temperature,
-                price_wanted, price_offered, vehicle_color, vehicle_odometer)
+                price_wanted, price_offered, vehicle_color, vehicle_odometer, tier_override)
              VALUES (:lid, :status, :priority, :assignee, :temp,
-                     :wanted, :offered, :color, :odometer)
+                     :wanted, :offered, :color, :odometer, :tier_override)
              ON DUPLICATE KEY UPDATE
                status = VALUES(status),
                priority = VALUES(priority),
@@ -211,20 +234,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
                price_wanted = VALUES(price_wanted),
                price_offered = VALUES(price_offered),
                vehicle_color = VALUES(vehicle_color),
-               vehicle_odometer = VALUES(vehicle_odometer)'
+               vehicle_odometer = VALUES(vehicle_odometer),
+               tier_override = VALUES(tier_override)'
         );
         $stmt->execute([
-            ':lid'      => $leadId,
-            ':status'   => $next['status'],
-            ':priority' => $next['priority'],
-            ':assignee' => $next['assigned_user_id'],
-            ':temp'     => $next['lead_temperature'],
-            ':wanted'   => $next['price_wanted'],
-            ':offered'  => $next['price_offered'],
-            ':color'    => $next['vehicle_color'],
-            ':odometer' => $next['vehicle_odometer'],
+            ':lid'           => $leadId,
+            ':status'        => $next['status'],
+            ':priority'      => $next['priority'],
+            ':assignee'      => $next['assigned_user_id'],
+            ':temp'          => $next['lead_temperature'],
+            ':wanted'        => $next['price_wanted'],
+            ':offered'       => $next['price_offered'],
+            ':color'         => $next['vehicle_color'],
+            ':odometer'      => $next['vehicle_odometer'],
+            ':tier_override' => $next['tier_override'],
         ]);
         foreach ($changes as [$type, $old, $new]) {
+            // Some change types (tier_override_changed, vehicle_color_changed,
+            // vehicle_odometer_changed) aren't in the lead_activities ENUM
+            // yet — skip them so the state save still commits. The UI shows
+            // the new value either way.
+            if (!in_array($type, LEAD_ACTIVITY_TYPES, true)) continue;
             logLeadActivity($db, $leadId, $user['id'], $type, $old, $new);
         }
         $db->commit();

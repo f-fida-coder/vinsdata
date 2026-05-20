@@ -50,6 +50,12 @@ const EMPTY_FILTERS = {
   in_campaign_id: '',
   tier: '',
   include_archived: '', // '' = live only; '1' = archived only
+  // Empty / has-value filter (CSV-joined list of column keys).
+  // empty_op picks the polarity: '' / 'is_not_empty' = "has value",
+  // 'is_empty' = "blank". Each field check uses the indexed norm_*
+  // column when available, otherwise falls back to JSON_EXTRACT.
+  empty_field: '',
+  empty_op: 'is_not_empty',
 };
 
 // Which filters show as removable "chips" above the table.
@@ -85,6 +91,7 @@ const CHIP_LABELS = {
   number_of_owners_max: 'Owners ≤',
   in_campaign_id: 'In campaign',
   tier: 'Tier',
+  empty_field: 'Field check',
 };
 
 function formatDate(s) {
@@ -221,6 +228,11 @@ export default function LeadsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(50);
+  // Click a column header to sort. Defaults to no explicit sort (server
+  // falls back to "newest import first, then row #"). Direction starts at
+  // 'desc' on each new field so "click Age" → highest first, matching
+  // the operator's mental model for numeric columns.
+  const [sort, setSort] = useState({ field: '', dir: 'desc' });
   const [data, setData] = useState({ leads: [], total: 0, page: 1, per_page: 50 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -262,6 +274,12 @@ export default function LeadsPage() {
       Object.entries(filters).forEach(([k, v]) => {
         if (v !== '' && v !== null && v !== undefined) params[k] = v;
       });
+      // empty_op only matters when empty_field is populated.
+      if (!filters.empty_field) delete params.empty_op;
+      if (sort.field) {
+        params.sort = sort.field;
+        params.dir  = sort.dir;
+      }
       const res = await api.get('/leads', { params });
       setData(res.data);
     } catch (err) {
@@ -269,7 +287,7 @@ export default function LeadsPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters, page, perPage]);
+  }, [filters, page, perPage, sort]);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
@@ -409,21 +427,48 @@ export default function LeadsPage() {
     const qs = new URLSearchParams();
     qs.set('format', 'csv');
     Object.entries(filters).forEach(([k, v]) => { if (v !== '' && v !== null && v !== undefined) qs.set(k, String(v)); });
+    if (sort.field) { qs.set('sort', sort.field); qs.set('dir', sort.dir); }
     return `/api/leads?${qs.toString()}`;
-  }, [filters]);
+  }, [filters, sort]);
 
   const totalPages = Math.max(1, Math.ceil(data.total / perPage));
   const activeChips = useMemo(() => {
-    return Object.entries(filters).filter(([k, v]) => v !== '' && k !== 'q').map(([k, v]) => ({ key: k, value: v }));
+    // empty_op is a modifier — it renders alongside empty_field, not on
+    // its own chip. include_archived is the Archive toggle in the toolbar.
+    const skip = new Set(['q', 'empty_op', 'include_archived']);
+    return Object.entries(filters)
+      .filter(([k, v]) => v !== '' && !skip.has(k))
+      // Default empty_op (is_not_empty) doesn't deserve a chip with no
+      // selected field, but the field check above already covers that.
+      .map(([k, v]) => ({ key: k, value: v }));
   }, [filters]);
 
   const clearFilter = (key) => {
-    setFilters((prev) => ({ ...prev, [key]: '' }));
+    setFilters((prev) => {
+      const next = { ...prev, [key]: '' };
+      // empty_op is a modifier of empty_field — clear it alongside.
+      if (key === 'empty_field') next.empty_op = 'is_not_empty';
+      return next;
+    });
     setPage(1);
     setActiveViewId(null);
   };
-  const clearAll = () => { setFilters(EMPTY_FILTERS); setSearchInput(''); setPage(1); setActiveViewId(null); };
+  const clearAll = () => { setFilters(EMPTY_FILTERS); setSearchInput(''); setPage(1); setActiveViewId(null); setSort({ field: '', dir: 'desc' }); };
   const updateFilter = (key, value) => { setFilters((prev) => ({ ...prev, [key]: value })); setPage(1); setActiveViewId(null); };
+
+  // Click a column header to toggle sort. First click → desc on that field
+  // (matches the "highest age first" instinct for numeric columns); second
+  // → asc; third → clear sort. Custom keys go through verbatim — server
+  // validates them against [A-Za-z0-9_ -] before building the ORDER BY.
+  const toggleSort = (field) => {
+    if (!field) return;
+    setPage(1);
+    setSort((prev) => {
+      if (prev.field !== field) return { field, dir: 'desc' };
+      if (prev.dir === 'desc')  return { field, dir: 'asc' };
+      return { field: '', dir: 'desc' };
+    });
+  };
 
   const [deletingBatch, setDeletingBatch] = useState(false);
   const deleteCurrentBatch = async () => {
@@ -493,6 +538,7 @@ export default function LeadsPage() {
     if (k === 'has_open_tasks')   return v === '1' ? 'Has open tasks' : 'No open tasks';
     if (k === 'tasks_due_today')  return 'Yes';
     if (k === 'tasks_overdue')    return 'Yes';
+    if (k === 'empty_field')      return `${v} ${(filters.empty_op || 'is_not_empty') === 'is_empty' ? '(empty)' : '(has value)'}`;
     return String(v);
   };
 
@@ -705,6 +751,31 @@ export default function LeadsPage() {
                 <option value="">Any batch</option>
                 {options.batches.map((b) => <option key={b.id} value={b.id}>{b.batch_name}</option>)}
               </FilterSelect>
+              <FilterSelect label="Source file" value={filters.file_id} onChange={(v) => updateFilter('file_id', v)}>
+                <option value="">Any file</option>
+                {(options.files || []).map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.display_name}{f.vehicle_name ? ` — ${f.vehicle_name}` : ''}
+                  </option>
+                ))}
+              </FilterSelect>
+              <EmptyFieldFilter
+                field={filters.empty_field}
+                op={filters.empty_op || 'is_not_empty'}
+                customColumns={customColumns}
+                onChange={(field, op) => {
+                  // Update both keys in one batch so the chip + the
+                  // pending request line up. Empty field clears the op
+                  // back to default.
+                  setFilters((prev) => ({
+                    ...prev,
+                    empty_field: field,
+                    empty_op:    field ? (op || 'is_not_empty') : 'is_not_empty',
+                  }));
+                  setPage(1);
+                  setActiveViewId(null);
+                }}
+              />
             </div>
             <div className="row" style={{ justifyContent: 'flex-end', gap: 6 }}>
               <Button variant="ghost" size="sm" onClick={clearAll}>Reset</Button>
@@ -788,29 +859,39 @@ export default function LeadsPage() {
                       aria-label="Select all on page"
                     />
                   </th>
-                  <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Name</th>
-                  {!hiddenColumns.has('tier')        && <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Tier</th>}
-                  {!hiddenColumns.has('status')      && <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>}
-                  {!hiddenColumns.has('priority')    && <th className="hidden sm:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Priority</th>}
-                  {!hiddenColumns.has('temperature') && <th className="hidden sm:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Temperature</th>}
+                  <SortableTh label="Name" sortKey="last_name" sort={sort} onSort={toggleSort} className="px-2" />
+                  {!hiddenColumns.has('tier')        && <SortableTh label="Tier"        sortKey="tier"             sort={sort} onSort={toggleSort} />}
+                  {!hiddenColumns.has('status')      && <SortableTh label="Status"      sortKey="status"           sort={sort} onSort={toggleSort} />}
+                  {!hiddenColumns.has('priority')    && <SortableTh label="Priority"    sortKey="priority"         sort={sort} onSort={toggleSort} className="hidden sm:table-cell" />}
+                  {!hiddenColumns.has('temperature') && <SortableTh label="Temperature" sortKey="lead_temperature" sort={sort} onSort={toggleSort} className="hidden sm:table-cell" />}
                   {!hiddenColumns.has('agent')       && <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Agent</th>}
                   {!hiddenColumns.has('labels')      && <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Labels</th>}
-                  {!hiddenColumns.has('wanted')      && <th className="hidden xl:table-cell px-3 py-2 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Wanted</th>}
-                  {!hiddenColumns.has('offered')     && <th className="hidden xl:table-cell px-3 py-2 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Offered</th>}
-                  {!hiddenColumns.has('vin')         && <th className="hidden lg:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">VIN</th>}
-                  {!hiddenColumns.has('phone')       && <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Phone</th>}
-                  {!hiddenColumns.has('email')       && <th className="hidden lg:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Email</th>}
-                  {!hiddenColumns.has('location')    && <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Location</th>}
-                  {!hiddenColumns.has('vehicle')     && <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Vehicle</th>}
-                  {!hiddenColumns.has('source_file') && <th className="hidden lg:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Source file</th>}
-                  {!hiddenColumns.has('batch')       && <th className="hidden lg:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Batch</th>}
+                  {!hiddenColumns.has('wanted')      && <SortableTh label="Wanted"  sortKey="price_wanted"  sort={sort} onSort={toggleSort} className="hidden xl:table-cell" align="right" />}
+                  {!hiddenColumns.has('offered')     && <SortableTh label="Offered" sortKey="price_offered" sort={sort} onSort={toggleSort} className="hidden xl:table-cell" align="right" />}
+                  {!hiddenColumns.has('vin')         && <SortableTh label="VIN"     sortKey="vin"           sort={sort} onSort={toggleSort} className="hidden lg:table-cell" />}
+                  {!hiddenColumns.has('phone')       && <SortableTh label="Phone"   sortKey="phone_primary" sort={sort} onSort={toggleSort} />}
+                  {!hiddenColumns.has('email')       && <SortableTh label="Email"   sortKey="email_primary" sort={sort} onSort={toggleSort} className="hidden lg:table-cell" />}
+                  {!hiddenColumns.has('location')    && <SortableTh label="Location" sortKey="state"        sort={sort} onSort={toggleSort} className="hidden md:table-cell" />}
+                  {!hiddenColumns.has('vehicle')     && <SortableTh label="Vehicle"  sortKey="make"         sort={sort} onSort={toggleSort} className="hidden md:table-cell" />}
+                  {!hiddenColumns.has('source_file') && <SortableTh label="Source file" sortKey="source_file"  sort={sort} onSort={toggleSort} className="hidden lg:table-cell" />}
+                  {!hiddenColumns.has('batch')       && <SortableTh label="Batch"       sortKey="batch_name"   sort={sort} onSort={toggleSort} className="hidden lg:table-cell" />}
                   {!hiddenColumns.has('stage')       && <th className="hidden md:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Stage</th>}
-                  {!hiddenColumns.has('row_number')  && <th className="hidden xl:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Row #</th>}
-                  {!hiddenColumns.has('imported')    && <th className="hidden lg:table-cell px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Imported</th>}
+                  {!hiddenColumns.has('row_number')  && <SortableTh label="Row #"       sortKey="source_row_number" sort={sort} onSort={toggleSort} className="hidden xl:table-cell" />}
+                  {!hiddenColumns.has('imported')    && <SortableTh label="Imported"    sortKey="imported_at"       sort={sort} onSort={toggleSort} className="hidden lg:table-cell" />}
                   {visibleCustomColumns.map((k) => (
-                    <th key={`h-${k}`} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap truncate max-w-[200px]" title={k}>
-                      {k}
-                    </th>
+                    // Custom columns (raw payload keys) are server-sortable.
+                    // Server casts to DECIMAL for numeric ordering; string
+                    // fallback is the tiebreaker, so "Age", "NumberOfOwners",
+                    // "ServiceRecordCount" sort numerically as expected.
+                    <SortableTh
+                      key={`h-${k}`}
+                      label={k}
+                      sortKey={k}
+                      sort={sort}
+                      onSort={toggleSort}
+                      className="whitespace-nowrap truncate max-w-[200px]"
+                      title={k}
+                    />
                   ))}
                 </tr>
               </thead>
@@ -1102,6 +1183,29 @@ function ColumnsMenu({ open, onOpenChange, customColumns, hiddenColumns, onToggl
   );
 }
 
+/**
+ * Sortable column header. Click toggles desc → asc → off for that field;
+ * an arrow indicator shows the active direction. Server side validates
+ * the field name, so custom payload keys (e.g. "Age") flow through.
+ */
+function SortableTh({ label, sortKey, sort, onSort, className = '', align = 'left', title }) {
+  const isActive = sort.field === sortKey;
+  const arrow = isActive ? (sort.dir === 'asc' ? '↑' : '↓') : '';
+  const justify = align === 'right' ? 'justify-end' : 'justify-start';
+  return (
+    <th
+      onClick={() => onSort(sortKey)}
+      title={title || `Sort by ${label}`}
+      className={`${className} px-3 py-2 text-${align} text-[10px] font-semibold uppercase tracking-wider cursor-pointer select-none ${isActive ? 'text-gray-900' : 'text-gray-500 hover:text-gray-800'}`}
+    >
+      <span className={`inline-flex items-center gap-1 ${justify}`}>
+        <span className="truncate">{label}</span>
+        {arrow && <span aria-hidden="true" className="text-[11px] leading-none">{arrow}</span>}
+      </span>
+    </th>
+  );
+}
+
 function FilterSelect({ label, value, onChange, children }) {
   return (
     <div>
@@ -1264,6 +1368,68 @@ function QuickFilterPills({ tier, temperature, status, onTier, onTemp, onStatus 
       />
       <span className="leads-qf-sep"/>
       <ChipGroup label="Status" items={statusItems} active={status} onToggle={onStatus} dotVarMap={STATUS_DOT_VAR}/>
+    </div>
+  );
+}
+
+/**
+ * Empty / has-value filter. Operator picks a column then a polarity:
+ *   "Has value" → field must be non-empty
+ *   "Is empty"  → field must be NULL / ''
+ *
+ * Covers the promoted norm_* columns (indexed) plus any custom payload
+ * key that the current page surfaces — that's the set the table already
+ * shows the user, so the dropdown stays in sync. Empty selection clears
+ * the filter on the server.
+ */
+function EmptyFieldFilter({ field, op, customColumns, onChange }) {
+  const builtins = [
+    { key: 'phone_primary', label: 'Phone (primary)' },
+    { key: 'email_primary', label: 'Email' },
+    { key: 'vin',           label: 'VIN' },
+    { key: 'first_name',    label: 'First name' },
+    { key: 'last_name',     label: 'Last name' },
+    { key: 'city',          label: 'City' },
+    { key: 'state',         label: 'State' },
+    { key: 'zip_code',      label: 'ZIP' },
+    { key: 'make',          label: 'Make' },
+    { key: 'model',         label: 'Model' },
+    { key: 'year',          label: 'Year' },
+    { key: 'mileage',       label: 'Mileage' },
+  ];
+  return (
+    <div>
+      <label className="field-label">Empty / Has value</label>
+      <div className="row" style={{ gap: 6 }}>
+        <select
+          value={field}
+          onChange={(e) => onChange(e.target.value, op)}
+          className="vv-input"
+          style={{ flex: 2 }}
+          aria-label="Field to check"
+        >
+          <option value="">— Any —</option>
+          <optgroup label="Built-in">
+            {builtins.map((b) => <option key={b.key} value={b.key}>{b.label}</option>)}
+          </optgroup>
+          {customColumns.length > 0 && (
+            <optgroup label="Imported columns">
+              {customColumns.map((k) => <option key={k} value={k}>{k}</option>)}
+            </optgroup>
+          )}
+        </select>
+        <select
+          value={op}
+          onChange={(e) => onChange(field, e.target.value)}
+          className="vv-input"
+          style={{ flex: 1 }}
+          disabled={!field}
+          aria-label="Empty or not empty"
+        >
+          <option value="is_not_empty">Has value</option>
+          <option value="is_empty">Is empty</option>
+        </select>
+      </div>
     </div>
   );
 }

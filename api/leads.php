@@ -20,6 +20,7 @@ function attachCrmToLeads(PDO $db, array &$leads): void
     $stateStmt = $db->prepare(
         "SELECT s.imported_lead_id, s.status, s.priority,
                 s.lead_temperature, s.price_wanted, s.price_offered,
+                s.tier_override, s.vehicle_color, s.vehicle_odometer,
                 s.assigned_user_id, u.name AS assigned_user_name
            FROM lead_states s
            LEFT JOIN users u ON u.id = s.assigned_user_id
@@ -34,6 +35,9 @@ function attachCrmToLeads(PDO $db, array &$leads): void
             'lead_temperature'   => $r['lead_temperature'],
             'price_wanted'       => $r['price_wanted']  !== null ? (float) $r['price_wanted']  : null,
             'price_offered'      => $r['price_offered'] !== null ? (float) $r['price_offered'] : null,
+            'tier_override'      => $r['tier_override'],
+            'vehicle_color'      => $r['vehicle_color'],
+            'vehicle_odometer'   => $r['vehicle_odometer'] !== null ? (int) $r['vehicle_odometer'] : null,
             'assigned_user_id'   => $r['assigned_user_id'] !== null ? (int) $r['assigned_user_id'] : null,
             'assigned_user_name' => $r['assigned_user_name'],
         ];
@@ -64,6 +68,9 @@ function attachCrmToLeads(PDO $db, array &$leads): void
             'lead_temperature'   => null,
             'price_wanted'       => null,
             'price_offered'      => null,
+            'tier_override'      => null,
+            'vehicle_color'      => null,
+            'vehicle_odometer'   => null,
             'assigned_user_id'   => null,
             'assigned_user_name' => null,
         ];
@@ -170,7 +177,10 @@ if (!empty($_GET['source_stage'])) {
 }
 
 // CRM filters
-$needsStateJoin = false;
+// lead_states is now ALWAYS joined because the tier expression coalesces
+// with s.tier_override. Keep the flag so the variable name stays
+// self-documenting at the call site.
+$needsStateJoin = true;
 $needsLabelJoin = false;
 
 if (!empty($_GET['status'])) {
@@ -288,6 +298,56 @@ if (isset($_GET['tier']) && $_GET['tier'] !== '') {
             $params[":tier_$i"] = $t;
         }
         $where[] = "$expr IN (" . implode(',', $ph) . ")";
+    }
+}
+
+// Empty / has-value filter. Lets operators slice by "has a phone", "no
+// email", "missing Age", etc. without knowing the exact value.
+//
+// Param shape (repeatable via CSV):
+//   empty_field=phone_primary,email_primary
+//   empty_op=is_empty | is_not_empty   (default is_not_empty)
+//
+// For each field we pick the cheapest expression:
+//   - Promoted/indexed columns (vin, phone_primary, email_primary, state,
+//     make, model, year) hit norm_* directly.
+//   - Everything else falls through to a JSON_EXTRACT on
+//     normalized_payload_json (raw payload key, case-sensitive).
+//
+// Only [A-Za-z0-9_ -] keys are accepted so this can't be coerced into
+// SQL injection through the JSON path.
+$emptyPromoted = [
+    'vin'           => 'r.norm_vin',
+    'phone_primary' => 'r.norm_phone_primary',
+    'email_primary' => 'r.norm_email_primary',
+    'state'         => 'r.norm_state',
+    'make'          => 'r.norm_make',
+    'model'         => 'r.norm_model',
+    'year'          => 'r.norm_year',
+];
+$emptyOp = ($_GET['empty_op'] ?? 'is_not_empty');
+if (!in_array($emptyOp, ['is_empty', 'is_not_empty'], true)) $emptyOp = 'is_not_empty';
+if (isset($_GET['empty_field']) && $_GET['empty_field'] !== '') {
+    $rawFields = is_array($_GET['empty_field'])
+        ? $_GET['empty_field']
+        : explode(',', (string) $_GET['empty_field']);
+    foreach ($rawFields as $field) {
+        $field = trim($field);
+        if ($field === '' || !preg_match('/^[A-Za-z0-9_ -]{1,64}$/', $field)) continue;
+        if (isset($emptyPromoted[$field])) {
+            $col = $emptyPromoted[$field];
+            $where[] = $emptyOp === 'is_empty'
+                ? "($col IS NULL OR $col = '')"
+                : "($col IS NOT NULL AND $col <> '')";
+        } else {
+            // Escape the JSON path: only the [A-Za-z0-9_ -] chars survived
+            // the regex above, so this is safe to embed.
+            $path = "'$." . $field . "'";
+            $expr = "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, $path))";
+            $where[] = $emptyOp === 'is_empty'
+                ? "($expr IS NULL OR $expr = '')"
+                : "($expr IS NOT NULL AND $expr <> '')";
+        }
     }
 }
 
@@ -487,6 +547,58 @@ if (!empty($_GET['preview_count'])) {
     exit();
 }
 
+// Sort — operator picks any column header in the table. Default keeps the
+// historical order (newest imports first, then row order inside a batch).
+//
+// Native columns and indexed norm_* fields are sorted directly. Anything
+// else is read out of normalized_payload_json with a numeric CAST so "Age"
+// / "NumberOfOwners" / "ServiceRecordCount" sort like numbers even though
+// JSON stores them as strings. Trailing comma strip handles "154,123".
+//
+// Direction defaults to DESC (matches the user's "highest age to lowest"
+// expectation for numeric fields).
+$sortField = isset($_GET['sort']) ? trim((string) $_GET['sort']) : '';
+$sortDir   = strtolower((string) ($_GET['dir'] ?? 'desc'));
+if (!in_array($sortDir, ['asc','desc'], true)) $sortDir = 'desc';
+$dirSql = strtoupper($sortDir);
+
+$nativeSorts = [
+    'imported_at'       => 'b.imported_at',
+    'created_at'        => 'r.created_at',
+    'source_row_number' => 'r.source_row_number',
+    'vin'               => 'r.norm_vin',
+    'phone_primary'     => 'r.norm_phone_primary',
+    'email_primary'     => 'r.norm_email_primary',
+    'state'             => 'r.norm_state',
+    'make'              => 'r.norm_make',
+    'model'             => 'r.norm_model',
+    'year'              => 'r.norm_year',
+    'tier'              => 'tier',
+    'status'            => 's.status',
+    'priority'          => 's.priority',
+    'lead_temperature'  => 's.lead_temperature',
+    'price_wanted'      => 's.price_wanted',
+    'price_offered'     => 's.price_offered',
+    'batch_name'        => 'b.batch_name',
+    'source_file'       => 'f.display_name',
+];
+if ($sortField !== '' && isset($nativeSorts[$sortField])) {
+    // tier is an aliased computed expression — MySQL accepts it in ORDER BY.
+    $orderBy = $nativeSorts[$sortField] . " $dirSql, r.source_row_number ASC";
+} elseif ($sortField !== '' && preg_match('/^[A-Za-z0-9_ -]{1,64}$/', $sortField)) {
+    // Dynamic JSON-payload sort. Numeric cast (DECIMAL handles ints + floats).
+    // Empty / unparseable values land last regardless of direction so the
+    // top of a "highest Age" sort is always real data.
+    $path = "'$." . $sortField . "'";
+    $rawExpr  = "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, $path))";
+    $numExpr  = "CAST(REPLACE(REPLACE($rawExpr, ',', ''), ' ', '') AS DECIMAL(20,2))";
+    // `$numExpr IS NULL` puts unparseable values at the bottom regardless
+    // of direction. Tiebreaker by text so identical numerics stay stable.
+    $orderBy  = "($numExpr IS NULL) ASC, $numExpr $dirSql, $rawExpr $dirSql, r.id $dirSql";
+} else {
+    $orderBy = "b.imported_at DESC, r.source_row_number ASC";
+}
+
 // Page rows. Include the computed `tier` column so frontends don't need to
 // re-derive it from the normalized payload.
 $tierExpr = leadTierSqlExpression('tier');
@@ -499,7 +611,7 @@ $dataSql = "SELECT r.id, r.batch_id, r.source_row_number, r.normalized_payload_j
                    $tierExpr
             $baseFrom
             WHERE $whereSql
-            ORDER BY b.imported_at DESC, r.source_row_number ASC
+            ORDER BY $orderBy
             LIMIT :limit OFFSET :offset";
 
 $stmt = $db->prepare($dataSql);

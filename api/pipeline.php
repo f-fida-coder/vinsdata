@@ -227,15 +227,24 @@ const LEAD_PRIORITIES = ['low','medium','high','hot'];
 const LEAD_TEMPERATURES = ['cold','warm','hot','closed'];
 
 // -- Tier classification --------------------------------------------------
-// Tiers are auto-computed from the normalized payload (number of owners +
-// mileage). Tier 1 is the highest-quality lead. To tune the thresholds,
-// change both `LEAD_TIER_THRESHOLDS` (used in PHP) and the matching block in
-// `leadTierSqlExpression()` below.
+// Tiers are auto-computed from the normalized payload (owner Age +
+// NumberOfOwners). Tier 1 is the highest-quality lead.
+//
+//   Tier 1 = Age >= 60 AND owners <= 4   (older owner, few transfers)
+//   Tier 2 = Age 50–59 AND owners <= 4
+//   Tier 3 = everything else (incl. missing data)
+//
+// The agent can override the auto tier from the lead drawer; the override
+// is stored on lead_states.tier_override and wins over the computed value
+// (see leadTierSqlExpression() below — it emits COALESCE(s.tier_override, …)).
+//
+// To tune the rules, change both `LEAD_TIER_THRESHOLDS` (PHP path) and the
+// matching block in `leadTierSqlExpression()`.
 const LEAD_TIERS = ['tier_1','tier_2','tier_3'];
 const LEAD_TIER_THRESHOLDS = [
-    // Evaluated in order; first match wins.
-    ['key' => 'tier_1', 'max_owners' => 1, 'max_miles' => 100000],
-    ['key' => 'tier_2', 'max_owners' => 2, 'max_miles' => 150000],
+    // Evaluated in order; first match wins. min_age inclusive on both ends.
+    ['key' => 'tier_1', 'min_age' => 60, 'max_age' => null, 'max_owners' => 4],
+    ['key' => 'tier_2', 'min_age' => 50, 'max_age' => 59,   'max_owners' => 4],
     // Everything else falls through to tier_3.
 ];
 
@@ -243,19 +252,24 @@ const LEAD_TIER_THRESHOLDS = [
  * Classify a lead into Tier 1/2/3 from its normalized payload.
  *
  * Missing or non-numeric data → `tier_3` (worst tier). Accepts both
- * `mileage` (post-mapping) and `LastReportedMiles` (raw CSV header).
+ * `Age` (raw CarFax header) and `age` (post-mapping if ever promoted).
+ * Owners reads `NumberOfOwners` / `number_of_owners`.
  */
 function computeLeadTier(array $np): string
 {
-    $rawOwners = $np['NumberOfOwners'] ?? $np['number_of_owners'] ?? null;
-    $rawMiles  = $np['mileage'] ?? $np['LastReportedMiles'] ?? null;
-    $owners = is_numeric(str_replace([',',' '], '', (string) $rawOwners)) ? (int) str_replace([',',' '], '', (string) $rawOwners) : null;
-    $miles  = is_numeric(str_replace([',',' '], '', (string) $rawMiles))  ? (int) str_replace([',',' '], '', (string) $rawMiles)  : null;
+    $clean = static function ($v) {
+        if ($v === null) return null;
+        $s = str_replace([',', ' '], '', (string) $v);
+        return is_numeric($s) ? (int) $s : null;
+    };
+    $age    = $clean($np['Age'] ?? $np['age'] ?? null);
+    $owners = $clean($np['NumberOfOwners'] ?? $np['number_of_owners'] ?? null);
+    if ($age === null || $owners === null) return 'tier_3';
     foreach (LEAD_TIER_THRESHOLDS as $t) {
-        if ($owners !== null && $owners <= $t['max_owners']
-            && $miles  !== null && $miles  <= $t['max_miles']) {
-            return $t['key'];
-        }
+        if ($age < $t['min_age']) continue;
+        if ($t['max_age'] !== null && $age > $t['max_age']) continue;
+        if ($owners > $t['max_owners']) continue;
+        return $t['key'];
     }
     return 'tier_3';
 }
@@ -263,30 +277,51 @@ function computeLeadTier(array $np): string
 /**
  * SQL expression that computes the same tier for use inside `leads.php`
  * WHERE/SELECT clauses. Keep this in sync with `computeLeadTier()`.
- * Produces a column aliased as `tier`.
+ *
+ * Wraps the CASE in COALESCE(s.tier_override, …) so a manual override on
+ * lead_states wins. Callers MUST ensure `lead_states s` is LEFT JOINed
+ * on imported_leads_raw r — leads.php list mode always joins it.
+ *
+ * Returns a column aliased as `$alias`.
  */
 function leadTierSqlExpression(string $alias = 'tier'): string
 {
-    $ownersExpr = "COALESCE(
-        CAST(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.NumberOfOwners')) AS UNSIGNED),
-        CAST(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.number_of_owners')) AS UNSIGNED),
-        99
+    // Age is sparse — only present on ~half of imports — so cast carefully.
+    // JSON_UNQUOTE on a missing key returns NULL. CAST(NULL AS UNSIGNED) = 0
+    // which would false-match Tier 1, so we route NULL through NULLIF + a
+    // sentinel that fails every age band.
+    $ageExpr = "NULLIF(
+        CAST(REPLACE(REPLACE(COALESCE(
+            JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.Age')),
+            JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.age'))
+        ), ',', ''), ' ', '') AS UNSIGNED),
+        0
     )";
-    // Miles can arrive with commas in the source (\"154,123\"). REPLACE them
-    // before CAST. JSON_UNQUOTE on a missing key returns NULL → UNSIGNED cast
-    // of NULL is 0 — we use COALESCE to force 'unknown' → 99999999.
-    $milesExpr = "COALESCE(
-        CAST(REPLACE(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.mileage')), ',', '') AS UNSIGNED),
-        CAST(REPLACE(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.LastReportedMiles')), ',', '') AS UNSIGNED),
-        99999999
+    $ownersExpr = "NULLIF(
+        CAST(REPLACE(REPLACE(COALESCE(
+            JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.NumberOfOwners')),
+            JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.number_of_owners'))
+        ), ',', ''), ' ', '') AS UNSIGNED),
+        0
     )";
 
     $cases = [];
     foreach (LEAD_TIER_THRESHOLDS as $t) {
-        $cases[] = "WHEN $ownersExpr <= {$t['max_owners']} AND $milesExpr <= {$t['max_miles']} THEN '{$t['key']}'";
+        $clauses = [
+            "$ageExpr IS NOT NULL",
+            "$ownersExpr IS NOT NULL",
+            "$ageExpr >= " . (int) $t['min_age'],
+            "$ownersExpr <= " . (int) $t['max_owners'],
+        ];
+        if ($t['max_age'] !== null) {
+            $clauses[] = "$ageExpr <= " . (int) $t['max_age'];
+        }
+        $cases[] = "WHEN " . implode(' AND ', $clauses) . " THEN '{$t['key']}'";
     }
     $cases[] = "ELSE 'tier_3'";
-    return "(CASE " . implode(' ', $cases) . " END) AS $alias";
+    $computed = "(CASE " . implode(' ', $cases) . " END)";
+    // Manual override wins. lead_states is LEFT JOINed as `s` by callers.
+    return "COALESCE(s.tier_override, $computed) AS $alias";
 }
 
 function assertLeadTier(string $tier): void

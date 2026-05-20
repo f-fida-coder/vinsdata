@@ -77,12 +77,13 @@ export const LEAD_TEMPERATURES = [
 
 export const TEMPERATURE_BY_KEY = Object.fromEntries(LEAD_TEMPERATURES.map((t) => [t.key, t]));
 
-// Tiers are auto-computed from the lead's normalized payload. Tier 1 = best.
-// Thresholds live in api/pipeline.php (`LEAD_TIER_THRESHOLDS`) — keep this
-// JS helper in sync when you change them there.
+// Tiers are auto-computed from the lead's normalized payload (owner Age +
+// NumberOfOwners). Tier 1 = best. An agent can also override the tier
+// from the lead drawer — that override is stored on lead_states and wins
+// over the auto-computed value. See api/pipeline.php LEAD_TIER_THRESHOLDS.
 export const LEAD_TIERS = [
-  { key: 'tier_1', label: 'Tier 1', short: 'T1', bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500', hint: '1 owner, ≤100k miles' },
-  { key: 'tier_2', label: 'Tier 2', short: 'T2', bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500',   hint: '≤2 owners, ≤150k miles' },
+  { key: 'tier_1', label: 'Tier 1', short: 'T1', bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500', hint: 'Age 60+ · ≤4 owners' },
+  { key: 'tier_2', label: 'Tier 2', short: 'T2', bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500',   hint: 'Age 50–59 · ≤4 owners' },
   { key: 'tier_3', label: 'Tier 3', short: 'T3', bg: 'bg-gray-100',   text: 'text-gray-600',    dot: 'bg-gray-400',    hint: 'Everything else / unknown' },
 ];
 
@@ -108,20 +109,27 @@ export const BOS_PAYMENT_TYPES = [
 ];
 
 const TIER_THRESHOLDS = [
-  { key: 'tier_1', maxOwners: 1, maxMiles: 100000 },
-  { key: 'tier_2', maxOwners: 2, maxMiles: 150000 },
+  // Evaluated in order; first match wins. maxAge=null means open-ended.
+  { key: 'tier_1', minAge: 60, maxAge: null, maxOwners: 4 },
+  { key: 'tier_2', minAge: 50, maxAge: 59,   maxOwners: 4 },
 ];
 
 /** Mirror of api/pipeline.php's computeLeadTier(). Reads from normalized_payload. */
 export function computeLeadTier(np) {
   if (!np || typeof np !== 'object') return 'tier_3';
-  const rawOwners = np.NumberOfOwners ?? np.number_of_owners;
-  const rawMiles  = np.mileage ?? np.LastReportedMiles;
-  const owners = Number(String(rawOwners ?? '').replace(/[\s,]/g, ''));
-  const miles  = Number(String(rawMiles  ?? '').replace(/[\s,]/g, ''));
-  if (!Number.isFinite(owners) || !Number.isFinite(miles)) return 'tier_3';
+  const clean = (v) => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = Number(String(v).replace(/[\s,]/g, ''));
+    return Number.isFinite(n) ? n : null;
+  };
+  const age    = clean(np.Age ?? np.age);
+  const owners = clean(np.NumberOfOwners ?? np.number_of_owners);
+  if (age === null || owners === null) return 'tier_3';
   for (const t of TIER_THRESHOLDS) {
-    if (owners <= t.maxOwners && miles <= t.maxMiles) return t.key;
+    if (age < t.minAge) continue;
+    if (t.maxAge !== null && age > t.maxAge) continue;
+    if (owners > t.maxOwners) continue;
+    return t.key;
   }
   return 'tier_3';
 }

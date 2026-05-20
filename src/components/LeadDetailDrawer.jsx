@@ -7,7 +7,7 @@ import {
   STATUS_BY_KEY, PRIORITY_BY_KEY, TEMPERATURE_BY_KEY,
   DEFAULT_LEAD_STATE, ACTIVITY_META, describeActivity, formatPrice,
   CAMPAIGN_STATUS_META, RECIPIENT_STATUS_META, MARKETING_CHANNELS,
-  TIER_BY_KEY, computeLeadTier, roleLabel,
+  LEAD_TIERS, TIER_BY_KEY, computeLeadTier, roleLabel,
 } from '../lib/crm';
 import {
   TASK_TYPES, TASK_TYPE_BY_KEY,
@@ -118,7 +118,7 @@ function normalizePriceInput(v) {
   return String(v);
 }
 
-function CrmStateSection({ leadId, initialState, users, isAdmin, onChanged }) {
+function CrmStateSection({ leadId, initialState, autoTier, users, isAdmin, onChanged }) {
   const [state, setState] = useState({
     status:           initialState?.status   ?? DEFAULT_LEAD_STATE.status,
     priority:         initialState?.priority ?? DEFAULT_LEAD_STATE.priority,
@@ -132,6 +132,10 @@ function CrmStateSection({ leadId, initialState, users, isAdmin, onChanged }) {
     vehicle_color:    initialState?.vehicle_color ?? '',
     vehicle_odometer: initialState?.vehicle_odometer != null ? String(initialState.vehicle_odometer) : '',
     assigned_user_id: initialState?.assigned_user_id ?? null,
+    // Manual tier override. '' = "auto" (use the computed tier). Any
+    // LEAD_TIERS key pins the lead to that tier; once set it sticks
+    // even if Age / owners change later.
+    tier_override:    initialState?.tier_override ?? '',
   });
   const [baseline, setBaseline] = useState(state);
   const [saving, setSaving] = useState(false);
@@ -146,6 +150,7 @@ function CrmStateSection({ leadId, initialState, users, isAdmin, onChanged }) {
     || (state.vehicle_color    || '') !== (baseline.vehicle_color    || '')
     || (state.vehicle_odometer || '') !== (baseline.vehicle_odometer || '')
     || (state.assigned_user_id ?? null) !== (baseline.assigned_user_id ?? null)
+    || (state.tier_override    || '') !== (baseline.tier_override    || '')
   ), [state, baseline]);
 
   const save = async () => {
@@ -175,6 +180,11 @@ function CrmStateSection({ leadId, initialState, users, isAdmin, onChanged }) {
       }
       if ((state.assigned_user_id ?? null) !== (baseline.assigned_user_id ?? null)) {
         payload.assigned_user_id = state.assigned_user_id ?? null;
+      }
+      if ((state.tier_override || '') !== (baseline.tier_override || '')) {
+        // '' clears the override → server normalises to NULL and the
+        // lead returns to the auto-computed tier on next render.
+        payload.tier_override = state.tier_override === '' ? null : state.tier_override;
       }
       await api.put('/lead_state', payload);
       setBaseline(state);
@@ -284,6 +294,33 @@ function CrmStateSection({ leadId, initialState, users, isAdmin, onChanged }) {
             className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
           />
         </label>
+      </div>
+
+      {/* Tier override. "Auto" defers to the rules in api/pipeline.php
+          (Age 60+ → Tier 1; Age 50–59 → Tier 2; else Tier 3). Any
+          explicit pick sticks even if the underlying data changes. */}
+      <div className="mt-2">
+        <span className="block text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">
+          Tier{' '}
+          <span className="text-gray-400 normal-case tracking-normal">
+            (auto: {TIER_BY_KEY[autoTier]?.label || '—'})
+          </span>
+        </span>
+        <select
+          value={state.tier_override ?? ''}
+          onChange={(e) => setState({ ...state, tier_override: e.target.value })}
+          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+        >
+          <option value="">Auto (rule-based)</option>
+          {LEAD_TIERS.map((t) => (
+            <option key={t.key} value={t.key}>{t.label} — {t.hint}</option>
+          ))}
+        </select>
+        {state.tier_override && state.tier_override !== autoTier && (
+          <p className="text-[10px] text-amber-700 mt-1">
+            Manual override active. Set to “Auto” to follow the rules again.
+          </p>
+        )}
       </div>
 
       <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -1341,6 +1378,7 @@ function LeadDetailInner({ leadId, onClose, onChanged }) {
               <CrmStateSection
                 leadId={detail.id}
                 initialState={crmState}
+                autoTier={computeLeadTier(detail.normalized_payload || {})}
                 users={users}
                 isAdmin={user?.role === 'admin'}
                 onChanged={handleChildChanged}
