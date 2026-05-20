@@ -179,8 +179,8 @@ const HARDCODED_PAYLOAD_KEYS = new Set([
   'Phone Number 3', 'Phone Number3', 'Phone Number 4', 'Phone Number4',
   'Email 2', 'Email2',
   'LastServiceDate', 'LastServiceLocationOnCarFax', 'LastServiceCityOnCarFax',
-  'NumberOfOwners', 'MostRecentPurchaseDate',
-  'AccidentHistory', 'TitleStatus', 'LienHolder',
+  'NumberOfOwners', 'DateOfMostRecentRegistration',
+  'AccidentHistory', 'TitleStatus', 'Lien Holder (Y/N; If Y, then list out)',
   'ServiceRecordCount',
 ]);
 
@@ -192,14 +192,18 @@ const BUILTIN_COLUMNS = [
   ['tier',                     'Tier',                  false, 'tier'],
   ['status',                   'Status',                false, 'status'],
   ['vehicle',                  'Vehicle',               false, 'make'],
+  ['miles',                    'Miles',                 false, 'mileage'],
   ['last_service_date',        'Last service date',     false, 'LastServiceDate'],
   ['last_service_location',    'Last service location', false, 'LastServiceLocationOnCarFax'],
   ['last_service_city',        'Last service city',     false, 'LastServiceCityOnCarFax'],
   ['number_of_owners',         '# Owners',              false, 'NumberOfOwners'],
-  ['recent_registration_date', 'Most recent reg.',      false, 'MostRecentPurchaseDate'],
+  ['recent_registration_date', 'Most recent reg.',      false, 'DateOfMostRecentRegistration'],
   ['accident_history',         'Accident history',      false, 'AccidentHistory'],
   ['title_status',             'Title status',          false, 'TitleStatus'],
-  ['lien_holder',              'Lien holder',           false, 'LienHolder'],
+  // The raw header keeps its CarFax shape — parens + semi included.
+  // Server allowlist for sort/empty_field tolerates these characters,
+  // so clicking the header to sort still flows through.
+  ['lien_holder',              'Lien holder',           false, 'Lien Holder (Y/N; If Y, then list out)'],
   ['phone_1',                  'Phone 1',               false, 'phone_primary'],
   ['phone_2',                  'Phone 2',               false, 'phone_secondary'],
   ['phone_3',                  'Phone 3',               false, 'Phone Number 3'],
@@ -237,14 +241,17 @@ const PAYLOAD_READER = {
   phone_4:                  (np) => np['Phone Number 4'] || np['Phone Number4'],
   email_1:                  (np) => np.email_primary,
   email_2:                  (np) => np['Email 2'] || np.Email2,
+  miles:                    (np) => np.mileage ?? np.LastReportedMiles,
   last_service_date:        (np) => np.LastServiceDate,
   last_service_location:    (np) => np.LastServiceLocationOnCarFax,
   last_service_city:        (np) => np.LastServiceCityOnCarFax,
   number_of_owners:         (np) => np.NumberOfOwners ?? np.number_of_owners,
-  recent_registration_date: (np) => np.MostRecentPurchaseDate,
+  // The CarFax exports use the literal sentence as the column header.
+  // Stored verbatim, parens + semi included.
+  recent_registration_date: (np) => np.DateOfMostRecentRegistration,
   accident_history:         (np) => np.AccidentHistory,
   title_status:             (np) => np.TitleStatus,
-  lien_holder:              (np) => np.LienHolder,
+  lien_holder:              (np) => np['Lien Holder (Y/N; If Y, then list out)'],
   service_record_count:     (np) => np.ServiceRecordCount,
 };
 
@@ -288,12 +295,12 @@ export default function LeadsPage() {
   const [selection, setSelection] = useState(() => new Set());
   const [bulkAction, setBulkAction] = useState(null);
   const [hiddenColumns, setHiddenColumns] = useState(() => {
-    // localStorage key is versioned. v1 stored a pre-redesign column list
-    // ('phone' instead of phone_1..4 etc); reading it back would leave new
-    // users staring at a 6-column subset. Bumping the key forces a one-time
-    // reset to the new defaults without trying to migrate stale sets.
+    // localStorage key is versioned (currently v3). v1 stored a pre-redesign
+    // column list ('phone' instead of phone_1..4 etc); v2 added the CarFax
+    // columns but missed Miles. Bumping the key forces a one-time reset to
+    // the new defaults rather than migrating stale sets.
     try {
-      const stored = localStorage.getItem('lead_hidden_columns_v2');
+      const stored = localStorage.getItem('lead_hidden_columns_v3');
       if (stored) return new Set(JSON.parse(stored));
     } catch { /* fall through */ }
     return new Set(DEFAULT_HIDDEN_BUILTINS);
@@ -386,7 +393,7 @@ export default function LeadsPage() {
   };
 
   useEffect(() => {
-    try { localStorage.setItem('lead_hidden_columns_v2', JSON.stringify([...hiddenColumns])); } catch { /* ignore quota */ }
+    try { localStorage.setItem('lead_hidden_columns_v3', JSON.stringify([...hiddenColumns])); } catch { /* ignore quota */ }
   }, [hiddenColumns]);
 
   const customColumns = useMemo(() => {
@@ -1269,6 +1276,15 @@ function BuiltinCell({ colKey, lead, np, crm, labels, location, vehicle, tierMet
       return <td className="hidden xl:table-cell px-3 py-2 text-[11px] text-gray-400 tabular-nums">{lead.source_row_number}</td>;
     case 'imported':
       return <td className="hidden lg:table-cell px-3 py-2 text-[11px] text-gray-400 whitespace-nowrap">{formatDate(lead.imported_at)}</td>;
+    case 'miles': {
+      const v = PAYLOAD_READER.miles(np);
+      if (v === null || v === undefined || v === '') return td('text-[13px] text-gray-700 tabular-nums text-right', <EmDash />);
+      // Mileage comes in as either a comma-formatted string ("263,354")
+      // or a bare number — display with a consistent thousand-sep.
+      const n = Number(String(v).replace(/[,\s]/g, ''));
+      const display = Number.isFinite(n) ? n.toLocaleString() : String(v);
+      return td('text-[13px] text-gray-700 tabular-nums text-right whitespace-nowrap', display);
+    }
     case 'number_of_owners':
     case 'service_record_count': {
       const v = PAYLOAD_READER[colKey](np);

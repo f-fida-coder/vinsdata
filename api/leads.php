@@ -333,16 +333,20 @@ if (isset($_GET['empty_field']) && $_GET['empty_field'] !== '') {
         : explode(',', (string) $_GET['empty_field']);
     foreach ($rawFields as $field) {
         $field = trim($field);
-        if ($field === '' || !preg_match('/^[A-Za-z0-9_ -]{1,64}$/', $field)) continue;
+        if ($field === '' || !preg_match('/^[A-Za-z0-9_ \-().,;\/=]{1,80}$/', $field)) continue;
         if (isset($emptyPromoted[$field])) {
             $col = $emptyPromoted[$field];
             $where[] = $emptyOp === 'is_empty'
                 ? "($col IS NULL OR $col = '')"
                 : "($col IS NOT NULL AND $col <> '')";
         } else {
-            // Escape the JSON path: only the [A-Za-z0-9_ -] chars survived
-            // the regex above, so this is safe to embed.
-            $path = "'$." . $field . "'";
+            // Quote the key inside the JSON path so spaces / parens /
+            // semicolons (e.g. "Lien Holder (Y/N; If Y, then list out)")
+            // are tolerated. MariaDB additionally requires forward slashes
+            // to be backslash-escaped inside the path — without that, the
+            // path silently matches nothing.
+            $escapedKey = str_replace('/', '\\/', $field);
+            $path = "'$.\"" . $escapedKey . "\"'";
             $expr = "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, $path))";
             $where[] = $emptyOp === 'is_empty'
                 ? "($expr IS NULL OR $expr = '')"
@@ -599,12 +603,15 @@ foreach ($sortFields as $i => $field) {
     if (isset($nativeSorts[$field])) {
         // tier is the aliased CASE — MySQL accepts the alias in ORDER BY.
         $orderParts[] = $nativeSorts[$field] . " $dirSql";
-    } elseif (preg_match('/^[A-Za-z0-9_ -]{1,64}$/', $field)) {
+    } elseif (preg_match('/^[A-Za-z0-9_ \-().,;\/=]{1,80}$/', $field)) {
         // Dynamic JSON-payload sort. Numeric cast (DECIMAL handles ints
         // + floats). Empty / unparseable values land last regardless of
         // direction so the top of a "highest Age" sort is always real
         // data. Tiebreaker by text so identical numerics stay stable.
-        $path = "'$.\"" . $field . "\"'";
+        // Forward slash must be backslash-escaped for MariaDB's JSON path
+        // parser (matches the empty_field builder above).
+        $escapedKey = str_replace('/', '\\/', $field);
+        $path = "'$.\"" . $escapedKey . "\"'";
         $rawExpr = "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, $path))";
         $numExpr = "CAST(REPLACE(REPLACE($rawExpr, ',', ''), ' ', '') AS DECIMAL(20,2))";
         $orderParts[] = "($numExpr IS NULL) ASC";
