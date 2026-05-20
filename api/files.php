@@ -46,6 +46,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     $fileIds = array_column($files, 'id');
     $artifactsByFile = [];
+    // lead_batch_count tells the Dashboard whether the TLO data has
+    // already been pushed into the CRM (i.e. the operator clicked
+    // "Import final file") vs sitting idle. The Dashboard surfaces a
+    // "Ready to import" pill on files at the TLO stage with zero
+    // batches so this stops slipping through the cracks.
+    $batchCountByFile = [];
+    $leadCountByFile  = [];
     if (!empty($fileIds)) {
         $placeholders = implode(',', array_fill(0, count($fileIds), '?'));
         $stmt = $db->prepare(
@@ -59,6 +66,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $stmt->execute($fileIds);
         foreach ($stmt->fetchAll() as $a) {
             $artifactsByFile[$a['file_id']][] = $a;
+        }
+
+        $stmt = $db->prepare(
+            "SELECT b.file_id, COUNT(DISTINCT b.id) AS batches,
+                    SUM(CASE WHEN r.import_status = 'imported' AND r.deleted_at IS NULL THEN 1 ELSE 0 END) AS leads
+               FROM lead_import_batches b
+               LEFT JOIN imported_leads_raw r ON r.batch_id = b.id
+              WHERE b.file_id IN ($placeholders)
+              GROUP BY b.file_id"
+        );
+        $stmt->execute($fileIds);
+        foreach ($stmt->fetchAll() as $r) {
+            $batchCountByFile[(int) $r['file_id']] = (int) $r['batches'];
+            $leadCountByFile[(int) $r['file_id']]  = (int) $r['leads'];
         }
     }
 
@@ -89,6 +110,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $f['next_upload_missing'] = $next !== null
             && $f['status'] === 'active'
             && empty($byStage[$next]);
+        $f['lead_batch_count'] = $batchCountByFile[(int) $f['id']] ?? 0;
+        $f['lead_count']       = $leadCountByFile[(int) $f['id']]  ?? 0;
+        // A file is "ready to import" when it's at the TLO stage, has a
+        // spreadsheet artifact in that stage, and no batch has been
+        // created from it yet. The Dashboard turns this into a pill.
+        $hasTloSpreadsheet = false;
+        foreach ($byStage['tlo'] as $a) {
+            $name = strtolower((string) $a['original_filename']);
+            if (preg_match('/\.(xlsx|xls|csv)$/', $name)) { $hasTloSpreadsheet = true; break; }
+        }
+        $f['ready_to_import'] = $f['current_stage'] === 'tlo'
+            && in_array($f['status'], ['completed', 'active'], true)
+            && $hasTloSpreadsheet
+            && $f['lead_batch_count'] === 0;
     }
 
     echo json_encode($files);

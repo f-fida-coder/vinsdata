@@ -625,12 +625,34 @@ export default function DashboardPage() {
                         <input type="checkbox" checked={selected.has(file.id)} onChange={() => toggleSelect(file.id)}/>
                       </td>
                       <td>
-                        <div className="row">
+                        <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
                           <Icon name="file" size={14} style={{ color: 'var(--text-2)' }}/>
                           <span className="cell-strong">{file.display_name || file.file_name}</span>
                           {file.version && <span className="status-badge sb-neutral">{file.version}</span>}
                           {invalid && <span className="status-badge sb-danger">invalid</span>}
                           {file.is_invalid && !invalid && <span className="status-badge sb-warn">flagged</span>}
+                          {/* Import-state pill. Two signals here:
+                               - "Ready to import" = at TLO with a spreadsheet
+                                  but no batch yet → click the row to open
+                                  the file drawer and finish the import.
+                               - "N leads" = batches exist; the data made
+                                  it into the CRM. */}
+                          {file.ready_to_import && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setImportFile(file); }}
+                              className="status-badge sb-warn"
+                              title="The TLO spreadsheet has been uploaded but the leads were never pushed into the CRM. Click to finish the import."
+                              style={{ cursor: 'pointer', border: 'none' }}
+                            >
+                              Ready to import → click to push to CRM
+                            </button>
+                          )}
+                          {!file.ready_to_import && file.lead_count > 0 && (
+                            <span className="status-badge sb-success" title={`Imported ${file.lead_count} leads across ${file.lead_batch_count} batch${file.lead_batch_count === 1 ? '' : 'es'}`}>
+                              {file.lead_count.toLocaleString()} leads
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="cell-muted">{file.vehicle?.name || file.vehicle_name || '—'}</td>
