@@ -299,6 +299,22 @@ export default function UsersPage() {
     setDrawer({ mode: 'edit', initial: { id: u.id, name: u.name, email: u.email, phone: u.phone || '', password: '', role: u.role } });
   };
 
+  // Broadcast user-list changes so other open tabs / open pages
+  // (LeadsPage, BulkActions, drawer agent dropdowns) refetch their
+  // copy of /lead_filter_options instead of showing stale agent
+  // pickers until the browser cache expires.
+  const broadcastUserChange = () => {
+    try {
+      window.dispatchEvent(new CustomEvent('vv:users-changed'));
+      // Cross-tab — works across separate browser tabs / windows.
+      if (typeof BroadcastChannel !== 'undefined') {
+        const ch = new BroadcastChannel('vv-users');
+        ch.postMessage({ type: 'users-changed', at: Date.now() });
+        ch.close();
+      }
+    } catch { /* best effort */ }
+  };
+
   const submitDrawer = async (form) => {
     setSubmitting(true); setDrawerError('');
     try {
@@ -314,6 +330,7 @@ export default function UsersPage() {
       }
       setDrawer(null);
       fetchUsers();
+      broadcastUserChange();
     } catch (err) {
       setDrawerError(extractApiError(err, 'Failed to save user'));
     } finally {
@@ -329,6 +346,7 @@ export default function UsersPage() {
       await api.delete('/users', { data: { id } });
       setDrawer(null);
       fetchUsers();
+      broadcastUserChange();
     } catch (err) {
       setDrawerError(extractApiError(err, 'Failed to delete user'));
     }

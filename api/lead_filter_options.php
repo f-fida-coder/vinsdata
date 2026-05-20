@@ -101,12 +101,13 @@ $labels = $db->query(
     'SELECT id, name, color FROM lead_labels ORDER BY name'
 )->fetchAll();
 
-// Cache the response client-side for 5 min. Filter dropdowns are
-// invalidated on import/label edits, but the page also re-fetches on
-// each LeadsPage mount, so a short cache cuts repeat scans against a
-// 500K-row table without hiding fresh values for long.
+// No client-side cache here. The endpoint feeds agent / label / batch
+// dropdowns that need to surface new rows immediately after admin
+// adds a user / label / import — a 5-minute cache would leave the
+// dropdown showing a stale set until the browser cache expired. The
+// queries are small + indexed; serving fresh on every mount is fine.
 if (PHP_SAPI !== 'cli') {
-    header('Cache-Control: private, max-age=300');
+    header('Cache-Control: no-store');
 }
 
 echo json_encode([

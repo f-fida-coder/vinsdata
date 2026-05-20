@@ -368,10 +368,29 @@ export default function LeadsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/lead_filter_options')
-      .then((res) => { if (!cancelled) setOptions(res.data); })
-      .catch(() => { /* non-blocking */ });
-    return () => { cancelled = true; };
+    const load = () => {
+      api.get('/lead_filter_options')
+        .then((res) => { if (!cancelled) setOptions(res.data); })
+        .catch(() => { /* non-blocking */ });
+    };
+    load();
+
+    // UsersPage fires this after add/edit/delete so any open Leads page
+    // picks up the new agent in its dropdowns without a manual refresh.
+    // Works same-tab via CustomEvent and cross-tab via BroadcastChannel.
+    const onChanged = () => load();
+    window.addEventListener('vv:users-changed', onChanged);
+    let bc = null;
+    if (typeof BroadcastChannel !== 'undefined') {
+      bc = new BroadcastChannel('vv-users');
+      bc.onmessage = (e) => { if (e?.data?.type === 'users-changed') load(); };
+    }
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('vv:users-changed', onChanged);
+      if (bc) bc.close();
+    };
   }, []);
 
   // Summary cards data.

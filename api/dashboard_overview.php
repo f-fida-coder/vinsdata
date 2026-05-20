@@ -261,8 +261,15 @@ $byAgent = array_map(function ($r) use ($tasksByAgent) {
 }, $agentRows);
 
 // ---- Top makes / models by lead volume ----
+//
+// Source spreadsheets occasionally put a model in the make column —
+// "Corvette" instead of "CHEVROLET", "911" instead of "PORSCHE".
+// makeNormalizationSqlExpression() emits a CASE that consolidates
+// known mis-categorizations under their parent make so the chart
+// stops showing Chevrolet and Corvette as separate brands.
 $makeRows = (function () use ($db, $selfScope, $selfParams) {
-    $sql = "SELECT r.norm_make AS make, COUNT(*) AS total,
+    $normMake = makeNormalizationSqlExpression('r.norm_make');
+    $sql = "SELECT $normMake AS make, COUNT(*) AS total,
                    SUM(CASE WHEN s.lead_temperature = 'hot'   THEN 1 ELSE 0 END) AS hot,
                    SUM(CASE WHEN s.status           = 'deal_closed' THEN 1 ELSE 0 END) AS closed
               FROM imported_leads_raw r
@@ -270,7 +277,7 @@ $makeRows = (function () use ($db, $selfScope, $selfParams) {
               $selfScope
              WHERE r.import_status = 'imported' AND r.deleted_at IS NULL
                AND r.norm_make IS NOT NULL AND r.norm_make <> ''
-             GROUP BY r.norm_make
+             GROUP BY $normMake
              ORDER BY total DESC
              LIMIT 10";
     $st = $db->prepare($sql); $st->execute($selfParams); return $st->fetchAll();

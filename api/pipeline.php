@@ -333,6 +333,55 @@ function assertLeadTier(string $tier): void
         pipelineFail(400, "Invalid tier '$tier'", 'invalid_tier');
     }
 }
+
+// -- Make normalization ---------------------------------------------------
+// Some source spreadsheets put a model name in the make column —
+// "Corvette" instead of "CHEVROLET", "911" instead of "PORSCHE", etc.
+// MAKE_ALIAS maps the upper-cased miscategorized value to its real
+// parent make so dashboard rollups stop double-counting brands.
+//
+// Add new entries here as we find them. Keep the keys upper-case;
+// the helper does case-folding for you.
+const MAKE_ALIAS = [
+    'CORVETTE' => 'CHEVROLET',
+    '911'      => 'PORSCHE',
+    'CAYENNE'  => 'PORSCHE',
+    'CAYMAN'   => 'PORSCHE',
+    'BOXSTER'  => 'PORSCHE',
+    'PANAMERA' => 'PORSCHE',
+    'MACAN'    => 'PORSCHE',
+    'TAYCAN'   => 'PORSCHE',
+    'F-PACE'   => 'JAGUAR',
+];
+
+/** Upper-cases + applies MAKE_ALIAS. Empty stays empty. */
+function normalizeMake(?string $make): string
+{
+    $upper = strtoupper(trim((string) $make));
+    if ($upper === '') return '';
+    return MAKE_ALIAS[$upper] ?? $upper;
+}
+
+/**
+ * SQL CASE expression that performs the same normalization at the
+ * database level. Pass the column reference (e.g. `r.norm_make`) and
+ * it returns a fragment suitable for SELECT + GROUP BY clauses.
+ *
+ *   SELECT makeNormalizationSqlExpression('r.norm_make') AS make
+ *
+ * Keep this in sync with MAKE_ALIAS above.
+ */
+function makeNormalizationSqlExpression(string $col): string
+{
+    $cases = [];
+    foreach (MAKE_ALIAS as $from => $to) {
+        // Identifiers are uppercase ASCII A-Z + 0-9 + hyphen so they're
+        // safe to inline — no user input touches this path.
+        $cases[] = "WHEN UPPER($col) = '" . $from . "' THEN '" . $to . "'";
+    }
+    if (empty($cases)) return "UPPER($col)";
+    return "(CASE " . implode(' ', $cases) . " ELSE UPPER($col) END)";
+}
 const LEAD_ACTIVITY_TYPES = [
     'status_changed','priority_changed','assigned','unassigned',
     'label_added','label_removed',
