@@ -163,10 +163,12 @@ function getDBConnection(): PDO
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES   => false,
         PDO::ATTR_TIMEOUT            => 5,
-        // Persistent so PHP-FPM keeps the underlying socket open
-        // across requests where the worker is reused. This is the
-        // single biggest lever against Hostinger's 500 conn/hour cap.
-        PDO::ATTR_PERSISTENT         => true,
+        // NOT persistent on Hostinger. PDO::ATTR_PERSISTENT with the
+        // shared-MariaDB plan was causing PHP-FPM workers to segfault
+        // mid-request when the cached socket was no longer valid —
+        // shows as a generic LiteSpeed 500 with no JSON body. The
+        // same-request static cache above still cuts the connection
+        // count enough for the 500/hour cap.
         // Keep session collation aligned with schema defaults to avoid
         // "illegal mix of collations" on string comparisons.
         PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
