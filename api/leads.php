@@ -514,7 +514,12 @@ if (isset($_GET['number_of_owners_max']) && $_GET['number_of_owners_max'] !== ''
 // Partial normalized fields (LIKE) — inline JSON_UNQUOTE because they aren't
 // indexed. JSON_UNQUOTE returns utf8mb4_bin (case-sensitive), so apply an
 // explicit case-insensitive collation for predictable name/city matching.
-$jsonCi = fn($field) => "JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$." . $field . "')) COLLATE utf8mb4_general_ci";
+// MariaDB 10.6 quirk: JSON_UNQUOTE returns its result in utf8mb3 regardless
+// of the underlying column's charset, so applying `COLLATE utf8mb4_general_ci`
+// directly throws ER_COLLATION_CHARSET_MISMATCH (1253). Wrap the output in
+// CONVERT(... USING utf8mb4) to force utf8mb4 first, then apply the collation.
+// MariaDB 10.10+ already returns utf8mb4 here, so the CONVERT is a no-op there.
+$jsonCi = fn($field) => "CONVERT(JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$." . $field . "')) USING utf8mb4) COLLATE utf8mb4_general_ci";
 $likeCols = [
     'first_name'  => $jsonCi('first_name'),
     'last_name'   => $jsonCi('last_name'),
