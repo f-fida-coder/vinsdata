@@ -133,11 +133,15 @@ jobs:
             echo "No .htaccess file found in repo root."
           fi
 
-      - name: Fix uploads folder permissions
+      - name: Fix ownership + uploads permissions on VPS
+        # On the VPS, PHP runs as www-data via php-fpm. After rsync the files
+        # are owned by the SSH user (root) — chown the whole tree to www-data
+        # so php-fpm can read everything, and make uploads/ group-writable so
+        # the app can write user uploads.
         run: |
           ssh -p "$PORT" -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
               "$USER@$HOST" \
-              "chmod 0775 '$DEPLOY_DIR/api/uploads' || true && chown $USER '$DEPLOY_DIR/api/uploads' || true && ls -ld '$DEPLOY_DIR/api/uploads'"
+              "chown -R www-data:www-data '$DEPLOY_DIR' && chmod 0775 '$DEPLOY_DIR/api/uploads' && ls -ld '$DEPLOY_DIR/api/uploads'"
 
       - name: Force OPcache refresh on all PHP files
         # rsync sometimes leaves LSPHP's OPcache out of sync with the new

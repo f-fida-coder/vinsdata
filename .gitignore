@@ -33,3 +33,4 @@ vinvault-deploy.zip
 *.njsproj
 *.sln
 *.sw?
+_migration_artifacts/
