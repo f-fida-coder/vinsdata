@@ -621,19 +621,27 @@ if (isset($_GET['q']) && $_GET['q'] !== '') {
     // Cross-table coverage — wrapped in EXISTS so they don't fan-out
     // the row count for leads with many notes / labels.
     //
+    // NOTE: with PDO native prepares (ATTR_EMULATE_PREPARES=false), bound
+    // parameters arrive as MYSQL_TYPE_VAR_STRING with the *binary* charset,
+    // regardless of the connection's `charset=utf8mb4` setting. Applying
+    // `COLLATE utf8mb4_general_ci` to a bound parameter therefore throws
+    // ER_COLLATION_CHARSET_MISMATCH (1253). Put the COLLATE on the column
+    // side instead — the columns are already utf8mb4, so this gives us the
+    // case-insensitive comparison without crossing a binary/utf8mb4 boundary.
+    //
     // Notes content. Catches "the buyer said he wants $30k" type queries.
-    $ors[] = 'EXISTS (SELECT 1 FROM lead_notes ln WHERE ln.imported_lead_id = r.id AND ln.note LIKE :q_note COLLATE utf8mb4_general_ci)';
+    $ors[] = 'EXISTS (SELECT 1 FROM lead_notes ln WHERE ln.imported_lead_id = r.id AND ln.note COLLATE utf8mb4_general_ci LIKE :q_note)';
     $params[':q_note'] = $like;
 
     // Label names. Catches operator-set tags like "hot weekend list".
-    $ors[] = 'EXISTS (SELECT 1 FROM lead_label_links lll JOIN lead_labels lbl ON lbl.id = lll.label_id WHERE lll.imported_lead_id = r.id AND lbl.name LIKE :q_label COLLATE utf8mb4_general_ci)';
+    $ors[] = 'EXISTS (SELECT 1 FROM lead_label_links lll JOIN lead_labels lbl ON lbl.id = lll.label_id WHERE lll.imported_lead_id = r.id AND lbl.name COLLATE utf8mb4_general_ci LIKE :q_label)';
     $params[':q_label'] = $like;
 
     // Attached Bill of Sale fields — buyer + seller name/address.
     $ors[] = 'EXISTS (SELECT 1 FROM bill_of_sale bos WHERE bos.imported_lead_id = r.id
-              AND (bos.buyer_name    LIKE :q_bos_bn COLLATE utf8mb4_general_ci
-                OR bos.buyer_address LIKE :q_bos_ba COLLATE utf8mb4_general_ci
-                OR bos.seller_name   LIKE :q_bos_sn COLLATE utf8mb4_general_ci))';
+              AND (bos.buyer_name    COLLATE utf8mb4_general_ci LIKE :q_bos_bn
+                OR bos.buyer_address COLLATE utf8mb4_general_ci LIKE :q_bos_ba
+                OR bos.seller_name   COLLATE utf8mb4_general_ci LIKE :q_bos_sn))';
     $params[':q_bos_bn'] = $like;
     $params[':q_bos_ba'] = $like;
     $params[':q_bos_sn'] = $like;
