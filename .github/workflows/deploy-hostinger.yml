@@ -104,9 +104,19 @@ jobs:
               "mkdir -p '$DEPLOY_DIR' '$DEPLOY_DIR/api' '$DEPLOY_DIR/api/uploads'"
 
       - name: Deploy dist to Hostinger (frontend)
+        # --delete cleans stale hashed assets out of the webroot, but we MUST
+        # exclude the server-managed config files that aren't in the repo:
+        #   .env       - DB credentials, written once by vps-setup.sh
+        #   api/       - PHP backend (deployed in next step)
+        #   .htaccess  - re-uploaded by the SPA rewrite step below
+        # If you drop any of these excludes, the next deploy will silently
+        # delete a production secret and the API will start 500-ing.
         run: |
           rsync -avz --delete \
             --exclude='api/' \
+            --exclude='.env' \
+            --exclude='.htaccess' \
+            --exclude='.user.ini' \
             -e "ssh -p $PORT -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
             ./dist/ \
             "$USER@$HOST:$DEPLOY_DIR/"
