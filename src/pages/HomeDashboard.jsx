@@ -90,6 +90,15 @@ export default function HomeDashboard() {
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
+        /* Two-band KPI layout (best-practice: action items first,
+           snapshot second). Each band has its own label and a row of
+           cards underneath. */
+        .dash-kpi-section { display: flex; flex-direction: column; gap: 14px; }
+        .dash-kpi-band { display: flex; flex-direction: column; gap: 6px; }
+        .dash-kpi-band-label {
+          font-size: 11px; font-weight: 700; color: var(--text-3);
+          text-transform: uppercase; letter-spacing: 0.06em;
+        }
         .dash-kpi-strip {
           display: grid; gap: 12px;
           grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -98,7 +107,7 @@ export default function HomeDashboard() {
           background: var(--bg-1); border: 1px solid var(--border-0);
           border-radius: var(--radius-lg, 10px); padding: 14px;
           display: flex; flex-direction: column; gap: 4px;
-          text-decoration: none; color: inherit; transition: border-color 120ms;
+          text-decoration: none; color: inherit; transition: border-color 120ms, background 120ms;
         }
         .dash-kpi:hover { border-color: var(--info); }
         .dash-kpi-label { font-size: 11px; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -110,6 +119,26 @@ export default function HomeDashboard() {
         .dash-kpi-accent-success { border-top: 3px solid var(--success); }
         .dash-kpi-accent-violet  { border-top: 3px solid #8b5cf6; }
         .dash-kpi-accent-neutral { border-top: 3px solid var(--text-3); }
+
+        /* "Snapshot" band — quieter visual style so it doesn't compete
+           with the action cards above. No accent stripe, smaller value
+           font, subdued background. */
+        .dash-kpi-quiet {
+          background: var(--bg-2); border-color: transparent;
+        }
+        .dash-kpi-quiet .dash-kpi-value { font-size: 22px; color: var(--text-1); }
+        .dash-kpi-quiet:hover { border-color: var(--border-1); background: var(--bg-1); }
+        .dash-kpi-tone-success .dash-kpi-value { color: var(--success); }
+
+        /* Filled-red treatment for overdue tasks when count > 0 —
+           escalates the worst-news signal so it can't be missed. */
+        .dash-kpi-filled-hot {
+          background: var(--hot-bg, #fee2e2);
+          border-color: var(--hot, #b91c1c);
+        }
+        .dash-kpi-filled-hot .dash-kpi-label { color: var(--hot, #b91c1c); }
+        .dash-kpi-filled-hot .dash-kpi-value { color: var(--hot, #b91c1c); }
+        .dash-kpi-filled-hot:hover { background: #fecaca; border-color: var(--hot, #b91c1c); }
 
         .dash-section { background: var(--bg-1); border: 1px solid var(--border-0); border-radius: var(--radius-lg, 10px); padding: 14px; }
         .dash-section-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
@@ -168,33 +197,88 @@ export default function HomeDashboard() {
 // ---- KPI Strip --------------------------------------------------------
 
 function KpiStrip({ kpis, isAdmin }) {
-  // Each card deep-links into Leads / Tasks with a filter already applied.
-  // Agents don't see "unassigned" because they only ever see their own
-  // scope — the server returns 0 there anyway.
-  const items = [
-    { label: 'Total leads',  value: kpis.total,              accent: 'info',    to: '/leads' },
-    isAdmin && { label: 'Unassigned', value: kpis.unassigned, accent: 'warm',   to: '/leads?assigned_user_id=unassigned' },
-    { label: 'Hot',          value: kpis.hot,                accent: 'hot',     to: '/leads?lead_temperature=hot' },
-    { label: 'Closed · 7d',  value: kpis.deals_closed_week,  accent: 'success', to: '/leads?status=deal_closed' },
-    { label: 'Open tasks',   value: kpis.open_tasks,         accent: 'violet',  to: '/tasks?status=open' },
-    { label: 'Overdue tasks',value: kpis.overdue_tasks,      accent: kpis.overdue_tasks > 0 ? 'hot' : 'neutral', to: '/leads?tasks_overdue=1' },
-    { label: 'Outreach · 7d',value: kpis.outreach_sent_week, accent: 'info',    to: null },
+  // Dashboard best practices for a CRM home:
+  //   1. Action items first (overdue, hot, unassigned) — the things
+  //      an operator needs to DO. A red banner emphasizes overdue
+  //      tasks when count > 0, since that's the worst-news signal.
+  //   2. Snapshot KPIs second (totals + 7-day deltas) — context, not
+  //      action. Smaller emphasis, less color.
+  //   3. Every card deep-links into Leads or Tasks with the matching
+  //      filter pre-applied, so a click is a workflow shortcut.
+  //
+  // Agents don't see "unassigned" because they only ever see their
+  // own scope — the server returns 0 there anyway.
+
+  const overdueCount = kpis.overdue_tasks ?? 0;
+
+  // Group 1: things that need attention RIGHT NOW. Overdue first so it
+  // anchors the top-left (F-pattern); the card flips to a filled red
+  // background when count > 0 to escalate visually.
+  const actionItems = [
+    {
+      label: 'Overdue tasks',
+      value: overdueCount,
+      accent: overdueCount > 0 ? 'hot' : 'neutral',
+      filled: overdueCount > 0,
+      to: '/leads?tasks_overdue=1',
+    },
+    { label: 'Hot leads',   value: kpis.hot,        accent: 'hot',  to: '/leads?lead_temperature=hot' },
+    isAdmin && { label: 'Unassigned', value: kpis.unassigned, accent: 'warm', to: '/leads?assigned_user_id=unassigned' },
+    { label: 'Open tasks',  value: kpis.open_tasks, accent: 'violet', to: '/tasks?status=open' },
   ].filter(Boolean);
 
+  // Group 2: snapshot context. Less weight, no accent stripe so the
+  // eye knows these are info-only, not action prompts.
+  const snapshot = [
+    { label: 'Total leads',   value: kpis.total,              to: '/leads' },
+    { label: 'Closed · 7d',   value: kpis.deals_closed_week,  to: '/leads?status=deal_closed', tone: 'success' },
+    { label: 'Outreach · 7d', value: kpis.outreach_sent_week, to: null },
+  ];
+
+  const renderCard = (it) => {
+    const isFilled = it.filled;
+    const accentCls = it.accent ? `dash-kpi-accent-${it.accent}` : '';
+    const filledCls = isFilled ? 'dash-kpi-filled-hot' : '';
+    const cls = `dash-kpi ${accentCls} ${filledCls}`.trim();
+    const inner = (
+      <>
+        <span className="dash-kpi-label">{it.label}</span>
+        <span className="dash-kpi-value">{(it.value ?? 0).toLocaleString()}</span>
+      </>
+    );
+    return it.to
+      ? <Link key={it.label} to={it.to} className={cls}>{inner}</Link>
+      : <div key={it.label} className={cls}>{inner}</div>;
+  };
+
   return (
-    <div className="dash-kpi-strip">
-      {items.map((it) => {
-        const inner = (
-          <>
-            <span className="dash-kpi-label">{it.label}</span>
-            <span className="dash-kpi-value">{(it.value ?? 0).toLocaleString()}</span>
-          </>
-        );
-        const cls = `dash-kpi dash-kpi-accent-${it.accent}`;
-        return it.to
-          ? <Link key={it.label} to={it.to} className={cls}>{inner}</Link>
-          : <div key={it.label} className={cls}>{inner}</div>;
-      })}
+    <div className="dash-kpi-section">
+      {/* Action band — labelled so operators understand the grouping. */}
+      <div className="dash-kpi-band">
+        <div className="dash-kpi-band-label">Needs attention</div>
+        <div className="dash-kpi-strip">
+          {actionItems.map(renderCard)}
+        </div>
+      </div>
+
+      {/* Snapshot band — context metrics in a calmer visual style. */}
+      <div className="dash-kpi-band">
+        <div className="dash-kpi-band-label">Snapshot</div>
+        <div className="dash-kpi-strip">
+          {snapshot.map((it) => {
+            const cls = `dash-kpi dash-kpi-quiet${it.tone === 'success' ? ' dash-kpi-tone-success' : ''}`;
+            const inner = (
+              <>
+                <span className="dash-kpi-label">{it.label}</span>
+                <span className="dash-kpi-value">{(it.value ?? 0).toLocaleString()}</span>
+              </>
+            );
+            return it.to
+              ? <Link key={it.label} to={it.to} className={cls}>{inner}</Link>
+              : <div key={it.label} className={cls}>{inner}</div>;
+          })}
+        </div>
+      </div>
     </div>
   );
 }
