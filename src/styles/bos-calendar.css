@@ -125,29 +125,38 @@
   overflow: hidden;
 }
 
-/* Events — pill shape, white text, condensed */
+/* Events — pastel background + dark text + saturated status stripe on
+   the left edge. Earlier version forced white-on-saturated which was
+   unreadable on the blue/violet/rose statuses. We now let the JS
+   side (DispatchPage) set backgroundColor to a pastel and borderColor
+   to the saturated hex, and the rules below honor both. */
 .bos-cal .fc .fc-daygrid-event {
   border-radius: 6px;
-  padding: 2px 6px;
+  padding: 2px 6px 2px 8px;
   font-size: 11px;
   font-weight: 500;
+  /* Left border = status stripe (color comes from inline borderColor) */
   border: none;
+  border-left: 3px solid currentColor;
   cursor: pointer;
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.06);
 }
 .bos-cal .fc .fc-daygrid-event:hover {
-  filter: brightness(1.05);
+  filter: brightness(0.97);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
+/* Inherit the per-event textColor JS pushes (`#111827` for our events)
+   so the title contrasts properly on pastel backgrounds. */
 .bos-cal .fc .fc-daygrid-event .fc-event-title {
-  font-weight: 500;
-  color: #fff;
+  font-weight: 600;
+  color: inherit;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .bos-cal .fc .fc-daygrid-event .fc-event-time {
-  color: rgba(255, 255, 255, 0.85);
+  color: inherit;
+  opacity: 0.75;
   font-weight: 600;
   margin-right: 4px;
 }

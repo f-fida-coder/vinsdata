@@ -66,6 +66,10 @@ export default function MarketingCampaignsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filters, setFilters] = useState({ status: '', channel: '' });
+  // Summary block (moved here from the Files page). Sent 7d / 30d,
+  // open/click rates, opted-out totals. Pulled from /reports?type=marketing
+  // — same endpoint the old Files-page strip used.
+  const [stats, setStats] = useState(null);
 
   const fetchCampaigns = useCallback(async () => {
     setLoading(true); setError('');
@@ -84,6 +88,14 @@ export default function MarketingCampaignsPage() {
 
   useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
 
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/reports', { params: { type: 'marketing' } })
+      .then((r) => { if (!cancelled) setStats(r.data?.marketing || null); })
+      .catch(() => { /* summary degrades gracefully; rest of page works */ });
+    return () => { cancelled = true; };
+  }, []);
+
   const totalSent = campaigns.reduce((n, c) => n + (c.sent_count || 0), 0);
   const totalQueued = campaigns.filter((c) => ['draft','queued','sending','partially_failed'].includes(c.status)).length;
 
@@ -98,6 +110,28 @@ export default function MarketingCampaignsPage() {
           </Button>
         }
       />
+
+      {/* Top-of-page summary card. Six 30-day stats so the operator
+          gets the marketing pulse without drilling into campaigns. */}
+      {stats && (
+        <div
+          className="card"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(6, 1fr)',
+            gap: 12,
+            padding: '16px 18px',
+            marginBottom: 16,
+          }}
+        >
+          <Stat label="Active"      value={stats.active_campaigns ?? '—'} tone="blue" />
+          <Stat label="Sent · 7d"   value={(stats.sent_7d ?? 0).toLocaleString()} />
+          <Stat label="Sent · 30d"  value={(stats.sent_30d ?? 0).toLocaleString()} />
+          <Stat label="Open rate"   value={`${stats.open_rate_30d ?? 0}%`} tone="emerald" />
+          <Stat label="Click rate"  value={`${stats.click_rate_30d ?? 0}%`} tone="emerald" />
+          <Stat label="Opted out"   value={(stats.suppressed_total ?? 0).toLocaleString()} tone="red" />
+        </div>
+      )}
 
       {error && (
         <div

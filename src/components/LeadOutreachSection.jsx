@@ -20,8 +20,17 @@ const VINVAULT_CALLBACK_PHONE = '469-971-2609';
 export default function LeadOutreachSection({ leadId, normalizedPayload, onChanged, focusKind, onFocusConsumed }) {
   const { user } = useAuth();
   const np = normalizedPayload || {};
-  const phones = ['phone_primary', 'phone_secondary', 'phone_3', 'phone_4']
-    .map((k) => np[k]).filter(Boolean);
+  // Phone slots 3 + 4 are stored under "Phone Number 3" / "Phone Number 4"
+  // (raw CarFax header spelling, space included). Reading np.phone_3 /
+  // np.phone_4 returns undefined and the dropdown silently only showed
+  // the first two. Reads now match the keys used by LeadsPage +
+  // ContactSlotsSection so all 4 populated slots surface.
+  const phones = [
+    np.phone_primary,
+    np.phone_secondary,
+    np['Phone Number 3'] || np['Phone Number3'],
+    np['Phone Number 4'] || np['Phone Number4'],
+  ].filter(Boolean);
   // Two email slots on the lead: email_primary ("Email 1") and the
   // CarFax-side "Email 2" (stored as either "Email 2" with space or
   // "Email2" depending on the source spreadsheet). Operator picks

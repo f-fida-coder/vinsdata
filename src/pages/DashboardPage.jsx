@@ -582,24 +582,10 @@ export default function DashboardPage() {
 
       <LeadFinderCard />
 
-      {canSeeMarketingStats && marketingStats && (
-        <div className="mkt-strip">
-          <div className="mkt-strip-head">
-            <span className="mkt-strip-icon"><Icon name="sparkles" size={16}/></span>
-            <div>
-              <div className="mkt-strip-title">Marketing</div>
-              <div className="mkt-strip-sub">last 30 days</div>
-            </div>
-          </div>
-          <div className="mkt-stat"><div className="mkt-stat-v">{marketingStats.active_campaigns ?? '—'}</div><div className="mkt-stat-l">Active</div></div>
-          <div className="mkt-stat"><div className="mkt-stat-v">{(marketingStats.sent_7d ?? 0).toLocaleString()}</div><div className="mkt-stat-l">Sent 7d</div></div>
-          <div className="mkt-stat"><div className="mkt-stat-v">{(marketingStats.sent_30d ?? 0).toLocaleString()}</div><div className="mkt-stat-l">Sent 30d</div></div>
-          <div className="mkt-stat"><div className="mkt-stat-v">{marketingStats.open_rate_30d ?? 0}%</div><div className="mkt-stat-l">Open rate</div></div>
-          <div className="mkt-stat"><div className="mkt-stat-v">{marketingStats.click_rate_30d ?? 0}%</div><div className="mkt-stat-l">Click rate</div></div>
-          <div className="mkt-stat"><div className="mkt-stat-v">{marketingStats.suppressed_total ?? 0}</div><div className="mkt-stat-l">Opted out</div></div>
-          <Button variant="ghost" size="sm" iconAfter="arrowRight" onClick={() => window.location.assign('/marketing')}>All campaigns</Button>
-        </div>
-      )}
+      {/* Marketing strip moved off the Files page per operator request —
+          the same stats now render at the top of the Marketing tab.
+          (DashboardPage still fetches marketingStats for the summary
+          card surfaced there, but the strip itself is removed here.) */}
 
       <div className="filters-row">
         <div className="filters-label"><Icon name="filter" size={14}/> Filters</div>
