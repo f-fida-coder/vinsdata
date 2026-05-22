@@ -496,11 +496,10 @@ function CrmStateSection({ leadId, initialState, importedMiles, autoTier, users,
         )}
       </div>
 
-      <div className="flex items-center gap-2 mt-2 flex-wrap">
-        <StatusPill statusKey={state.status} />
-        <PriorityPill priorityKey={state.priority} />
-        {state.lead_temperature && <TemperaturePill temperatureKey={state.lead_temperature} />}
-      </div>
+      {/* Status/Priority/Temperature pills used to render here as a
+          live preview; removed per operator request — the same three
+          pills already appear in the drawer header chips above, so
+          this duplicated the signal. */}
       {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
     </CollapsibleSection>
   );
