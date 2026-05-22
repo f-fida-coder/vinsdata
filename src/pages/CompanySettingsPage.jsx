@@ -60,7 +60,7 @@ export default function CompanySettingsPage() {
     <div className="page">
       <div className="space-y-4 max-w-3xl">
       <SectionHeader
-        title="Company settings"
+        title="Company"
         subtitle="Used as the Seller on every Bill of Sale and as defaults for new dispatch jobs."
       />
 

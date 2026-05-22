@@ -286,7 +286,7 @@ export default function PipelinePage() {
     <div className="page pipeline-page">
       <div className="pl-header">
         <div>
-          <h1 className="section-title">Lead Pipeline</h1>
+          <h1 className="section-title">Pipeline</h1>
           <p className="section-subtitle">
             {loading ? 'Loading…' : (
               <>

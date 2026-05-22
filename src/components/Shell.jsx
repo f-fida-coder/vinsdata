@@ -63,10 +63,13 @@ const ALL_NAV = [
   { key: 'company',    label: 'Company',           icon: 'building',  to: '/company-settings' },
 ];
 
+// Topbar breadcrumb labels — kept in lock-step with ALL_NAV's sidebar
+// labels above so the three places we surface a page name (sidebar tab,
+// topbar crumb, page h1) all read the same word.
 const ROUTE_LABEL_BY_PATH = {
   '/':                 'Dashboard',
   '/files':            'Files',
-  '/leads':            'CRM Leads',
+  '/leads':            'Leads',
   '/pipeline':         'Pipeline',
   '/reports':          'Reports',
   '/tasks':            'Tasks',
@@ -78,7 +81,7 @@ const ROUTE_LABEL_BY_PATH = {
   '/funding':          'Funding',
   '/dispatch':         'Dispatch',
   '/users':            'Users',
-  '/company-settings': 'Company Settings',
+  '/company-settings': 'Company',
   '/logs':             'Activity Logs',
 };
 

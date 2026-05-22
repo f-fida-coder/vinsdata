@@ -687,7 +687,10 @@ export default function LeadsPage() {
   return (
     <div className="page leads-page">
       <div className="leads-header">
-        <h1 className="section-title">{isAdmin ? 'CRM Leads' : 'My Leads'}</h1>
+        {/* Title matches the sidebar tab label. The admin/agent
+            distinction is conveyed by the scope filter + the stats
+            line below, not by changing the page heading. */}
+        <h1 className="section-title">Leads</h1>
         <span className="leads-header-stats">
           <InlineStats
             total={data.total}

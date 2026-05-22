@@ -90,7 +90,7 @@ export default function MarketingCampaignsPage() {
   return (
     <div className="page">
       <SectionHeader
-        title="Mass Marketing"
+        title="Marketing"
         subtitle={`${campaigns.length.toLocaleString()} ${campaigns.length === 1 ? 'campaign' : 'campaigns'} · ${totalSent.toLocaleString()} total sends · ${totalQueued} active`}
         actions={
           <Button variant="primary" icon="plus" onClick={() => nav('/marketing/new')}>

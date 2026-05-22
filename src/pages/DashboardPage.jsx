@@ -497,7 +497,7 @@ export default function DashboardPage() {
   return (
     <div className="page">
       <SectionHeader
-        title="Dashboard"
+        title="Files"
         subtitle={`${files.length} total files across all stages · last refreshed just now`}
         actions={
           <>
