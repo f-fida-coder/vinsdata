@@ -89,7 +89,7 @@ export default function FundingPage() {
   }, [rows, search, stageFilter]);
 
   return (
-    <div className="max-w-[1400px] mx-auto">
+    <div className="page">
       <SectionHeader
         title="Funding"
         subtitle="Closed deals moving through the post-close pipeline. Every stage except Funded auto-flips from BoS + Dispatch."

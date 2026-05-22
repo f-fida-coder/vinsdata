@@ -157,7 +157,7 @@ export default function BillOfSalePage() {
   }, [rows, search, statusFilter]);
 
   return (
-    <div className="max-w-[1400px] mx-auto">
+    <div className="page">
       <SectionHeader
         title="Bill of Sale"
         subtitle="Every Texas motor vehicle bill of sale — generated from a lead or created standalone. Edit, download, or send for e-signature."

@@ -442,7 +442,11 @@ export default function DispatchPage() {
   const totalInRange = events.length;
 
   return (
-    <div className="p-6 space-y-4">
+    // .page = global wrapper (1600px max + 24/32 padding, centered) so
+    // the title aligns with every other tab. Keep the per-section vertical
+    // rhythm via space-y-4 on an inner stack.
+    <div className="page">
+      <div className="space-y-4">
       <SectionHeader
         title="Dispatch"
         subtitle="Vehicle pickups + deliveries scheduled across the calendar — drag a card to reschedule, click for full details."
@@ -558,6 +562,7 @@ export default function DispatchPage() {
           onScheduled={() => { setAddOpen(false); loadEvents(); }}
         />
       )}
+      </div>
     </div>
   );
 }

@@ -53,7 +53,12 @@ export default function CompanySettingsPage() {
   if (loading) return <div className="p-6 text-sm text-gray-500">Loading…</div>;
 
   return (
-    <div className="p-6 space-y-4 max-w-3xl">
+    // Use the global .page wrapper so the title aligns with every other
+    // tab (1600px max width, 24/32 padding, centered). The form column
+    // stays narrow via max-w-3xl applied to the inner stack so the inputs
+    // don't stretch comically wide on a 1600px viewport.
+    <div className="page">
+      <div className="space-y-4 max-w-3xl">
       <SectionHeader
         title="Company settings"
         subtitle="Used as the Seller on every Bill of Sale and as defaults for new dispatch jobs."
@@ -111,6 +116,7 @@ export default function CompanySettingsPage() {
       {isAdmin && <FeatureFlagsSection />}
 
       {isAdmin && <OutboundIntegrationsSection />}
+      </div>
     </div>
   );
 }
