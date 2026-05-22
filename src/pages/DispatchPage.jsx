@@ -91,7 +91,7 @@ function TransporterPanel({ transporters, onChanged }) {
       <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Icon name="users" className="text-gray-400" />
-          <h3 className="text-sm font-semibold text-gray-900">Transporters</h3>
+          <h3 className="text-base font-semibold text-gray-900">Transporters</h3>
           {activeCount > 0 && (
             <span className="text-[11px] font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
               {activeCount} active

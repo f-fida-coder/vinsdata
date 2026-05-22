@@ -53,7 +53,7 @@ function NotifyModal({ transportId, transporters, onClose, onSent }) {
       <div className="absolute inset-0 bg-gray-900/50" />
       <div className="relative bg-white w-full max-w-2xl rounded-2xl shadow-2xl m-4 flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="font-semibold text-gray-900">Notify transporters</h3>
+          <h3 className="text-base font-semibold text-gray-900">Notify transporters</h3>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100">&times;</button>
         </div>
         <div className="px-5 py-4 space-y-4 overflow-y-auto">

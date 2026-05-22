@@ -166,7 +166,7 @@ function FeatureFlagsSection() {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-gray-900">Feature flags</h2>
+        <h2 className="text-base font-semibold text-gray-900">Feature flags</h2>
         <p className="text-xs text-gray-500 mt-0.5">
           Roll features on / off across the team without a deploy. Changes take effect on the next page load (or immediately for components that subscribe live).
         </p>
@@ -312,7 +312,7 @@ function OutboundIntegrationsSection() {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-5">
       <div>
-        <h2 className="text-lg font-semibold text-gray-900">Outbound integrations</h2>
+        <h2 className="text-base font-semibold text-gray-900">Outbound integrations</h2>
         <p className="text-xs text-gray-500 mt-0.5">
           Credentials for email + SMS sending. Stored encrypted-at-rest in the database.
           Changes take effect on the next send — no deploy required.

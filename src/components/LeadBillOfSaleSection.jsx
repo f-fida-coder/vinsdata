@@ -62,7 +62,7 @@ function BoSEditor({ leadId, initial, onSaved, onClose }) {
       <div className="relative bg-white w-full max-w-4xl rounded-2xl shadow-2xl m-4 flex flex-col max-h-[92vh]" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <div>
-            <h3 className="font-semibold text-gray-900">Bill of Sale</h3>
+            <h3 className="text-base font-semibold text-gray-900">Bill of Sale</h3>
             <p className="text-[11px] text-gray-500 mt-0.5">Fields prefilled from lead data. Edit then save or download as PDF.</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100">&times;</button>
