@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Fragment, useState, useEffect, useCallback, useMemo } from 'react';
 import api, { extractApiError } from '../api';
 import MergePrepDrawer from '../components/MergePrepDrawer';
 import SummaryCards from '../components/SummaryCards';
@@ -37,7 +37,7 @@ function formatDate(s) {
   return d.toLocaleString();
 }
 
-export default function MergePrepPage() {
+export default function MergePrepPage({ embedded = false } = {}) {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(50);
@@ -113,12 +113,20 @@ export default function MergePrepPage() {
     return String(v);
   };
 
+  // Same embedded pattern as DuplicatesPage — when rendered inside the
+  // Files workspace, drop the outer .page wrapper + SectionHeader so
+  // the workspace's tab bar is the only top-level chrome.
+  const Wrapper = embedded ? Fragment : 'div';
+  const wrapperProps = embedded ? {} : { className: 'page' };
+
   return (
-    <div className="page">
-      <SectionHeader
-        title="Merge Prep"
-        subtitle={`${data.total.toLocaleString()} confirmed ${data.total === 1 ? 'group' : 'groups'} · non-destructive workspace · choose primary record and merge fields`}
-      />
+    <Wrapper {...wrapperProps}>
+      {!embedded && (
+        <SectionHeader
+          title="Merge Prep"
+          subtitle={`${data.total.toLocaleString()} confirmed ${data.total === 1 ? 'group' : 'groups'} · non-destructive workspace · choose primary record and merge fields`}
+        />
+      )}
 
       {summary?.merge_prep && (
         <SummaryCards
@@ -332,7 +340,7 @@ export default function MergePrepPage() {
         onClose={() => setDetailGroupId(null)}
         onChanged={() => { fetchGroups(); fetchSummary(); }}
       />
-    </div>
+    </Wrapper>
   );
 }
 

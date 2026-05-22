@@ -15,9 +15,9 @@ import HomeDashboard from './pages/HomeDashboard';
 import UsersPage from './pages/UsersPage';
 import LogsPage from './pages/LogsPage';
 import LeadsPage from './pages/LeadsPage';
-import DuplicatesPage from './pages/DuplicatesPage';
 import TasksPage from './pages/TasksPage';
-import MergePrepPage from './pages/MergePrepPage';
+// DuplicatesPage + MergePrepPage are no longer imported here — they're
+// rendered as embedded tabs inside DashboardPage (the Files workspace).
 import MarketingCampaignsPage from './pages/MarketingCampaignsPage';
 import MarketingComposerPage from './pages/MarketingComposerPage';
 import MarketingDetailPage from './pages/MarketingDetailPage';
@@ -101,14 +101,21 @@ function DashboardLayout() {
               true dashboard owns /. Old bookmarks to / still work — they
               hit the new HomeDashboard via rootElement above. */}
           <Route path="/files" element={<DashboardPage />} />
+          {/* Duplicate Review + Merge Prep are now tabs INSIDE the Files
+              workspace. The /files/* routes render the same DashboardPage
+              component, which reads the pathname to decide which sub-tab
+              to show. The standalone /duplicates and /merge-prep routes
+              redirect for backwards-compatibility with old bookmarks. */}
+          <Route path="/files/duplicates" element={<RequireRoles roles={['admin']} landing={landing}><DashboardPage /></RequireRoles>} />
+          <Route path="/files/merge-prep" element={<RequireRoles roles={['admin']} landing={landing}><DashboardPage /></RequireRoles>} />
+          <Route path="/duplicates"       element={<Navigate to="/files/duplicates" replace />} />
+          <Route path="/merge-prep"       element={<Navigate to="/files/merge-prep" replace />} />
           {/* /vehicles legacy route — redirect to /leads */}
           <Route path="/vehicles" element={<Navigate to="/leads" replace />} />
           <Route path="/leads" element={<LeadsPage />} />
           <Route path="/pipeline" element={<PipelinePage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/tasks" element={<TasksPage />} />
-          <Route path="/duplicates"        element={<RequireRoles roles={['admin']}             landing={landing}><DuplicatesPage /></RequireRoles>} />
-          <Route path="/merge-prep"        element={<RequireRoles roles={['admin']}             landing={landing}><MergePrepPage /></RequireRoles>} />
           <Route path="/marketing"         element={<RequireRoles roles={['admin','marketer']}  landing={landing}><MarketingCampaignsPage /></RequireRoles>} />
           <Route path="/marketing/new"     element={<RequireRoles roles={['admin','marketer']}  landing={landing}><MarketingComposerPage /></RequireRoles>} />
           <Route path="/marketing/:id"     element={<RequireRoles roles={['admin','marketer']}  landing={landing}><MarketingDetailPage /></RequireRoles>} />

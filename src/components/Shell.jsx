@@ -28,7 +28,7 @@ const NAV_VISIBILITY = {
   // Filter/TLO/sales — anyone who needs to see "where in the pipeline
   // is this file" or hunt orphan imports. Dashboard is the new
   // high-level business overview that lives at /.
-  admin:        ['dashboard','files','leads','pipeline','tasks','reports','duplicates','mergePrep','marketing','billOfSale','funding','dispatch','users','company'],
+  admin:        ['dashboard','files','leads','pipeline','tasks','reports','marketing','billOfSale','funding','dispatch','users','company'],
   marketer:     ['dashboard','files','leads','pipeline','marketing','reports'],
   carfax:       ['dashboard','files','leads','pipeline','tasks','billOfSale','funding','dispatch'],
   filter:       ['dashboard','files','leads','pipeline','tasks','billOfSale','funding','dispatch'],
@@ -46,8 +46,10 @@ const ALL_NAV = [
   { key: 'pipeline',   label: 'Pipeline',          icon: 'pipeline',  to: '/pipeline' },
   { key: 'reports',    label: 'Reports',           icon: 'chart',     to: '/reports' },
   { key: 'tasks',      label: 'Tasks',             icon: 'check',     to: '/tasks' },
-  { key: 'duplicates', label: 'Duplicate Review',  icon: 'duplicate', to: '/duplicates' },
-  { key: 'mergePrep',  label: 'Merge Prep',        icon: 'merge',     to: '/merge-prep' },
+  // Duplicate Review + Merge Prep moved INTO the Files page as tabs.
+  // Old sidebar entries removed; the URLs /duplicates and /merge-prep
+  // still work (App.jsx redirects them to /files/duplicates /
+  // /files/merge-prep).
   { key: 'marketing',  label: 'Marketing',         icon: 'sparkles',  to: '/marketing' },
   // Post-close pipeline: BoS → Funding → Dispatch.
   // Bill of Sale = doc list (generate + edit + sign).
@@ -73,8 +75,10 @@ const ROUTE_LABEL_BY_PATH = {
   '/pipeline':         'Pipeline',
   '/reports':          'Reports',
   '/tasks':            'Tasks',
-  '/duplicates':       'Duplicate Review',
-  '/merge-prep':       'Merge Prep',
+  // /duplicates and /merge-prep redirect to /files/duplicates and
+  // /files/merge-prep respectively (App.jsx) — those crumb under Files.
+  '/files/duplicates': 'Files · Duplicate Review',
+  '/files/merge-prep': 'Files · Merge Prep',
   '/marketing':        'Marketing',
   '/marketing/new':    'New Campaign',
   '/bill-of-sale':     'Bill of Sale',
@@ -230,7 +234,7 @@ export function CommandPalette({ open, onClose }) {
     { kind: 'action', icon: 'plus',      label: 'Add new lead',          onClick: () => navigate('/leads') },
     { kind: 'action', icon: 'upload',    label: 'Add new file',          onClick: () => navigate('/') },
     { kind: 'action', icon: 'sparkles',  label: 'New marketing campaign', onClick: () => navigate('/marketing/new') },
-    { kind: 'action', icon: 'merge',     label: 'Run dedupe scan',       onClick: () => navigate('/duplicates') },
+    { kind: 'action', icon: 'merge',     label: 'Run dedupe scan',       onClick: () => navigate('/files/duplicates') },
   ];
 
   const sections = [

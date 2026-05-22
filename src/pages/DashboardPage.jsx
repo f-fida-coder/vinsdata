@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import api, { uploadFile, getDownloadUrl, extractApiError } from '../api';
 import FileDetailDrawer from '../components/FileDetailDrawer';
 import ImportFinalFileModal from '../components/ImportFinalFileModal';
+import DuplicatesPage from './DuplicatesPage';
+import MergePrepPage from './MergePrepPage';
 import { useAuth } from '../context/AuthContext';
 import { SectionHeader, KPI, Button, Icon, Input, StageDots, StatusBadge, EmptyState } from '../components/ui';
 
@@ -494,18 +496,68 @@ export default function DashboardPage() {
     setNotifyModal(null);
   };
 
+  // Tab routing. /files = files list (default), /files/duplicates =
+  // Duplicate Review embedded, /files/merge-prep = Merge Prep embedded.
+  // We read pathname directly rather than nested routes so all three
+  // share this single component (and its existing state).
+  const location = useLocation();
+  const activeTab = location.pathname.endsWith('/duplicates') ? 'duplicates'
+                  : location.pathname.endsWith('/merge-prep') ? 'merge-prep'
+                  : 'files';
+  const TabButton = ({ id, label }) => (
+    <button
+      type="button"
+      onClick={() => navigate(id === 'files' ? '/files' : `/files/${id}`)}
+      className={`px-3 py-1.5 text-[13px] font-medium border-b-2 -mb-px transition ${
+        activeTab === id
+          ? 'border-blue-600 text-gray-900'
+          : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300'
+      }`}
+      aria-current={activeTab === id ? 'page' : undefined}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <div className="page">
+      {/* Single top header for the whole import workspace. Sub-tabs
+          switch the body between the three sub-views below. */}
       <SectionHeader
         title="Files"
-        subtitle={`${files.length} total files across all stages · last refreshed just now`}
+        subtitle={
+          activeTab === 'files'      ? `${files.length} total files across all stages · last refreshed just now`
+          : activeTab === 'duplicates' ? 'Confirm or dismiss duplicate-lead groups so the CRM stays clean.'
+          : 'Pick the primary lead and field-merge choices for each confirmed duplicate group.'
+        }
         actions={
-          <>
-            <Button variant="ghost" icon="refresh" onClick={fetchFiles}>Refresh</Button>
-            <Button variant="primary" icon="plus" onClick={() => setShowModal(true)}>Add File</Button>
-          </>
+          // Top-right actions only apply to the Files tab. Sub-tabs
+          // bring their own (Duplicates has "Run duplicate scan",
+          // Merge Prep has no top action right now).
+          activeTab === 'files' ? (
+            <>
+              <Button variant="ghost" icon="refresh" onClick={fetchFiles}>Refresh</Button>
+              <Button variant="primary" icon="plus" onClick={() => setShowModal(true)}>Add File</Button>
+            </>
+          ) : null
         }
       />
+
+      {/* Sub-tab bar — three views inside the Files workspace. */}
+      <div className="flex items-end gap-1 border-b border-gray-200 mb-4" role="tablist">
+        <TabButton id="files"      label="Files" />
+        <TabButton id="duplicates" label="Duplicate Review" />
+        <TabButton id="merge-prep" label="Merge Prep" />
+      </div>
+
+      {/* Body. The duplicate / merge-prep tabs render their existing
+          page components in embedded mode (no inner SectionHeader, no
+          duplicated .page wrapper). The Files tab keeps the original
+          KPI strip + file list below. */}
+      {activeTab === 'duplicates' && <DuplicatesPage embedded />}
+      {activeTab === 'merge-prep' && <MergePrepPage embedded />}
+      {activeTab !== 'files' ? null : (
+      <>
 
       {error && (
         <div className="card" style={{ marginBottom: 16, color: 'var(--danger)', borderColor: 'var(--danger)' }}>
@@ -1064,6 +1116,8 @@ export default function DashboardPage() {
           </div>
         )}
       </VVModal>
+      </>
+      )}
     </div>
   );
 }

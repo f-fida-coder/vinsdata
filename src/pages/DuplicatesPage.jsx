@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Fragment, useState, useEffect, useCallback, useMemo } from 'react';
 import api, { extractApiError } from '../api';
 import { useAuth } from '../context/AuthContext';
 import DuplicateGroupDrawer from '../components/DuplicateGroupDrawer';
@@ -47,7 +47,7 @@ function formatDate(s) {
   return d.toLocaleString();
 }
 
-export default function DuplicatesPage() {
+export default function DuplicatesPage({ embedded = false } = {}) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const [filters, setFilters] = useState(EMPTY_FILTERS);
@@ -164,17 +164,25 @@ export default function DuplicatesPage() {
     }
   };
 
+  // When embedded inside the Files workspace (as a tab) we drop the
+  // outer .page wrapper + the SectionHeader so the parent's tab bar
+  // is the single page-level chrome. Standalone mode keeps both.
+  const Wrapper = embedded ? Fragment : 'div';
+  const wrapperProps = embedded ? {} : { className: 'page' };
+
   return (
-    <div className="page">
-      <SectionHeader
-        title="Duplicate Review"
-        subtitle={`${data.total.toLocaleString()} ${data.total === 1 ? 'group' : 'groups'} detected · confirm or dismiss to keep records clean`}
-        actions={isAdmin ? (
-          <Button variant="primary" icon="refresh" onClick={runScan} disabled={scanning}>
-            {scanning ? 'Scanning…' : 'Run duplicate scan'}
-          </Button>
-        ) : null}
-      />
+    <Wrapper {...wrapperProps}>
+      {!embedded && (
+        <SectionHeader
+          title="Duplicate Review"
+          subtitle={`${data.total.toLocaleString()} ${data.total === 1 ? 'group' : 'groups'} detected · confirm or dismiss to keep records clean`}
+          actions={isAdmin ? (
+            <Button variant="primary" icon="refresh" onClick={runScan} disabled={scanning}>
+              {scanning ? 'Scanning…' : 'Run duplicate scan'}
+            </Button>
+          ) : null}
+        />
+      )}
 
       {error && <ErrorAlert message={error} onClose={() => setError('')} />}
       {scanError && <ErrorAlert message={scanError} onClose={() => setScanError('')} />}
@@ -403,7 +411,7 @@ export default function DuplicatesPage() {
       </div>
 
       <DuplicateGroupDrawer groupId={detailId} onClose={() => setDetailId(null)} onChanged={() => { fetchGroups(); fetchSummary(); }} />
-    </div>
+    </Wrapper>
   );
 }
 
