@@ -7,7 +7,7 @@ import {
   STATUS_BY_KEY, PRIORITY_BY_KEY, TEMPERATURE_BY_KEY,
   DEFAULT_LEAD_STATE, ACTIVITY_META, describeActivity,
   CAMPAIGN_STATUS_META, RECIPIENT_STATUS_META, MARKETING_CHANNELS,
-  LEAD_TIERS, TIER_BY_KEY, computeLeadTier, roleLabel,
+  LEAD_TIERS, TIER_BY_KEY, computeLeadTier, roleLabel, formatPhone,
 } from '../lib/crm';
 import {
   TASK_TYPES, TASK_TYPE_BY_KEY,
@@ -116,6 +116,89 @@ function TierPill({ tierKey }) {
 function normalizePriceInput(v) {
   if (v === '' || v === null || v === undefined) return '';
   return String(v);
+}
+
+// Verified-phone section. The 4 phone slots from the CSV import are
+// shown side-by-side; clicking "Verify" on one marks it as the
+// confirmed-reachable number for this lead. Mutually exclusive — only
+// one slot can be verified at a time; clicking the already-verified one
+// clears it. Saves immediately on click (no separate Save button) so
+// the green check appears in the leads list without an extra step.
+function PhoneSlotsSection({ leadId, np, initialSlot, onChanged }) {
+  const [slot, setSlot] = useState(initialSlot ?? null);
+  const [savingKey, setSavingKey] = useState(null);
+  const [error, setError] = useState('');
+
+  // Keep local state in sync if the parent reloads the lead (e.g. after
+  // a person-level fan-out from another sibling lead).
+  useEffect(() => { setSlot(initialSlot ?? null); }, [initialSlot]);
+
+  const SLOTS = [
+    { key: 'phone_primary',   label: 'Phone 1', value: np?.phone_primary },
+    { key: 'phone_secondary', label: 'Phone 2', value: np?.phone_secondary },
+    { key: 'phone_3',         label: 'Phone 3', value: np?.['Phone Number 3'] || np?.['Phone Number3'] },
+    { key: 'phone_4',         label: 'Phone 4', value: np?.['Phone Number 4'] || np?.['Phone Number4'] },
+  ];
+
+  // Hide section entirely if the lead has no phones at all.
+  if (!SLOTS.some(s => s.value)) return null;
+
+  const toggle = async (next) => {
+    if (savingKey) return;
+    const newSlot = slot === next ? null : next;
+    const previous = slot;
+    setSlot(newSlot);
+    setSavingKey(next);
+    setError('');
+    try {
+      await api.put('/lead_state', { lead_id: leadId, known_phone_slot: newSlot });
+      onChanged?.();
+    } catch (err) {
+      setSlot(previous);  // rollback on failure
+      setError(extractApiError(err, 'Failed to update verified phone'));
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  return (
+    <CollapsibleSection title="Phone numbers" defaultOpen>
+      {error && (
+        <div className="bg-red-50 border border-red-100 text-red-700 rounded-lg p-2 text-xs mb-2">{error}</div>
+      )}
+      <div className="space-y-1">
+        {SLOTS.map(({ key, label, value }) => {
+          const verified = slot === key;
+          return (
+            <div key={key} className="flex items-center justify-between gap-3 px-2 py-1.5 rounded-md hover:bg-gray-50">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold w-12 shrink-0">{label}</span>
+                <span className="text-sm text-gray-700 tabular-nums truncate">
+                  {value ? formatPhone(value) : <span className="text-gray-300">—</span>}
+                </span>
+              </div>
+              {value && (
+                <button
+                  type="button"
+                  onClick={() => toggle(key)}
+                  disabled={savingKey !== null}
+                  className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium transition disabled:opacity-50 ${
+                    verified
+                      ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                  title={verified ? 'Click to unmark — operator can re-verify another number' : 'Mark as the confirmed-reachable number for this lead'}
+                  aria-pressed={verified}
+                >
+                  {verified ? '✓ Verified' : 'Verify'}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </CollapsibleSection>
+  );
 }
 
 function CrmStateSection({ leadId, initialState, autoTier, users, isAdmin, onChanged }) {
@@ -1501,6 +1584,17 @@ function LeadDetailInner({ leadId, onClose, onChanged, onOpenLead }) {
                 autoTier={computeLeadTier(detail.normalized_payload || {})}
                 users={users}
                 isAdmin={user?.role === 'admin'}
+                onChanged={handleChildChanged}
+              />
+
+              {/* Verified phone slot — operator marks which of the 4
+                  phone columns is the confirmed-reachable number once
+                  they've actually got a person on the line. The leads
+                  list view then shows a green check next to it. */}
+              <PhoneSlotsSection
+                leadId={detail.id}
+                np={detail.normalized_payload || {}}
+                initialSlot={crmState.known_phone_slot}
                 onChanged={handleChildChanged}
               />
 

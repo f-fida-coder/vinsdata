@@ -207,10 +207,15 @@ const CUSTOM_COLUMN_BLOCKLIST = new Set([
 const BUILTIN_COLUMNS = [
   ['tier',                     'Tier',                  false, 'tier'],
   ['status',                   'Status',                false, 'status'],
-  // Assigned-to lives right after Status per operator request. The
-  // underlying key is still 'agent' so existing localStorage entries
-  // and the bulk-action wiring don't need a parallel migration; we
-  // just relabel it in the header.
+  // Temperature + Priority sit right after Status — operator wants the
+  // qualifying signals next to the workflow state for quick triage. Both
+  // shown by default (the localStorage migration v4→v5 below also unhides
+  // them for existing operator sessions that had them off).
+  ['temperature', 'Temperature', false, 'lead_temperature'],
+  ['priority',    'Priority',    false, 'priority'],
+  // Assigned-to follows. The underlying column key is still 'agent' so
+  // existing localStorage entries and the bulk-action wiring don't need
+  // a parallel migration; we just relabel it in the header.
   ['agent',                    'Assigned to',           false, 'assigned_user_id'],
   ['vehicle',                  'Vehicle',               false, 'make'],
   ['miles',                    'Miles',                 false, 'mileage'],
@@ -233,8 +238,7 @@ const BUILTIN_COLUMNS = [
   ['email_2',                  'Email 2',               false, 'Email 2'],
   ['service_record_count',     'Service records',       false, 'ServiceRecordCount'],
   // ---- below: legacy / advanced columns, hidden by default ----
-  ['priority',    'Priority',    true,  'priority'],
-  ['temperature', 'Temperature', true,  'lead_temperature'],
+  // (temperature + priority moved up next to status above)
   ['labels',      'Labels',      true,  null],
   ['wanted',      'Wanted',      true,  'price_wanted'],
   ['offered',     'Offered',     true,  'price_offered'],
@@ -315,12 +319,24 @@ export default function LeadsPage() {
   const [selection, setSelection] = useState(() => new Set());
   const [bulkAction, setBulkAction] = useState(null);
   const [hiddenColumns, setHiddenColumns] = useState(() => {
-    // localStorage key is versioned (currently v4). Each bump triggers a
-    // one-time reset to the new defaults rather than trying to migrate a
-    // stale set. v4 adds the Assigned-to column right after Status.
+    // localStorage key is versioned (currently v5). Each bump triggers a
+    // gentle migration: read the previous version's value, transform it,
+    // and write to the new key. v5 unhides Temperature + Priority (now
+    // default visible) while preserving whatever other prefs the operator
+    // had set in v4.
     try {
-      const stored = localStorage.getItem('lead_hidden_columns_v4');
-      if (stored) return new Set(JSON.parse(stored));
+      const v5 = localStorage.getItem('lead_hidden_columns_v5');
+      if (v5) return new Set(JSON.parse(v5));
+      // Migrate v4 → v5: drop temperature + priority from the hidden set
+      // (they're shown by default now). Anything else the operator had
+      // hidden stays hidden.
+      const v4 = localStorage.getItem('lead_hidden_columns_v4');
+      if (v4) {
+        const migrated = new Set(JSON.parse(v4));
+        migrated.delete('temperature');
+        migrated.delete('priority');
+        return migrated;
+      }
     } catch { /* fall through */ }
     return new Set(DEFAULT_HIDDEN_BUILTINS);
   });
@@ -432,7 +448,7 @@ export default function LeadsPage() {
   };
 
   useEffect(() => {
-    try { localStorage.setItem('lead_hidden_columns_v4', JSON.stringify([...hiddenColumns])); } catch { /* ignore quota */ }
+    try { localStorage.setItem('lead_hidden_columns_v5', JSON.stringify([...hiddenColumns])); } catch { /* ignore quota */ }
   }, [hiddenColumns]);
 
   const customColumns = useMemo(() => {
@@ -1381,7 +1397,38 @@ function BuiltinCell({ colKey, lead, np, crm, labels, location, vehicle, tierMet
     case 'phone_3':
     case 'phone_4': {
       const v = PAYLOAD_READER[colKey](np);
-      return td('text-[13px] text-gray-700 tabular-nums whitespace-nowrap', v ? formatPhone(v) : <EmDash />);
+      // Map the column key (phone_1..phone_4) to the slot enum stored on
+      // lead_states.known_phone_slot ('phone_primary' / 'phone_secondary' /
+      // 'phone_3' / 'phone_4'). When this cell's phone matches the marked
+      // slot, render a small green check after the digits so operators can
+      // see at a glance which line has been verified reachable.
+      const COL_TO_SLOT = {
+        phone_1: 'phone_primary',
+        phone_2: 'phone_secondary',
+        phone_3: 'phone_3',
+        phone_4: 'phone_4',
+      };
+      const isVerified = v && crm.known_phone_slot === COL_TO_SLOT[colKey];
+      return (
+        <td className="px-3 py-2 text-[13px] text-gray-700 tabular-nums whitespace-nowrap">
+          {v ? (
+            <span className="inline-flex items-center gap-1">
+              <span>{formatPhone(v)}</span>
+              {isVerified && (
+                <span
+                  className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold leading-none"
+                  title="Verified — confirmed reachable number"
+                  aria-label="verified phone"
+                >
+                  ✓
+                </span>
+              )}
+            </span>
+          ) : (
+            <EmDash />
+          )}
+        </td>
+      );
     }
     case 'email_1':
     case 'email_2': {

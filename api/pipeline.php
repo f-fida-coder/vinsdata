@@ -312,7 +312,29 @@ function leadTierSqlExpression(string $alias = 'tier'): string
         0
     )";
 
+    // Multi-car rule: if this lead's primary phone matches ANY other live
+    // lead, the same person owns more than one vehicle in our DB → that's
+    // a high-signal lead, force tier_1 regardless of Age / NumberOfOwners.
+    //
+    // EXISTS stops at the first match so this is cheap even on the full
+    // table — `norm_phone_primary` is indexed (migration 003). We also
+    // gate on `norm_phone_primary IS NOT NULL` so leads without a parsed
+    // phone don't accidentally collide on NULL.
+    $multiCarExists = "EXISTS (
+        SELECT 1 FROM imported_leads_raw r2
+         WHERE r2.norm_phone_primary = r.norm_phone_primary
+           AND r2.norm_phone_primary IS NOT NULL
+           AND r2.id <> r.id
+           AND r2.deleted_at IS NULL
+           AND r2.import_status = 'imported'
+    )";
+
     $cases = [];
+    // Multi-car check goes FIRST so it short-circuits the Age/Owners
+    // CASE below. Operator-set tier_override still wins via the outer
+    // COALESCE — operators can still manually downgrade a multi-car
+    // lead if they have a reason.
+    $cases[] = "WHEN $multiCarExists THEN 'tier_1'";
     foreach (LEAD_TIER_THRESHOLDS as $t) {
         $clauses = [
             "$ageExpr IS NOT NULL",

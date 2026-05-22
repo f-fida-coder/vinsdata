@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     $stmt = $db->prepare(
         'SELECT s.status, s.priority, s.lead_temperature, s.price_wanted, s.price_offered,
-                s.vehicle_color, s.vehicle_odometer, s.tier_override,
+                s.vehicle_color, s.vehicle_odometer, s.tier_override, s.known_phone_slot,
                 s.assigned_user_id, u.name AS assigned_user_name,
                 s.created_at, s.updated_at
            FROM lead_states s
@@ -40,6 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'vehicle_color'      => null,
             'vehicle_odometer'   => null,
             'tier_override'      => null,
+            'known_phone_slot'   => null,
             'assigned_user_id'   => null,
             'assigned_user_name' => null,
             'is_default'         => true,
@@ -64,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
     // Load current (or defaults). Fetch every column we may touch.
     $stmt = $db->prepare(
         'SELECT status, priority, assigned_user_id, lead_temperature, price_wanted, price_offered,
-                vehicle_color, vehicle_odometer, tier_override
+                vehicle_color, vehicle_odometer, tier_override, known_phone_slot
            FROM lead_states WHERE imported_lead_id = :lid'
     );
     $stmt->execute([':lid' => $leadId]);
@@ -80,6 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
     $currentOdometer    = isset($current['vehicle_odometer']) && $current['vehicle_odometer'] !== null
         ? (int) $current['vehicle_odometer'] : null;
     $currentTierOverride = $current['tier_override'] ?? null;
+    $currentKnownPhone   = $current['known_phone_slot'] ?? null;
 
     $next = [
         'status'           => $current['status'],
@@ -91,6 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
         'vehicle_color'    => $currentColor,
         'vehicle_odometer' => $currentOdometer,
         'tier_override'    => $currentTierOverride,
+        'known_phone_slot' => $currentKnownPhone,
     ];
 
     $changes = [];  // [activity_type, old, new]
@@ -195,6 +198,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
         }
     }
 
+    // Verified / "known" phone slot. The lead has up to 4 phone numbers
+    // pulled from the source CSV; once an operator confirms one is the
+    // right number to call, they mark its slot here. NULL / '' / 'unset'
+    // clears the mark (operator decided none of them are confirmed).
+    if (array_key_exists('known_phone_slot', $input)) {
+        $raw = $input['known_phone_slot'];
+        if ($raw === null || $raw === '' || $raw === 'unset') {
+            $newKnownPhone = null;
+        } else {
+            $allowed = ['phone_primary', 'phone_secondary', 'phone_3', 'phone_4'];
+            if (!in_array($raw, $allowed, true)) {
+                pipelineFail(400, "Invalid known_phone_slot '$raw'", 'invalid_known_phone_slot');
+            }
+            $newKnownPhone = (string) $raw;
+        }
+        if ($newKnownPhone !== $currentKnownPhone) {
+            // Not in lead_activities ENUM yet (same pattern as
+            // tier_override_changed) — log only via state save, the
+            // green check next to the phone is the user-visible signal.
+            $next['known_phone_slot'] = $newKnownPhone;
+            $changes[] = ['known_phone_slot_changed', $currentKnownPhone, $newKnownPhone];
+        }
+    }
+
     if (array_key_exists('vehicle_odometer', $input)) {
         // Accept null/'' to clear, plus integer-ish strings ("123,456" → 123456).
         $rawOdo = $input['vehicle_odometer'];
@@ -223,9 +250,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
         $stmt = $db->prepare(
             'INSERT INTO lead_states
                (imported_lead_id, status, priority, assigned_user_id, lead_temperature,
-                price_wanted, price_offered, vehicle_color, vehicle_odometer, tier_override)
+                price_wanted, price_offered, vehicle_color, vehicle_odometer, tier_override,
+                known_phone_slot)
              VALUES (:lid, :status, :priority, :assignee, :temp,
-                     :wanted, :offered, :color, :odometer, :tier_override)
+                     :wanted, :offered, :color, :odometer, :tier_override,
+                     :known_phone)
              ON DUPLICATE KEY UPDATE
                status = VALUES(status),
                priority = VALUES(priority),
@@ -235,7 +264,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
                price_offered = VALUES(price_offered),
                vehicle_color = VALUES(vehicle_color),
                vehicle_odometer = VALUES(vehicle_odometer),
-               tier_override = VALUES(tier_override)'
+               tier_override = VALUES(tier_override),
+               known_phone_slot = VALUES(known_phone_slot)'
         );
         $stmt->execute([
             ':lid'           => $leadId,
@@ -248,6 +278,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
             ':color'         => $next['vehicle_color'],
             ':odometer'      => $next['vehicle_odometer'],
             ':tier_override' => $next['tier_override'],
+            ':known_phone'   => $next['known_phone_slot'],
         ]);
         foreach ($changes as [$type, $old, $new]) {
             // Some change types (tier_override_changed, vehicle_color_changed,

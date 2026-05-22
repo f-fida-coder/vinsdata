@@ -21,6 +21,7 @@ function attachCrmToLeads(PDO $db, array &$leads): void
         "SELECT s.imported_lead_id, s.status, s.priority,
                 s.lead_temperature, s.price_wanted, s.price_offered,
                 s.tier_override, s.vehicle_color, s.vehicle_odometer,
+                s.known_phone_slot,
                 s.assigned_user_id, u.name AS assigned_user_name
            FROM lead_states s
            LEFT JOIN users u ON u.id = s.assigned_user_id
@@ -38,6 +39,7 @@ function attachCrmToLeads(PDO $db, array &$leads): void
             'tier_override'      => $r['tier_override'],
             'vehicle_color'      => $r['vehicle_color'],
             'vehicle_odometer'   => $r['vehicle_odometer'] !== null ? (int) $r['vehicle_odometer'] : null,
+            'known_phone_slot'   => $r['known_phone_slot'],
             'assigned_user_id'   => $r['assigned_user_id'] !== null ? (int) $r['assigned_user_id'] : null,
             'assigned_user_name' => $r['assigned_user_name'],
         ];
@@ -71,6 +73,7 @@ function attachCrmToLeads(PDO $db, array &$leads): void
             'tier_override'      => null,
             'vehicle_color'      => null,
             'vehicle_odometer'   => null,
+            'known_phone_slot'   => null,
             'assigned_user_id'   => null,
             'assigned_user_name' => null,
         ];
