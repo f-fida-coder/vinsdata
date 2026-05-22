@@ -104,8 +104,69 @@ function dispatchGmailJob(array $job): array
 }
 
 /**
+ * Resolve the OpenPhone "from" number (E.164) we'll use as the sender
+ * on every outgoing message. The OpenPhone (rebranding to Quo) API
+ * shipped a schema change: top-level `phoneNumberId` is no longer
+ * accepted on POST /v1/messages — they now require `from` as an E.164
+ * string. To stay backwards-compatible with operators who only
+ * configured OPENPHONE_PHONE_NUMBER_ID, we:
+ *   1. Prefer an explicit OPENPHONE_FROM_NUMBER env value if set.
+ *   2. Otherwise look up /v1/phone-numbers once and find the entry
+ *      whose `id` matches OPENPHONE_PHONE_NUMBER_ID; cache the
+ *      resolved E.164 in a static so we only call the API once per
+ *      PHP-FPM worker lifetime.
+ * Returns '' on any failure — caller surfaces that as a configuration
+ * failure rather than a per-message send failure.
+ */
+function resolveOpenPhoneFromNumber(string $apiKey, string $phoneId): string
+{
+    static $cache = null;
+    if ($cache !== null) return $cache;
+
+    // 1. Explicit override wins. Operator who knows their own number
+    //    can drop OPENPHONE_FROM_NUMBER=+14699712609 in .env / app_secrets.
+    $explicit = trim((string) getEnvValue('OPENPHONE_FROM_NUMBER', ''));
+    if ($explicit !== '') {
+        $cache = openPhoneToE164($explicit);
+        return $cache;
+    }
+
+    // 2. Look up via the API. `id` on each item matches the value of
+    //    OPENPHONE_PHONE_NUMBER_ID; the actual E.164 lives at `.number`
+    //    in their response.
+    $ch = curl_init('https://api.openphone.com/v1/phone-numbers');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER     => ['Authorization: ' . $apiKey],
+        CURLOPT_TIMEOUT        => 10,
+    ]);
+    $body = curl_exec($ch);
+    $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($body === false || $http < 200 || $http >= 300) {
+        $cache = '';
+        return $cache;
+    }
+    $decoded = json_decode($body, true);
+    foreach ($decoded['data'] ?? [] as $pn) {
+        if (($pn['id'] ?? '') === $phoneId) {
+            $cache = openPhoneToE164((string) ($pn['number'] ?? $pn['phoneNumber'] ?? ''));
+            return $cache;
+        }
+    }
+    $cache = '';
+    return $cache;
+}
+
+/**
  * OpenPhone — REST POST to /v1/messages with the API key in the
  * Authorization header (no Bearer prefix, per OpenPhone docs).
+ *
+ * Payload shape (current Quo/OpenPhone API):
+ *   { from: "+14699712609", to: ["+18173952397"], content: "..." }
+ * `from` is the operator's own OpenPhone E.164 number (resolved by
+ * resolveOpenPhoneFromNumber). The previous `phoneNumberId` top-level
+ * field was deprecated and now returns HTTP 400 "The input was invalid".
  */
 function dispatchOpenPhoneJob(array $job): array
 {
@@ -116,6 +177,11 @@ function dispatchOpenPhoneJob(array $job): array
     $phoneId = getEnvValue('OPENPHONE_PHONE_NUMBER_ID');
     if ($apiKey === '' || $phoneId === '') {
         return ['ok' => false, 'fail_reason' => 'openphone_not_configured'];
+    }
+
+    $fromE164 = resolveOpenPhoneFromNumber($apiKey, $phoneId);
+    if ($fromE164 === '') {
+        return ['ok' => false, 'fail_reason' => 'openphone_from_number_unresolved (set OPENPHONE_FROM_NUMBER in app_secrets, or check OPENPHONE_PHONE_NUMBER_ID)'];
     }
 
     // OpenPhone's /v1/messages requires recipients in E.164 form
@@ -129,9 +195,9 @@ function dispatchOpenPhoneJob(array $job): array
     }
 
     $payload = json_encode([
-        'phoneNumberId' => $phoneId,
-        'to'            => [$toCanonical],
-        'content'       => (string) ($job['body'] ?? ''),
+        'from'    => $fromE164,
+        'to'      => [$toCanonical],
+        'content' => (string) ($job['body'] ?? ''),
     ]);
 
     $ch = curl_init('https://api.openphone.com/v1/messages');
