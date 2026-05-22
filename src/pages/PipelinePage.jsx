@@ -204,10 +204,32 @@ export default function PipelinePage() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // scope is one of: 'all' (no filter), 'mine' (assigned_user_id = me),
+  // or a numeric user id (assigned_user_id = that user). Numeric ids
+  // get coerced via Number(...) in the API-call branch below.
   const [scope, setScope] = useState('all');
   const [grouping, setGrouping] = useState('temperature');
   const [drawerId, setDrawerId] = useState(null);
+  const [users, setUsers] = useState([]);
   const isAdmin = user?.role === 'admin' || user?.role === 'marketer';
+
+  // Admins / marketers can filter by any user. Fetch once on mount so
+  // the dropdown is populated by the time they touch it. We use
+  // /api/lead_filter_options instead of /api/users because the latter
+  // is admin-only — this endpoint is accessible to all authenticated
+  // users and returns the same {id,name,role} shape we need.
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancel = false;
+    api.get('/lead_filter_options')
+      .then((res) => {
+        if (cancel) return;
+        const list = Array.isArray(res.data?.users) ? res.data.users : [];
+        setUsers(list);
+      })
+      .catch(() => { /* dropdown will only show All / Mine on failure */ });
+    return () => { cancel = true; };
+  }, [isAdmin]);
 
   useEffect(() => {
     let cancel = false;
@@ -215,7 +237,12 @@ export default function PipelinePage() {
       setLoading(true); setError('');
       try {
         const params = { per_page: 200 };
-        if (scope === 'mine' && user?.id) params.assigned_user_id = user.id;
+        if (scope === 'mine' && user?.id) {
+          params.assigned_user_id = user.id;
+        } else if (scope !== 'all' && /^\d+$/.test(String(scope))) {
+          // Numeric scope = filter by that specific user's assigned leads.
+          params.assigned_user_id = Number(scope);
+        }
         const res = await api.get('/leads', { params });
         if (!cancel) setLeads(Array.isArray(res.data?.leads) ? res.data.leads : []);
       } catch (err) {
@@ -285,10 +312,24 @@ export default function PipelinePage() {
             </div>
           </div>
           {isAdmin && (
-            <div className="seg">
-              <button type="button" className={`seg-btn ${scope === 'all' ? 'active' : ''}`} onClick={() => setScope('all')}>All leads</button>
-              <button type="button" className={`seg-btn ${scope === 'mine' ? 'active' : ''}`} onClick={() => setScope('mine')}>My leads</button>
-            </div>
+            <label className="pl-scope-picker">
+              <span className="pl-grouping-label">Show</span>
+              <select
+                className="pl-scope-select"
+                value={scope}
+                onChange={(e) => setScope(e.target.value)}
+                aria-label="Filter pipeline by user"
+              >
+                <option value="all">All leads</option>
+                <option value="mine">My leads</option>
+                {users.length > 0 && <option disabled>──────────</option>}
+                {users.map((u) => (
+                  <option key={u.id} value={String(u.id)}>
+                    {u.name}{u.role ? ` · ${u.role}` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
           )}
         </div>
       </div>
@@ -303,10 +344,6 @@ export default function PipelinePage() {
         <div className="pl-board">
           {cols.map((c) => {
             const colLeads = sortedGrouped[c.key] || [];
-            const totalValue = colLeads.reduce((sum, l) => {
-              const v = (l.crm_state?.price_offered ?? l.price_offered) || 0;
-              return sum + Number(v);
-            }, 0);
             return (
               <div key={c.key} className="pl-col">
                 <div className="pl-col-head">
@@ -317,9 +354,8 @@ export default function PipelinePage() {
                     </span>
                     <span className="pl-col-count">{colLeads.length}</span>
                   </div>
-                  {totalValue > 0 && (
-                    <div className="pl-col-subtotal">{formatPrice(totalValue)} offered</div>
-                  )}
+                  {/* offered-total subtotal removed per operator request — the
+                      column header is now just dot + label + count. */}
                   <span className="pl-col-accent" style={{ background: c.dot }}/>
                 </div>
                 <div className="pl-col-body">

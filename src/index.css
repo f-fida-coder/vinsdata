@@ -2652,6 +2652,38 @@ label.field-label {
 }
 .pl-grouping-seg .seg-btn { padding: 4px 10px; font-size: 12px; }
 
+/* Scope picker — "Show: All leads / My leads / <any user>".
+   Mirrors the .pl-grouping label style so the two controls read as a
+   matched pair. */
+.pl-scope-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pl-scope-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--bg-1);
+  border: 1px solid var(--border-0);
+  border-radius: 8px;
+  padding: 5px 28px 5px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-0);
+  cursor: pointer;
+  /* tiny caret on the right edge */
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-2) 50%),
+                    linear-gradient(135deg, var(--text-2) 50%, transparent 50%);
+  background-position: calc(100% - 14px) center, calc(100% - 10px) center;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+}
+.pl-scope-select:hover { border-color: var(--text-3); }
+.pl-scope-select:focus {
+  outline: 2px solid var(--info);
+  outline-offset: 1px;
+}
+
 /* Board — horizontally scrollable on smaller screens */
 .pl-board {
   display: grid;
