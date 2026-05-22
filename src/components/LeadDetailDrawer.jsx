@@ -277,6 +277,15 @@ function CrmStateSection({ leadId, initialState, importedMiles, autoTier, users,
   const [baseline, setBaseline] = useState(state);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // Tracks the most recent successful save so the top bar can flash a
+  // "Saved" indicator. Reset to null after 2 seconds so it doesn't
+  // linger forever once the operator stops looking.
+  const [lastSavedAt, setLastSavedAt] = useState(null);
+  useEffect(() => {
+    if (!lastSavedAt) return;
+    const t = setTimeout(() => setLastSavedAt(null), 2000);
+    return () => clearTimeout(t);
+  }, [lastSavedAt]);
 
   const dirty = useMemo(() => (
     state.status !== baseline.status
@@ -325,6 +334,7 @@ function CrmStateSection({ leadId, initialState, importedMiles, autoTier, users,
       }
       await api.put('/lead_state', payload);
       setBaseline(state);
+      setLastSavedAt(Date.now());
       onChanged?.();
     } catch (err) {
       setError(extractApiError(err, 'Failed to save state'));
@@ -333,8 +343,68 @@ function CrmStateSection({ leadId, initialState, importedMiles, autoTier, users,
     }
   };
 
+  // Auto-save: when the form is dirty and the operator pauses typing,
+  // flush silently after a short debounce so nothing they typed gets
+  // lost on tab-close, drawer-close, or accidental navigation. The
+  // manual Save button still works for explicit confirmation.
+  //
+  // Debounce window is 1.5s — short enough to feel responsive, long
+  // enough to skip the half-typed-price intermediates (e.g. operator
+  // typing "12500" briefly passes through "1", "12", "125", "1250").
+  useEffect(() => {
+    if (!dirty || saving) return;
+    const t = setTimeout(() => { save(); }, 1500);
+    return () => clearTimeout(t);
+    // We intentionally key the debounce off the form state itself —
+    // each keystroke resets the timer. `save` is captured in closure
+    // and reads the latest state from this same render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
+  // Status text for the top bar. Auto-save handles the heavy lifting,
+  // so the bar mostly just narrates what's happening for confidence.
+  const statusText = saving ? 'Saving…'
+    : error ? 'Save failed'
+    : lastSavedAt ? 'Saved'
+    : dirty ? 'Unsaved changes'
+    : 'All changes saved';
+  const statusColor = saving ? 'text-blue-600'
+    : error ? 'text-red-600'
+    : lastSavedAt ? 'text-emerald-600'
+    : dirty ? 'text-amber-600'
+    : 'text-gray-400';
+
   return (
     <CollapsibleSection title="CRM state" defaultOpen>
+      {/* Top action bar — Save button + live save status. The button
+          stays clickable so operators can force an immediate flush
+          (e.g. before closing the tab) but the auto-save effect above
+          handles routine persistence on its own. */}
+      <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-gray-100">
+        <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${statusColor}`}>
+          {saving && (
+            <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+            </svg>
+          )}
+          {!saving && lastSavedAt && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+          {!saving && !lastSavedAt && dirty && <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
+          {statusText}
+          {!saving && dirty && !error && (
+            <span className="text-gray-400 font-normal">· auto-saves in a moment</span>
+          )}
+        </span>
+        <button
+          onClick={save}
+          disabled={!dirty || saving}
+          className="px-3 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md disabled:opacity-40"
+          title={dirty ? 'Save now (also auto-saves after a 1.5s pause)' : 'No unsaved changes'}
+        >
+          {saving ? 'Saving…' : 'Save now'}
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <label className="block">
           <span className="block text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">Status</span>
@@ -465,16 +535,13 @@ function CrmStateSection({ leadId, initialState, importedMiles, autoTier, users,
         <PriorityPill priorityKey={state.priority} />
         {state.lead_temperature && <TemperaturePill temperatureKey={state.lead_temperature} />}
       </div>
-      {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
-      <div className="flex justify-end mt-2">
-        <button
-          onClick={save}
-          disabled={!dirty || saving}
-          className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-40"
-        >
-          {saving ? 'Saving…' : 'Save'}
-        </button>
-      </div>
+      {/* Error surface — auto-save retries on the next state change, so
+          the operator's edits aren't lost while the connection recovers. */}
+      {error && (
+        <p className="text-xs text-red-600 mt-2">
+          {error} <span className="text-red-400">(will retry on next edit)</span>
+        </p>
+      )}
     </CollapsibleSection>
   );
 }
