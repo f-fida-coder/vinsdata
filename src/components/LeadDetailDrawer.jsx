@@ -118,30 +118,38 @@ function normalizePriceInput(v) {
   return String(v);
 }
 
-// Verified-phone section. The 4 phone slots from the CSV import are
-// shown side-by-side; clicking "Verify" on one marks it as the
-// confirmed-reachable number for this lead. Mutually exclusive — only
-// one slot can be verified at a time; clicking the already-verified one
-// clears it. Saves immediately on click (no separate Save button) so
-// the green check appears in the leads list without an extra step.
-function PhoneSlotsSection({ leadId, np, initialSlot, onChanged }) {
+// Compact contacts panel — phones (up to 4 slots) and emails (up to 2)
+// in a single tight section. Operators kept saying the old version
+// took too much vertical space; the redesign:
+//   - hides empty slots entirely (no point showing "Phone 4: —")
+//   - drops to text-xs with py-0.5 row height
+//   - single-line per row, whitespace-nowrap so long numbers don't
+//     wrap mid-digit when the drawer is narrow
+//   - tiny ✓ icon for verified instead of a full "Verified" pill
+// Phones support a verified-slot toggle (persisted via known_phone_slot
+// on lead_states); emails are display-only for now.
+function ContactSlotsSection({ leadId, np, initialSlot, onChanged }) {
   const [slot, setSlot] = useState(initialSlot ?? null);
   const [savingKey, setSavingKey] = useState(null);
   const [error, setError] = useState('');
 
-  // Keep local state in sync if the parent reloads the lead (e.g. after
-  // a person-level fan-out from another sibling lead).
   useEffect(() => { setSlot(initialSlot ?? null); }, [initialSlot]);
 
-  const SLOTS = [
-    { key: 'phone_primary',   label: 'Phone 1', value: np?.phone_primary },
-    { key: 'phone_secondary', label: 'Phone 2', value: np?.phone_secondary },
-    { key: 'phone_3',         label: 'Phone 3', value: np?.['Phone Number 3'] || np?.['Phone Number3'] },
-    { key: 'phone_4',         label: 'Phone 4', value: np?.['Phone Number 4'] || np?.['Phone Number4'] },
-  ];
+  // Only the slots that actually have a value — we don't render empty rows.
+  const phones = [
+    { key: 'phone_primary',   value: np?.phone_primary },
+    { key: 'phone_secondary', value: np?.phone_secondary },
+    { key: 'phone_3',         value: np?.['Phone Number 3'] || np?.['Phone Number3'] },
+    { key: 'phone_4',         value: np?.['Phone Number 4'] || np?.['Phone Number4'] },
+  ].filter(p => p.value);
 
-  // Hide section entirely if the lead has no phones at all.
-  if (!SLOTS.some(s => s.value)) return null;
+  const emails = [
+    { key: 'email_primary', value: np?.email_primary },
+    { key: 'email_2',       value: np?.['Email 2'] || np?.Email2 },
+  ].filter(e => e.value);
+
+  // Hide the whole section if there's nothing to show.
+  if (phones.length === 0 && emails.length === 0) return null;
 
   const toggle = async (next) => {
     if (savingKey) return;
@@ -154,54 +162,100 @@ function PhoneSlotsSection({ leadId, np, initialSlot, onChanged }) {
       await api.put('/lead_state', { lead_id: leadId, known_phone_slot: newSlot });
       onChanged?.();
     } catch (err) {
-      setSlot(previous);  // rollback on failure
+      setSlot(previous);
       setError(extractApiError(err, 'Failed to update verified phone'));
     } finally {
       setSavingKey(null);
     }
   };
 
-  return (
-    <CollapsibleSection title="Phone numbers" defaultOpen>
-      {error && (
-        <div className="bg-red-50 border border-red-100 text-red-700 rounded-lg p-2 text-xs mb-2">{error}</div>
+  // Shared row renderer — `verifyable=true` shows the verify toggle on
+  // hover; emails pass false (no verification UI for them).
+  const Row = ({ idx, label, valueText, verifyable, verified, onToggleVerify, saving }) => (
+    <div className="flex items-center gap-2 px-1.5 py-0.5 rounded text-xs whitespace-nowrap hover:bg-gray-50">
+      <span className="w-3 text-[10px] text-gray-400 font-medium shrink-0">{idx}</span>
+      <span className="text-gray-700 truncate flex-1 min-w-0" title={valueText}>{valueText}</span>
+      {verifyable && (
+        verified ? (
+          <button
+            type="button"
+            onClick={onToggleVerify}
+            disabled={saving}
+            className="shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold hover:bg-emerald-200 disabled:opacity-50"
+            title="Verified — click to unmark"
+            aria-label="Unmark verified phone"
+          >
+            ✓
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onToggleVerify}
+            disabled={saving}
+            className="shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full border border-gray-300 text-gray-400 text-[10px] font-bold hover:border-emerald-500 hover:text-emerald-600 disabled:opacity-50"
+            title="Mark as the confirmed-reachable number"
+            aria-label="Mark phone as verified"
+          >
+            ○
+          </button>
+        )
       )}
-      <div className="space-y-1">
-        {SLOTS.map(({ key, label, value }) => {
-          const verified = slot === key;
-          return (
-            <div key={key} className="flex items-center justify-between gap-3 px-2 py-1.5 rounded-md hover:bg-gray-50">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold w-12 shrink-0">{label}</span>
-                <span className="text-sm text-gray-700 tabular-nums truncate">
-                  {value ? formatPhone(value) : <span className="text-gray-300">—</span>}
-                </span>
-              </div>
-              {value && (
-                <button
-                  type="button"
-                  onClick={() => toggle(key)}
-                  disabled={savingKey !== null}
-                  className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium transition disabled:opacity-50 ${
-                    verified
-                      ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                  title={verified ? 'Click to unmark — operator can re-verify another number' : 'Mark as the confirmed-reachable number for this lead'}
-                  aria-pressed={verified}
-                >
-                  {verified ? '✓ Verified' : 'Verify'}
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
+    </div>
+  );
+
+  return (
+    <CollapsibleSection title="Contacts" defaultOpen>
+      {error && (
+        <div className="bg-red-50 border border-red-100 text-red-700 rounded p-1.5 text-[11px] mb-1.5">{error}</div>
+      )}
+
+      {phones.length > 0 && (
+        <div className="mb-1.5">
+          <p className="text-[9px] uppercase tracking-wider text-gray-400 font-semibold px-1.5 mb-0.5">Phones</p>
+          {phones.map((p, i) => (
+            <Row
+              key={p.key}
+              idx={i + 1}
+              valueText={formatPhone(p.value)}
+              verifyable
+              verified={slot === p.key}
+              onToggleVerify={() => toggle(p.key)}
+              saving={savingKey !== null}
+            />
+          ))}
+        </div>
+      )}
+
+      {emails.length > 0 && (
+        <div>
+          <p className="text-[9px] uppercase tracking-wider text-gray-400 font-semibold px-1.5 mb-0.5">Emails</p>
+          {emails.map((e, i) => (
+            <Row
+              key={e.key}
+              idx={i + 1}
+              valueText={e.value}
+              verifyable={false}
+            />
+          ))}
+        </div>
+      )}
     </CollapsibleSection>
   );
 }
 
-function CrmStateSection({ leadId, initialState, autoTier, users, isAdmin, onChanged }) {
+function CrmStateSection({ leadId, initialState, importedMiles, autoTier, users, isAdmin, onChanged }) {
+  // Miles default: prefer the operator's saved override on lead_states;
+  // otherwise fall back to whatever came in from the CSV (mileage /
+  // LastReportedMiles) so the field isn't empty when the lead clearly
+  // had a mileage value. Strip commas so the input shows clean digits
+  // ready for editing. If both are missing, render an empty string.
+  const milesDefault = (() => {
+    if (initialState?.vehicle_odometer != null) return String(initialState.vehicle_odometer);
+    if (importedMiles == null || importedMiles === '') return '';
+    const cleaned = String(importedMiles).replace(/[,\s]/g, '');
+    return /^\d+$/.test(cleaned) ? cleaned : '';
+  })();
+
   const [state, setState] = useState({
     status:           initialState?.status   ?? DEFAULT_LEAD_STATE.status,
     priority:         initialState?.priority ?? DEFAULT_LEAD_STATE.priority,
@@ -213,7 +267,7 @@ function CrmStateSection({ leadId, initialState, autoTier, users, isAdmin, onCha
     // lead_states; the drawer's BoS section continues to show the BoS
     // copy separately so the two don't collide.
     vehicle_color:    initialState?.vehicle_color ?? '',
-    vehicle_odometer: initialState?.vehicle_odometer != null ? String(initialState.vehicle_odometer) : '',
+    vehicle_odometer: milesDefault,
     assigned_user_id: initialState?.assigned_user_id ?? null,
     // Manual tier override. '' = "auto" (use the computed tier). Any
     // LEAD_TIERS key pins the lead to that tier; once set it sticks
@@ -1581,17 +1635,21 @@ function LeadDetailInner({ leadId, onClose, onChanged, onOpenLead }) {
               <CrmStateSection
                 leadId={detail.id}
                 initialState={crmState}
+                importedMiles={
+                  detail.normalized_payload?.mileage
+                  ?? detail.normalized_payload?.LastReportedMiles
+                  ?? null
+                }
                 autoTier={computeLeadTier(detail.normalized_payload || {})}
                 users={users}
                 isAdmin={user?.role === 'admin'}
                 onChanged={handleChildChanged}
               />
 
-              {/* Verified phone slot — operator marks which of the 4
-                  phone columns is the confirmed-reachable number once
-                  they've actually got a person on the line. The leads
-                  list view then shows a green check next to it. */}
-              <PhoneSlotsSection
+              {/* Compact contacts panel — phones (with verified-slot
+                  toggle) + emails (display only). Empty slots are
+                  hidden so the section stays small. */}
+              <ContactSlotsSection
                 leadId={detail.id}
                 np={detail.normalized_payload || {}}
                 initialSlot={crmState.known_phone_slot}
