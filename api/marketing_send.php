@@ -19,6 +19,10 @@
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/pipeline.php';
+// dispatchOpenPhoneJob() lives in outbound_helpers — pulled in so mass
+// SMS campaigns hand off to OpenPhone the same way per-lead outreach
+// does (Phase-2 wiring; was stub-only before).
+require_once __DIR__ . '/outbound_helpers.php';
 initSession();
 
 $user = requireAuth();
@@ -47,9 +51,17 @@ if (!in_array($campaign['status'], ['draft','queued','partially_failed'], true))
 // function picks SendGrid if configured, else falls back to Gmail SMTP
 // (so a team with Gmail + no SendGrid still gets real sends).
 $provider = getEnvValue('MARKETING_EMAIL_PROVIDER', 'auto');
-if ($campaign['channel'] !== 'email') {
-    // SMS / WhatsApp still run as stub in Phase 1 (no OpenPhone here yet
-    // — outbound_helpers.php drives the per-lead OpenPhone path).
+if ($campaign['channel'] === 'sms') {
+    // Mass SMS now goes through OpenPhone when the API key + phone
+    // number ID are configured. If they're not set, the dispatcher
+    // returns 'openphone_not_configured' per recipient and the
+    // campaign records each as failed (operator sees the reason).
+    // resolveOutboundProvider() picks 'openphone' vs 'stub' based on
+    // the secrets in app_secrets / .env.
+    $provider = resolveOutboundProvider('sms');
+} elseif ($campaign['channel'] !== 'email') {
+    // WhatsApp + any future channels are still stubbed until we add
+    // a real dispatcher for them.
     $provider = 'stub';
 }
 
@@ -102,8 +114,25 @@ foreach ($pending as $r) {
             // sendEmailViaSendGrid() now auto-picks SendGrid vs Gmail SMTP
             // based on what's configured. Throws on no-provider-configured.
             $messageId = sendEmailViaSendGrid($r['resolved_to'], $subject, $body, $campaign['sender_identity'] ?? null);
+        } elseif ($provider === 'openphone' && $campaign['channel'] === 'sms') {
+            // Mass SMS via OpenPhone. dispatchOpenPhoneJob handles
+            // E.164 canonicalization + the /v1/messages POST. If the
+            // API rejects this number (invalid format, blocked, etc.)
+            // we throw so the recipient goes into the failed bucket
+            // with the actual API reason as fail_reason.
+            $opResult = dispatchOpenPhoneJob([
+                'kind'       => 'sms',
+                'to_address' => $r['resolved_to'],
+                'body'       => $body,
+            ]);
+            if (!empty($opResult['ok'])) {
+                $messageId = $opResult['message_id'] ?? null;
+            } else {
+                throw new RuntimeException($opResult['fail_reason'] ?? 'openphone_send_failed');
+            }
         } else {
             // Stub: synthesize an ID and pretend to have sent it.
+            // (WhatsApp + any unconfigured channel land here.)
             $messageId = 'stub-' . substr(bin2hex(random_bytes(8)), 0, 16);
         }
 
