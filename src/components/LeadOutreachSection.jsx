@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import api, { extractApiError } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { formatPhone } from '../lib/crm';
 
 // VinVault's shared callback number — same line that's printed on the
 // signed Bills of Sale + the auto-text in the outreach signoff. Living
@@ -231,9 +232,14 @@ function CallPanel({ leadId, phones, agentName, onLogged }) {
     <div className="space-y-3 pt-2">
       <div>
         <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">Number</label>
-        {phones.length > 1 ? (
+        {/* Dropdown lists every populated phone the lead has (up to 4)
+            so the operator can pick any of them — switched to always
+            showing the dropdown (even on 1 phone) for consistency. */}
+        {phones.length > 0 ? (
           <select value={to} onChange={(e) => setTo(e.target.value)} className={inputCls}>
-            {phones.map((p, i) => <option key={p} value={p}>Phone {i + 1} · {p}</option>)}
+            {phones.map((p, i) => (
+              <option key={p} value={p}>Phone {i + 1} · {formatPhone(p) || p}</option>
+            ))}
           </select>
         ) : (
           <input
