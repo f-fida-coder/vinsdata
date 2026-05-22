@@ -169,3 +169,37 @@ jobs:
           ssh -p "$PORT" -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
               "$USER@$HOST" \
               "echo 'Deployed files:' && ls -la '$DEPLOY_DIR' | head -30 && echo '---' && ls -la '$DEPLOY_DIR/assets' | head -20 && echo 'Uploads folder:' && ls -ld '$DEPLOY_DIR/api/uploads'"
+
+      - name: Smoke-test the live site
+        # Catch the bad-deploy class of outages (missing .env, broken
+        # config, PHP fatal on bootstrap). We hit three endpoints:
+        #   /            - SPA HTML; proves nginx + static serving
+        #   /api/auth    - POST without creds → must return 401 JSON
+        #                  (a 500 here means PHP cant boot — fail fast)
+        #   /api/leads   - GET without session → must return 401
+        # Anything 5xx fails the deploy job so a regression is loud,
+        # not silent. Give propagation/php-fpm reload 5s of grace first.
+        run: |
+          sleep 5
+          set -e
+          BASE="https://crm.vinvault.us"
+
+          html_code=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/")
+          echo "GET /                → $html_code"
+          [ "$html_code" = "200" ] || { echo "::error::SPA root returned $html_code"; exit 1; }
+
+          auth_code=$(curl -sS -o /tmp/auth.out -w '%{http_code}' \
+            -X POST "$BASE/api/auth" \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"smoketest@ci.local","password":"deliberately-wrong"}')
+          echo "POST /api/auth       → $auth_code  body: $(cat /tmp/auth.out | head -c 120)"
+          [ "$auth_code" = "401" ] || { echo "::error::/api/auth expected 401 (bad creds), got $auth_code"; exit 1; }
+
+          leads_code=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/leads")
+          echo "GET /api/leads       → $leads_code"
+          # 401 = unauth required (good). 5xx = PHP/SQL broken (bad).
+          case "$leads_code" in
+            401|403) echo "smoke OK" ;;
+            5*)      echo "::error::/api/leads returned $leads_code"; exit 1 ;;
+            *)       echo "::warning::/api/leads returned unexpected $leads_code"; exit 1 ;;
+          esac
