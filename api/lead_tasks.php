@@ -169,7 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                           ELSE NULL
                         END)                                                                  AS lead_verified_phone,
                        (SELECT ln.note FROM lead_notes ln
-                          WHERE ln.imported_lead_id = r.id AND ln.deleted_at IS NULL
+                          WHERE ln.imported_lead_id = r.id
                           ORDER BY ln.created_at DESC LIMIT 1)                                AS lead_last_note
                   FROM lead_tasks t
                   JOIN imported_leads_raw r  ON r.id = t.imported_lead_id
