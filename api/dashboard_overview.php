@@ -256,19 +256,41 @@ if (!empty($agentIds)) {
     }
 }
 
-$byAgent = array_map(function ($r) use ($tasksByAgent) {
+// Status changes per agent today — operator-requested "productivity"
+// signal. Counts every status_changed lead_activities row authored by
+// the agent since midnight (local server time = UTC on this box;
+// good enough for daily activity, no need for per-user timezone yet).
+$statusChangesByAgent = [];
+if (!empty($agentIds)) {
+    $placeholders = implode(',', array_fill(0, count($agentIds), '?'));
+    $stmt = $db->prepare(
+        "SELECT user_id, COUNT(*) AS changes_today
+           FROM lead_activities
+          WHERE activity_type = 'status_changed'
+            AND user_id IN ($placeholders)
+            AND created_at >= CURDATE()
+          GROUP BY user_id"
+    );
+    $stmt->execute($agentIds);
+    foreach ($stmt->fetchAll() as $r) {
+        $statusChangesByAgent[(int) $r['user_id']] = (int) $r['changes_today'];
+    }
+}
+
+$byAgent = array_map(function ($r) use ($tasksByAgent, $statusChangesByAgent) {
     $uid = (int) $r['user_id'];
     return [
-        'user_id'        => $uid,
-        'name'           => $r['name'],
-        'role'           => $r['role'],
-        'total_assigned' => (int) $r['total_assigned'],
-        'contacted'      => (int) $r['contacted'],
-        'interested'     => (int) $r['interested'],
-        'hot'            => (int) $r['hot'],
-        'closed'         => (int) $r['closed'],
-        'open_tasks'     => $tasksByAgent[$uid]['open']    ?? 0,
-        'overdue_tasks'  => $tasksByAgent[$uid]['overdue'] ?? 0,
+        'user_id'             => $uid,
+        'name'                => $r['name'],
+        'role'                => $r['role'],
+        'total_assigned'      => (int) $r['total_assigned'],
+        'contacted'           => (int) $r['contacted'],
+        'interested'          => (int) $r['interested'],
+        'hot'                 => (int) $r['hot'],
+        'closed'              => (int) $r['closed'],
+        'open_tasks'          => $tasksByAgent[$uid]['open']    ?? 0,
+        'overdue_tasks'       => $tasksByAgent[$uid]['overdue'] ?? 0,
+        'status_changes_today'=> $statusChangesByAgent[$uid]    ?? 0,
     ];
 }, $agentRows);
 

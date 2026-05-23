@@ -3,6 +3,7 @@ import api, { extractApiError } from '../api';
 import { useAuth } from '../context/AuthContext';
 import LeadDetailDrawer from '../components/LeadDetailDrawer';
 import { TASK_TYPES, TASK_TYPE_BY_KEY, relativeDue, isOverdue, isDueToday } from '../lib/tasks';
+import { formatPhone } from '../lib/crm';
 import { Icon, Avatar, Button } from '../components/ui';
 
 const QUEUES = [
@@ -92,17 +93,46 @@ function TaskRow({ task, onComplete, onOpenLead, currentUserId }) {
         <Icon name={typeIcon} size={13}/>
       </div>
 
+      {/* Task column: "<title> — <customer> · <verified phone>".
+          Falls back gracefully when the lead has no customer name or
+          no verified phone slot. Shows the task type label as a chip
+          and the last lead note underneath if there is one. */}
       <div className="tk-main">
         <div className="tk-title-row">
-          <span className="tk-title">{task.title}</span>
+          <span className="tk-title">
+            {task.title}
+            {task.lead?.customer_name && (
+              <span className="text-gray-400 font-normal"> — {task.lead.customer_name}</span>
+            )}
+            {task.lead?.verified_phone && (
+              <span className="text-emerald-700 font-medium"> · {formatPhone(task.lead.verified_phone) || task.lead.verified_phone}</span>
+            )}
+          </span>
           {typeMeta.label && <span className="tk-typebadge">{typeMeta.label}</span>}
         </div>
         {task.notes && <div className="tk-notes">{task.notes}</div>}
+        {task.lead?.last_note && (
+          <div className="tk-notes text-gray-500 italic" title={task.lead.last_note}>
+            Last note: {task.lead.last_note.length > 100
+              ? task.lead.last_note.slice(0, 100) + '…'
+              : task.lead.last_note}
+          </div>
+        )}
       </div>
 
+      {/* Lead column: "<year make model>" with the verified phone on
+          the second line. If no vehicle is parsed, falls back to the
+          file display name so the cell isn't empty. */}
       <div className="tk-lead">
-        <span className="tk-lead-name">{task.lead?.display_name || `Lead #${task.imported_lead_id}`}</span>
-        {task.lead?.phone && <span className="tk-lead-phone">{task.lead.phone}</span>}
+        <span className="tk-lead-name">
+          {task.lead?.vehicle || task.lead?.display_name || `Lead #${task.imported_lead_id}`}
+        </span>
+        {(task.lead?.verified_phone || task.lead?.phone) && (
+          <span className="tk-lead-phone">
+            {formatPhone(task.lead.verified_phone || task.lead.phone) || (task.lead.verified_phone || task.lead.phone)}
+            {task.lead.verified_phone && <span className="text-emerald-600 ml-1">✓</span>}
+          </span>
+        )}
       </div>
 
       <div className="tk-due">
@@ -357,6 +387,12 @@ function NewTaskModal({ users, currentUserId, onClose, onCreated }) {
 
   const save = async () => {
     if (!picked || title.trim() === '') return;
+    if (!dueAt) {
+      // Front-end guard matches backend `missing_due_at` so the operator
+      // gets feedback without round-trip.
+      setError('Pick a due date for this task.');
+      return;
+    }
     setSaving(true); setError('');
     try {
       const payload = {
@@ -364,8 +400,8 @@ function NewTaskModal({ users, currentUserId, onClose, onCreated }) {
         title:            title.trim(),
         task_type:        type,
         assigned_user_id: assignee === '' ? null : Number(assignee),
+        due_at:           dueAt,
       };
-      if (dueAt) payload.due_at = dueAt;
       if (notes.trim()) payload.notes = notes.trim();
       await api.post('/lead_tasks', payload);
       onCreated?.();
@@ -464,9 +500,10 @@ function NewTaskModal({ users, currentUserId, onClose, onCreated }) {
                   </select>
                 </div>
                 <div>
-                  <label className={labelCls}>Due</label>
+                  <label className={labelCls}>Due <span className="text-red-500 normal-case tracking-normal">*</span></label>
                   <input
                     type="datetime-local"
+                    required
                     value={dueAt}
                     onChange={(e) => setDueAt(e.target.value)}
                     className={inputCls}
@@ -515,8 +552,9 @@ function NewTaskModal({ users, currentUserId, onClose, onCreated }) {
                 <button
                   type="button"
                   onClick={save}
-                  disabled={saving || title.trim() === ''}
+                  disabled={saving || title.trim() === '' || !dueAt}
                   className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md disabled:opacity-40"
+                  title={!dueAt ? 'Pick a due date first' : ''}
                 >
                   {saving ? 'Creating…' : 'Create task'}
                 </button>

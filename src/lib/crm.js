@@ -21,6 +21,7 @@ export const LEAD_STATUSES = [
   { key: 'contacted',       label: 'Contacted',       bg: 'bg-sky-50',     text: 'text-sky-700',     dot: 'bg-sky-500' },
   { key: 'callback',        label: 'Callback',        bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500' },
   { key: 'interested',      label: 'Interested',      bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+  { key: 'value_gap',       label: 'Value Gap',       bg: 'bg-orange-50',  text: 'text-orange-700',  dot: 'bg-orange-500' },
   { key: 'not_interested',  label: 'Not interested',  bg: 'bg-gray-100',   text: 'text-gray-700',    dot: 'bg-gray-500' },
   { key: 'wrong_number',    label: 'Wrong number',    bg: 'bg-rose-50',    text: 'text-rose-700',    dot: 'bg-rose-400' },
   { key: 'no_answer',       label: 'No answer',       bg: 'bg-slate-50',   text: 'text-slate-700',   dot: 'bg-slate-400' },

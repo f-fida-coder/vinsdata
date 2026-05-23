@@ -418,6 +418,7 @@ function AgentsPanel({ rows, isAdmin }) {
               <tr>
                 <th>Agent</th>
                 <th style={{ textAlign: 'right' }}>Leads</th>
+                <th style={{ textAlign: 'right' }} title="Status changes the agent made today (since midnight UTC)">Today</th>
                 <th style={{ textAlign: 'right' }}>Contacted</th>
                 <th style={{ textAlign: 'right' }}>Hot</th>
                 <th style={{ textAlign: 'right' }}>Closed</th>
@@ -435,6 +436,24 @@ function AgentsPanel({ rows, isAdmin }) {
                   </td>
                   <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
                     {r.total_assigned.toLocaleString()}
+                  </td>
+                  {/* Status changes the agent made today — quick "are
+                      they actually doing work today?" signal. Pill
+                      coloring rises with activity: gray (0) → blue
+                      (1-9) → green (10+). */}
+                  <td style={{ textAlign: 'right' }}>
+                    {r.status_changes_today > 0 ? (
+                      <span
+                        className="dash-pill"
+                        style={{
+                          background: r.status_changes_today >= 10 ? '#d1fae5' : '#dbeafe',
+                          color:      r.status_changes_today >= 10 ? '#047857' : '#1d4ed8',
+                        }}
+                        title={`${r.status_changes_today} status change${r.status_changes_today === 1 ? '' : 's'} today`}
+                      >
+                        {r.status_changes_today}
+                      </span>
+                    ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     {/* Click → leads filtered to this agent + status=contacted

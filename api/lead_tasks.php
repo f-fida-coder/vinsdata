@@ -13,6 +13,22 @@ $db   = getDBConnection();
  */
 function formatTask(array $r): array
 {
+    // Build a readable customer name from the parts the SQL returns
+    // (full_name preferred, else first + last). Falls back to the file
+    // display name so a row always renders something useful.
+    $customerName = null;
+    if (!empty($r['lead_full_name']))               $customerName = (string) $r['lead_full_name'];
+    elseif (!empty($r['lead_first_name']) || !empty($r['lead_last_name'])) {
+        $customerName = trim(($r['lead_first_name'] ?? '') . ' ' . ($r['lead_last_name'] ?? ''));
+    }
+
+    // Vehicle string: "1995 Mazda Miata" (only joins parts that exist).
+    $vehicle = trim(implode(' ', array_filter([
+        $r['lead_year']  ?? null,
+        $r['lead_make']  ?? null,
+        $r['lead_model'] ?? null,
+    ])));
+
     return [
         'id'                  => (int) $r['id'],
         'imported_lead_id'    => (int) $r['imported_lead_id'],
@@ -37,6 +53,10 @@ function formatTask(array $r): array
             'batch_name'       => $r['batch_name']   ?? null,
             'vin'              => $r['lead_vin']     ?? null,
             'phone'            => $r['lead_phone']   ?? null,
+            'verified_phone'   => $r['lead_verified_phone']  ?? null,
+            'customer_name'    => $customerName,
+            'vehicle'          => $vehicle !== '' ? $vehicle : null,
+            'last_note'        => $r['lead_last_note']       ?? null,
         ] : null,
     ];
 }
@@ -120,15 +140,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
         $whereSql = implode(' AND ', $where);
 
+        // Operator-requested task-row context:
+        //   - lead_full_name / first / last → customer name in the Task col
+        //   - lead_year / make / model      → "1995 Mazda Miata" in Lead col
+        //   - lead_verified_phone           → the slot the operator marked
+        //     verified (lead_states.known_phone_slot resolved to actual
+        //     number from the JSON payload). Falls back to lead_phone if
+        //     no slot is verified.
+        //   - lead_last_note                → most recent note text on the
+        //     lead so the row keeps the "last note" affordance the user
+        //     liked.
         $sql = "$baseSelect,
                        f.display_name AS lead_display_name,
                        b.batch_name,
                        JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.vin'))           AS lead_vin,
-                       JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.phone_primary')) AS lead_phone
+                       JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.phone_primary')) AS lead_phone,
+                       JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.full_name'))    AS lead_full_name,
+                       JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.first_name'))   AS lead_first_name,
+                       JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.last_name'))    AS lead_last_name,
+                       JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.year'))         AS lead_year,
+                       JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.make'))         AS lead_make,
+                       JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.model'))        AS lead_model,
+                       (CASE ls.known_phone_slot
+                          WHEN 'phone_primary'   THEN JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.phone_primary'))
+                          WHEN 'phone_secondary' THEN JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.phone_secondary'))
+                          WHEN 'phone_3'         THEN JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.\"Phone Number 3\"'))
+                          WHEN 'phone_4'         THEN JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.\"Phone Number 4\"'))
+                          ELSE NULL
+                        END)                                                                  AS lead_verified_phone,
+                       (SELECT ln.note FROM lead_notes ln
+                          WHERE ln.imported_lead_id = r.id AND ln.deleted_at IS NULL
+                          ORDER BY ln.created_at DESC LIMIT 1)                                AS lead_last_note
                   FROM lead_tasks t
                   JOIN imported_leads_raw r  ON r.id = t.imported_lead_id
                   JOIN lead_import_batches b ON b.id = r.batch_id
                   JOIN files f               ON f.id = b.file_id
+                  LEFT JOIN lead_states ls   ON ls.imported_lead_id = r.id
                   LEFT JOIN users au ON au.id = t.assigned_user_id
                   JOIN users cu      ON cu.id = t.created_by
                   LEFT JOIN users pu ON pu.id = t.completed_by
@@ -165,6 +212,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($title === '') pipelineFail(400, 'title is required', 'missing_fields');
     if (mb_strlen($title) > 255) pipelineFail(400, 'title too long', 'title_too_long');
     if ($notes !== null && mb_strlen($notes) > 5000) pipelineFail(400, 'notes too long', 'notes_too_long');
+    // due_at is now required — operator-requested change so every task has
+    // a deadline. Auto-created tasks (e.g. from label attach in
+    // /api/lead_labels) still bypass this endpoint and accept NULL there.
+    if ($dueAt === null) pipelineFail(400, 'A due date is required for new tasks', 'missing_due_at');
     assertTaskType($type);
     loadLeadOrFail($db, $leadId);
     assertCanMutateLead($db, $user, $leadId);

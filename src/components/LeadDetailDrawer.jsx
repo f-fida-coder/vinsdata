@@ -277,6 +277,11 @@ function CrmStateSection({ leadId, initialState, importedMiles, autoTier, users,
   const [baseline, setBaseline] = useState(state);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // When status flips to 'callback', the inline scheduler shows so the
+  // operator can immediately spawn a "Callback" task with the right
+  // due time. Saved alongside the state change.
+  const [callbackDueAt, setCallbackDueAt] = useState('');
+  const justSetCallback = state.status === 'callback' && baseline.status !== 'callback';
 
   const dirty = useMemo(() => (
     state.status !== baseline.status
@@ -324,6 +329,26 @@ function CrmStateSection({ leadId, initialState, importedMiles, autoTier, users,
         payload.tier_override = state.tier_override === '' ? null : state.tier_override;
       }
       await api.put('/lead_state', payload);
+      // If the operator just flipped this lead to 'callback' AND
+      // picked a date/time in the inline scheduler, create the
+      // matching Callback task on the same lead so the follow-up is
+      // already on someone's queue. We assign to the lead's current
+      // agent if set, else to the actor who pushed the status change.
+      if (state.status === 'callback' && baseline.status !== 'callback' && callbackDueAt) {
+        try {
+          await api.post('/lead_tasks', {
+            lead_id:          leadId,
+            title:            'Callback follow-up',
+            task_type:        'callback',
+            due_at:           callbackDueAt,
+            assigned_user_id: state.assigned_user_id ?? null,
+          });
+          setCallbackDueAt('');
+        } catch (e) {
+          // Don't blow up the state save — surface the task error inline.
+          setError(extractApiError(e, 'Status saved, but failed to create callback task'));
+        }
+      }
       setBaseline(state);
       onChanged?.();
     } catch (err) {
@@ -381,6 +406,21 @@ function CrmStateSection({ leadId, initialState, importedMiles, autoTier, users,
           >
             {LEAD_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
+          {/* Inline scheduler — appears the moment the operator flips
+              this lead to 'callback'. Picking a date here creates a
+              "Callback follow-up" task automatically when the section
+              saves. Leaving it blank just saves the status. */}
+          {justSetCallback && (
+            <div className="mt-1.5 rounded-md border border-amber-200 bg-amber-50/60 px-2 py-1.5">
+              <p className="text-[10px] text-amber-900 mb-1">Schedule the callback (creates a task):</p>
+              <input
+                type="datetime-local"
+                value={callbackDueAt}
+                onChange={(e) => setCallbackDueAt(e.target.value)}
+                className="w-full bg-white border border-amber-200 rounded-md px-2 py-1 text-xs focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none"
+              />
+            </div>
+          )}
         </label>
         <label className="block">
           <span className="block text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">Priority</span>
@@ -806,13 +846,17 @@ function TasksSection({ leadId, currentUser, users, onChanged, defaultOpen = tru
 
   const create = async () => {
     if (!draft.title.trim()) return;
+    if (!draft.due_at) {
+      setError('Pick a due date for this task.');
+      return;
+    }
     setSaving(true); setError('');
     try {
       await api.post('/lead_tasks', {
         lead_id:          leadId,
         title:            draft.title.trim(),
         task_type:        draft.task_type,
-        due_at:           draft.due_at || null,
+        due_at:           draft.due_at,
         assigned_user_id: draft.assigned_user_id,
         notes:            draft.notes || null,
       });
@@ -961,9 +1005,12 @@ function TasksSection({ leadId, currentUser, users, onChanged, defaultOpen = tru
                 </select>
                 <input
                   type="datetime-local"
+                  required
                   value={draft.due_at}
                   onChange={(e) => setDraft({ ...draft, due_at: e.target.value })}
+                  placeholder="Due date (required)"
                   className="w-full bg-white border border-gray-200 rounded-md px-2 py-1.5 text-xs"
+                  title="Due date is required"
                 />
                 <select
                   value={draft.assigned_user_id ?? ''}
@@ -984,7 +1031,12 @@ function TasksSection({ leadId, currentUser, users, onChanged, defaultOpen = tru
               </div>
               <div className="flex justify-end gap-2 mt-2">
                 <button onClick={() => setCreating(false)} className="text-xs text-gray-500 hover:text-gray-800 px-2 py-1">Cancel</button>
-                <button onClick={create} disabled={!draft.title.trim() || saving} className="px-3 py-1 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40">
+                <button
+                  onClick={create}
+                  disabled={!draft.title.trim() || !draft.due_at || saving}
+                  className="px-3 py-1 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40"
+                  title={!draft.due_at ? 'Pick a due date first' : ''}
+                >
                   {saving ? 'Creating…' : 'Create task'}
                 </button>
               </div>
