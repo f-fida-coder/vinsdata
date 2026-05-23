@@ -270,7 +270,7 @@ export default function VehiclesPage() {
             display: 'flex', flexDirection: 'column',
           }} onClick={(e) => e.stopPropagation()}>
             <div className="drawer-head">
-              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 400, letterSpacing: '-0.02em' }}>
+              <h3 style={{ fontFamily: 'var(--font-sans)', fontSize: 18, fontWeight: 700, letterSpacing: '-0.025em' }}>
                 {modal === 'add' ? 'Add Vehicle' : `Edit ${modal.name}`}
               </h3>
               <Button variant="ghost" size="sm" icon="x" onClick={close}/>

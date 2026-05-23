@@ -360,7 +360,7 @@ export function ShortcutsOverlay({ open, onClose }) {
     <div className="kbd-overlay" onClick={onClose}>
       <div className="kbd-modal" onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 400, letterSpacing: '-0.02em' }}>Keyboard shortcuts</h3>
+          <h3 style={{ fontFamily: 'var(--font-sans)', fontSize: 18, fontWeight: 700, letterSpacing: '-0.025em' }}>Keyboard shortcuts</h3>
           <Button variant="ghost" size="sm" icon="x" onClick={onClose}/>
         </div>
         <div className="kbd-grid">

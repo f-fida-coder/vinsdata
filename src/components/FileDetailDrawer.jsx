@@ -355,10 +355,10 @@ function FileDetailDrawerInner({ file, onClose, onReupload, onImport, onArtifact
           <div style={{ minWidth: 0, flex: 1 }}>
             <h3
               style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 22,
-                fontWeight: 400,
-                letterSpacing: '-0.02em',
+                fontFamily: 'var(--font-sans)',
+                fontSize: 18,
+                fontWeight: 700,
+                letterSpacing: '-0.025em',
                 color: 'var(--text-0)',
                 lineHeight: 1.15,
                 overflow: 'hidden',

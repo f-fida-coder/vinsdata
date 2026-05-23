@@ -192,8 +192,8 @@ body { font-family: var(--font-sans); }
   color: #0a0a0b;
   font-weight: 700;
   font-size: 14px;
-  font-family: var(--font-display);
-  letter-spacing: -0.02em;
+  font-family: var(--font-sans);
+  letter-spacing: -0.025em;
 }
 .sb-brand-text { display: flex; flex-direction: column; line-height: 1.15; }
 .sb-brand-name { color: #fff; font-weight: 600; font-size: 13px; letter-spacing: 0.02em; }
@@ -430,10 +430,10 @@ label.field-label {
 }
 .kpi-value-row { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; }
 .kpi-value {
-  font-family: var(--font-display);
+  font-family: var(--font-sans);
   font-size: 36px;
-  font-weight: 400;
-  letter-spacing: -0.02em;
+  font-weight: 700;
+  letter-spacing: -0.025em;
   line-height: 1;
   color: var(--text-0);
 }
@@ -664,7 +664,7 @@ label.field-label {
 .mkt-strip-title { font-size: 13px; font-weight: 600; }
 .mkt-strip-sub { font-size: 11px; color: var(--text-2); }
 .mkt-stat { text-align: center; }
-.mkt-stat-v { font-family: var(--font-display); font-size: 24px; font-weight: 400; line-height: 1; }
+.mkt-stat-v { font-family: var(--font-sans); font-size: 24px; font-weight: 700; line-height: 1; letter-spacing: -0.025em; }
 .mkt-stat-l { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-2); margin-top: 4px; }
 
 .filters-row {
@@ -1549,10 +1549,10 @@ label.field-label {
   font-weight: 600;
 }
 .us-tile-value {
-  font-family: var(--font-display);
+  font-family: var(--font-sans);
   font-size: 26px;
-  font-weight: 400;
-  letter-spacing: -0.02em;
+  font-weight: 700;
+  letter-spacing: -0.025em;
   line-height: 1;
   color: var(--text-0);
 }
@@ -1982,10 +1982,10 @@ label.field-label {
   font-weight: 600;
 }
 .tk-tile-value {
-  font-family: var(--font-display);
+  font-family: var(--font-sans);
   font-size: 28px;
-  font-weight: 400;
-  letter-spacing: -0.02em;
+  font-weight: 700;
+  letter-spacing: -0.025em;
   line-height: 1;
   color: var(--text-0);
 }
@@ -2283,10 +2283,10 @@ label.field-label {
   background: color-mix(in srgb, var(--success) 22%, var(--bg-2));
 }
 .tk-empty-title {
-  font-family: var(--font-display);
+  font-family: var(--font-sans);
   font-size: 22px;
-  font-weight: 400;
-  letter-spacing: -0.02em;
+  font-weight: 700;
+  letter-spacing: -0.025em;
   margin: 0;
   color: var(--text-0);
 }
@@ -2391,10 +2391,10 @@ label.field-label {
   font-weight: 600;
 }
 .rp-kpi-value {
-  font-family: var(--font-display);
+  font-family: var(--font-sans);
   font-size: 28px;
-  font-weight: 400;
-  letter-spacing: -0.02em;
+  font-weight: 700;
+  letter-spacing: -0.025em;
   color: var(--text-0);
   line-height: 1;
   margin-top: 4px;
@@ -2472,10 +2472,10 @@ label.field-label {
   padding-left: 12px;
 }
 .rp-headline-value {
-  font-family: var(--font-display);
+  font-family: var(--font-sans);
   font-size: 22px;
-  font-weight: 400;
-  letter-spacing: -0.02em;
+  font-weight: 700;
+  letter-spacing: -0.025em;
   line-height: 1;
   color: var(--headline-color);
 }
@@ -2591,10 +2591,10 @@ label.field-label {
   font-weight: 600;
 }
 .rp-stat-value {
-  font-family: var(--font-display);
+  font-family: var(--font-sans);
   font-size: 28px;
-  font-weight: 400;
-  letter-spacing: -0.02em;
+  font-weight: 700;
+  letter-spacing: -0.025em;
   line-height: 1;
   color: var(--stat-color);
   margin-top: 6px;

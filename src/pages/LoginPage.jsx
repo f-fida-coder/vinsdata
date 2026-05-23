@@ -39,13 +39,14 @@ export default function LoginPage() {
             display: 'grid', placeItems: 'center',
             color: '#0a0a0b',
             fontWeight: 700, fontSize: 24,
-            fontFamily: 'var(--font-display)',
+            fontFamily: 'var(--font-sans)',
+            letterSpacing: '-0.025em',
             margin: '0 auto 16px',
           }}>V</div>
           <h1 style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 32, fontWeight: 400,
-            letterSpacing: '-0.02em',
+            fontFamily: 'var(--font-sans)',
+            fontSize: 32, fontWeight: 700,
+            letterSpacing: '-0.025em',
             color: '#fff',
           }}>VINVAULT</h1>
           <p style={{ fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#7a7a7e', marginTop: 4 }}>

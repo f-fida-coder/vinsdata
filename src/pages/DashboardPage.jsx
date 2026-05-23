@@ -43,7 +43,7 @@ function VVModal({ open, onClose, title, width = 460, children }) {
         flexDirection: 'column',
       }} onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
-          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 400, letterSpacing: '-0.02em' }}>{title}</h3>
+          <h3 style={{ fontFamily: 'var(--font-sans)', fontSize: 18, fontWeight: 700, letterSpacing: '-0.025em' }}>{title}</h3>
           <Button variant="ghost" size="sm" icon="x" onClick={onClose}/>
         </div>
         <div style={{ padding: 20, overflowY: 'auto' }}>{children}</div>

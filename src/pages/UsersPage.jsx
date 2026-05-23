@@ -95,7 +95,7 @@ function UserDrawer({ open, mode, initial, onClose, onSubmit, onDelete, isSelf, 
         <div className="drawer-head">
           <div>
             <div className="drawer-section-label" style={{ marginBottom: 4 }}>{mode === 'create' ? 'New user' : 'Edit user'}</div>
-            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 400, letterSpacing: '-0.02em', margin: 0 }}>
+            <h2 style={{ fontFamily: 'var(--font-sans)', fontSize: 18, fontWeight: 700, letterSpacing: '-0.025em', margin: 0 }}>
               {mode === 'create' ? 'Add a team member' : (form.name || 'User')}
             </h2>
           </div>
