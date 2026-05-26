@@ -58,7 +58,18 @@ export default function FundingPage() {
   const [search, setSearch] = useState('');
   const [openLeadId, setOpenLeadId] = useState(null);
   const [fundModal, setFundModal] = useState(null); // row being marked funded
+  const [editRow, setEditRow]     = useState(null); // row being edited inline
+  const [users, setUsers]         = useState([]);
   const [addOpen, setAddOpen] = useState(false);
+
+  useEffect(() => {
+    // Loaded once for the assignee dropdown in the EditRowModal.
+    let cancelled = false;
+    api.get('/lead_filter_options')
+      .then((r) => { if (!cancelled) setUsers(Array.isArray(r.data?.users) ? r.data.users : []); })
+      .catch(() => { /* non-blocking */ });
+    return () => { cancelled = true; };
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -183,12 +194,21 @@ export default function FundingPage() {
                       {r.assigned_user_name || <span className="text-gray-400">Unassigned</span>}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => setOpenLeadId(r.lead_id)}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-100 rounded"
-                      >
-                        <Icon name="chevronRight" size={12} /> Open
-                      </button>
+                      <div className="inline-flex items-center gap-1">
+                        <button
+                          onClick={() => setEditRow(r)}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-blue-700 hover:bg-blue-50 rounded"
+                          title="Edit offer, funded amount, transporter, assignee"
+                        >
+                          <Icon name="pencil" size={12} /> Edit
+                        </button>
+                        <button
+                          onClick={() => setOpenLeadId(r.lead_id)}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-100 rounded"
+                        >
+                          <Icon name="chevronRight" size={12} /> Open
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -208,6 +228,15 @@ export default function FundingPage() {
         <MarkFundedModal row={fundModal} onClose={() => setFundModal(null)} onSaved={() => { setFundModal(null); load(); }} />
       )}
 
+      {editRow && (
+        <EditRowModal
+          row={editRow}
+          users={users}
+          onClose={() => setEditRow(null)}
+          onSaved={() => { setEditRow(null); load(); }}
+        />
+      )}
+
       {addOpen && (
         <AddToFundingModal
           onClose={() => setAddOpen(false)}
@@ -215,6 +244,153 @@ export default function FundingPage() {
           onOpenLead={(id) => { setAddOpen(false); setOpenLeadId(id); }}
         />
       )}
+    </div>
+  );
+}
+
+// ---- EditRowModal --------------------------------------------------------
+// Inline-edit panel for any funding row. Fields:
+//   - Offer            → /api/lead_state PUT { price_offered }
+//   - Funded amount    → /api/funding   PUT { funded_amount, funding_notes }
+//   - Funded notes
+//   - Transport date   → /api/lead_transport PUT { transport_date }
+//   - Assigned to      → /api/lead_state PUT { assigned_user_id } (admin only)
+//
+// Submits the changed fields in parallel; partial failures still apply
+// what they can and surface the first error. Operators can edit one
+// field or all of them in a single save.
+function EditRowModal({ row, users, onClose, onSaved }) {
+  const [offer, setOffer]               = useState(row.price_offered != null ? String(row.price_offered) : '');
+  const [fundedAmount, setFundedAmount] = useState(row.funded_amount != null ? String(row.funded_amount) : '');
+  const [fundingNotes, setFundingNotes] = useState(row.funding_notes || '');
+  const [transportDate, setTransportDate] = useState(row.transport_date || '');
+  const [assignee, setAssignee]         = useState(row.assigned_user_id ?? '');
+  const [saving, setSaving]             = useState(false);
+  const [error, setError]               = useState('');
+
+  const inputCls = 'w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-2 text-[13px] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none';
+  const labelCls = 'block text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1';
+
+  // Track baseline so we only send the diffs (cheaper + clearer audit trail).
+  const baseline = {
+    offer:           row.price_offered != null ? String(row.price_offered) : '',
+    fundedAmount:    row.funded_amount != null ? String(row.funded_amount) : '',
+    fundingNotes:    row.funding_notes || '',
+    transportDate:   row.transport_date || '',
+    assignee:        row.assigned_user_id ?? '',
+  };
+  const dirty = (
+    offer !== baseline.offer
+    || fundedAmount !== baseline.fundedAmount
+    || fundingNotes !== baseline.fundingNotes
+    || transportDate !== baseline.transportDate
+    || String(assignee ?? '') !== String(baseline.assignee ?? '')
+  );
+
+  const save = async () => {
+    if (!dirty) { onClose(); return; }
+    setSaving(true); setError('');
+    try {
+      const calls = [];
+      // lead_state covers offer + assignee
+      const stateBody = { lead_id: row.lead_id };
+      if (offer !== baseline.offer) {
+        stateBody.price_offered = offer === '' ? null : Number(offer);
+      }
+      if (String(assignee ?? '') !== String(baseline.assignee ?? '')) {
+        stateBody.assigned_user_id = assignee === '' || assignee === null ? null : Number(assignee);
+      }
+      if (Object.keys(stateBody).length > 1) {
+        calls.push(api.put('/lead_state', stateBody));
+      }
+      // funding covers funded amount + notes
+      if (fundedAmount !== baseline.fundedAmount || fundingNotes !== baseline.fundingNotes) {
+        calls.push(api.put('/funding', {
+          lead_id:        row.lead_id,
+          funded_amount:  fundedAmount === '' ? null : Number(fundedAmount),
+          funding_notes:  fundingNotes,
+        }));
+      }
+      // transport date — only sent if changed; PUT /lead_transport upserts.
+      if (transportDate !== baseline.transportDate) {
+        calls.push(api.put('/lead_transport', {
+          lead_id:        row.lead_id,
+          transport_date: transportDate || null,
+        }));
+      }
+      const results = await Promise.allSettled(calls);
+      const firstReject = results.find((r) => r.status === 'rejected');
+      if (firstReject) {
+        setError(extractApiError(firstReject.reason, 'Some edits failed; others saved.'));
+        return;
+      }
+      onSaved?.();
+    } catch (err) {
+      setError(extractApiError(err, 'Failed to save'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-gray-900/50" />
+      <div className="relative bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold text-gray-900 truncate">Edit funding — {row.lead_name || `Lead #${row.lead_id}`}</h3>
+            <p className="text-[11px] text-gray-500 mt-0.5 truncate">{row.vehicle || ''}{row.vin ? ` · VIN ${row.vin}` : ''}</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100">&times;</button>
+        </div>
+
+        <div className="px-5 py-4 overflow-y-auto space-y-3">
+          {error && (
+            <div className="bg-red-50 border border-red-100 text-red-700 rounded-lg p-2 text-xs">{error}</div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className={labelCls}>Offer ($)</label>
+              <input type="number" min="0" step="100" value={offer} onChange={(e) => setOffer(e.target.value)} className={inputCls} placeholder="e.g. 85000" />
+            </div>
+            <div>
+              <label className={labelCls}>Funded amount ($)</label>
+              <input type="number" min="0" step="100" value={fundedAmount} onChange={(e) => setFundedAmount(e.target.value)} className={inputCls} placeholder="Once funded" />
+            </div>
+          </div>
+
+          <div>
+            <label className={labelCls}>Funding notes</label>
+            <textarea rows={2} value={fundingNotes} onChange={(e) => setFundingNotes(e.target.value)} className={inputCls} placeholder="Wire reference, account note, etc." />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className={labelCls}>Transport date</label>
+              <input type="date" value={transportDate || ''} onChange={(e) => setTransportDate(e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Assigned to</label>
+              <select value={assignee ?? ''} onChange={(e) => setAssignee(e.target.value === '' ? '' : Number(e.target.value))} className={inputCls}>
+                <option value="">Unassigned</option>
+                {users.map((u) => <option key={u.id} value={u.id}>{u.name}{u.role ? ` · ${u.role}` : ''}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-900 rounded">Cancel</button>
+          <button
+            onClick={save}
+            disabled={saving || !dirty}
+            className="px-4 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40"
+          >
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

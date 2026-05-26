@@ -19,6 +19,21 @@ function NotifyModal({ transportId, transporters, onClose, onSent }) {
   const [sending, setSending]   = useState(false);
   const [error, setError]       = useState('');
   const [result, setResult]     = useState(null);
+  // Past sends so operators can see what's already been delivered +
+  // resend any row with a single click. Loaded once on mount; refreshes
+  // after each new send so the row appears immediately.
+  const [history, setHistory]   = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await api.get('/transport_notify', { params: { transport_id: transportId } });
+      setHistory(Array.isArray(res.data) ? res.data : []);
+    } catch { /* silent — history is nice-to-have, not blocking */ }
+    finally { setHistoryLoading(false); }
+  }, [transportId]);
+  useEffect(() => { loadHistory(); }, [loadHistory]);
 
   const toggle = (id) => {
     setSelected((prev) => {
@@ -40,12 +55,43 @@ function NotifyModal({ transportId, transporters, onClose, onSent }) {
         body:    body    || undefined,
       });
       setResult(res.data);
+      loadHistory();
       onSent?.(res.data);
     } catch (err) {
       setError(extractApiError(err, 'Failed to send notifications'));
     } finally {
       setSending(false);
     }
+  };
+
+  // Re-fire a past notification with the exact same channel + subject + body
+  // to the same transporter. Useful when the first send failed, or when the
+  // operator wants to nudge the same transporter again.
+  const resend = async (h) => {
+    if (!h.transporter_id) return;
+    setSending(true); setError('');
+    try {
+      const res = await api.post('/transport_notify', {
+        transport_id:    transportId,
+        transporter_ids: [h.transporter_id],
+        channel:         h.channel,
+        subject:         h.subject || undefined,
+        body:            h.body    || undefined,
+      });
+      setResult(res.data);
+      loadHistory();
+      onSent?.(res.data);
+    } catch (err) {
+      setError(extractApiError(err, 'Failed to resend'));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const fmtSentAt = (s) => {
+    if (!s) return '';
+    const d = new Date(String(s).replace(' ', 'T'));
+    return Number.isNaN(d.getTime()) ? s : d.toLocaleString();
   };
 
   return (
@@ -126,6 +172,63 @@ function NotifyModal({ transportId, transporters, onClose, onSent }) {
               Sent: {result.sent} / {result.attempted}. Lead transport marked as <b>notified</b>.
             </div>
           )}
+
+          {/* Notification history — every past send (success or failed)
+              with a per-row Resend button. Lets the operator see what
+              went out, who got it, and re-fire a specific send (same
+              transporter, channel, subject, body) if needed. */}
+          <div className="pt-2">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">History</p>
+              {historyLoading && <span className="text-[10px] text-gray-400">loading…</span>}
+            </div>
+            {!historyLoading && history.length === 0 && (
+              <p className="text-[11px] text-gray-400 italic">No notifications sent yet.</p>
+            )}
+            {history.length > 0 && (
+              <ul className="rounded-lg border border-gray-100 divide-y divide-gray-100 bg-white max-h-48 overflow-y-auto">
+                {history.map((h) => (
+                  <li key={h.id} className="flex items-center justify-between gap-2 px-2.5 py-1.5">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 text-[11px]">
+                        <span
+                          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                            h.status === 'sent'   ? 'bg-emerald-50 text-emerald-700'
+                            : h.status === 'failed' ? 'bg-red-50 text-red-700'
+                            : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {h.status}
+                        </span>
+                        <span className="text-gray-700 truncate font-medium">{h.transporter_name || 'Unknown'}</span>
+                        <span className="text-gray-400">·</span>
+                        <span className="text-gray-500 uppercase">{h.channel}</span>
+                        <span className="text-gray-300 ml-auto">{fmtSentAt(h.sent_at)}</span>
+                      </div>
+                      {h.recipient && (
+                        <div className="text-[10px] text-gray-500 truncate mt-0.5">→ {h.recipient}</div>
+                      )}
+                      {h.error_message && (
+                        <div className="text-[10px] text-red-600 truncate mt-0.5" title={h.error_message}>
+                          {h.error_message}
+                        </div>
+                      )}
+                    </div>
+                    {h.transporter_id && (
+                      <button
+                        onClick={() => resend(h)}
+                        disabled={sending}
+                        className="shrink-0 px-2 py-0.5 text-[11px] font-medium text-blue-700 hover:bg-blue-50 rounded border border-blue-200 disabled:opacity-40"
+                        title="Resend the same message to this transporter"
+                      >
+                        Resend
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
 
         <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
@@ -230,6 +333,24 @@ export default function LeadTransportSection({ leadId, normalizedPayload, onChan
     }
   };
 
+  // One-click status change — matches the DispatchPage detail panel
+  // affordance so operators don't need to enter Edit mode just to
+  // flip status. PUTs the same /lead_transport endpoint the editor
+  // does, but with only the status field.
+  const setStatusQuick = async (nextStatus) => {
+    if (!transport || transport.status === nextStatus) return;
+    setSaving(true); setError('');
+    try {
+      const res = await api.put('/lead_transport', { lead_id: leadId, status: nextStatus });
+      setTransport(res.data?.transport || { ...transport, status: nextStatus });
+      onChanged?.();
+    } catch (err) {
+      setError(extractApiError(err, 'Failed to update status'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) return <p className="text-xs text-gray-400">Loading transport…</p>;
 
   if (!transport && !editing) {
@@ -327,10 +448,33 @@ export default function LeadTransportSection({ leadId, normalizedPayload, onChan
     <>
       <div className="rounded-xl border border-gray-100 bg-white">
         <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
-          <TransportStatusPill statusKey={t.status} />
-          <div className="flex items-center gap-1">
+          {/* Clickable status pills — operator can flip status in one
+              click without entering Edit mode. Current status is the
+              filled pill. Same UX as the DispatchPage detail panel. */}
+          <div className="flex items-center gap-1 flex-wrap">
+            {TRANSPORT_STATUSES.map((s) => {
+              const active = t.status === s.key;
+              return (
+                <button
+                  key={s.key}
+                  onClick={() => setStatusQuick(s.key)}
+                  disabled={saving || active}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border transition ${
+                    active
+                      ? `${s.bg} ${s.text} border-transparent`
+                      : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-800'
+                  }`}
+                  title={active ? `Currently ${s.label}` : `Change to ${s.label}`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${active ? s.dot : 'bg-gray-300'}`} />
+                  {s.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
             <button onClick={startEdit} className="text-[11px] text-blue-600 hover:text-blue-800 px-2 py-1">Edit</button>
-            <button onClick={() => setNotifyOpen(true)} className="text-[11px] text-emerald-700 hover:text-emerald-900 px-2 py-1 font-medium">Notify transporters →</button>
+            <button onClick={() => setNotifyOpen(true)} className="text-[11px] text-emerald-700 hover:text-emerald-900 px-2 py-1 font-medium">Notify →</button>
             <button onClick={remove} className="text-[11px] text-red-600 hover:text-red-800 px-2 py-1">Remove</button>
           </div>
         </div>

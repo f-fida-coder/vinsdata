@@ -31,11 +31,15 @@ const GROUPINGS = {
   temperature: {
     label: 'Temperature',
     columns: [
-      { key: '__none', label: 'No answer', dot: 'var(--text-3)' },
-      { key: 'cold',   label: 'Cold',      dot: 'var(--cold)' },
-      { key: 'warm',   label: 'Warm',      dot: 'var(--warm)' },
-      { key: 'hot',    label: 'Hot',       dot: 'var(--hot)' },
-      { key: 'closed', label: 'Closed',    dot: 'var(--success)' },
+      // "Uncategorized" — not "No answer". Operators were confused by the
+      // old label since no_answer is also a real call-outcome STATUS;
+      // uncategorized here means "operator hasn't picked a temperature
+      // for this lead yet" and is unrelated to call outcomes.
+      { key: '__none', label: 'Uncategorized', dot: 'var(--text-3)' },
+      { key: 'cold',   label: 'Cold',          dot: 'var(--cold)' },
+      { key: 'warm',   label: 'Warm',          dot: 'var(--warm)' },
+      { key: 'hot',    label: 'Hot',           dot: 'var(--hot)' },
+      { key: 'closed', label: 'Closed',        dot: 'var(--success)' },
     ],
     pick: (l) => l.crm_state?.lead_temperature || l.lead_temperature || '__none',
   },
@@ -208,7 +212,11 @@ export default function PipelinePage() {
   // or a numeric user id (assigned_user_id = that user). Numeric ids
   // get coerced via Number(...) in the API-call branch below.
   const [scope, setScope] = useState('all');
-  const [grouping, setGrouping] = useState('temperature');
+  // Default grouping is Status (not Temperature) so newly imported
+  // leads land in "New" — operators were seeing every fresh upload
+  // collapse into the temperature "Uncategorized" column. Status is
+  // also the most-used dimension for day-to-day pipeline work.
+  const [grouping, setGrouping] = useState('status');
   const [drawerId, setDrawerId] = useState(null);
   const [users, setUsers] = useState([]);
   const isAdmin = user?.role === 'admin' || user?.role === 'marketer';
