@@ -15,8 +15,10 @@ import LeadDetailDrawer from '../components/LeadDetailDrawer';
  *       - "Apply to car" picks a lead + sets terms
  *       - Per-linkage row shows JV status + Send JV button
  *
- * The JV send flow is wired to /api/jv_agreement; PDF + OpenSign push
- * lands in the next iteration once the template is finalized.
+ * The JV send flow hits /api/jv_agreement which renders the PDF
+ * (pre-signed by Mitchell Briggs in DancingScript), uploads it to
+ * OpenSign, creates a signature placeholder for the investor, and
+ * emails the signing link via Gmail SMTP. Same plumbing as the BoS.
  */
 
 function formatMoney(n) {
@@ -345,9 +347,33 @@ function InvestorDrawer({ investorId, onClose, onChanged }) {
   };
 
   const sendJv = async (id) => {
-    if (!window.confirm('Send JV agreement for this car?\n\n(PDF generation + OpenSign push are wired in the next pass; this marks the linkage as "sent" so the workflow is visible.)')) return;
+    // Pre-flight: confirm we have an investor email on file before
+    // hitting the endpoint. The server falls back to investor.email
+    // when the body omits `to`, but surfacing this client-side is
+    // friendlier than the 400 response.
+    const target = (investor?.email || '').trim();
+    if (!target) {
+      setError('Add an email to this investor before sending the JV.');
+      return;
+    }
+    if (!window.confirm(
+      `Send JV agreement to ${target}?\n\n`
+      + 'A PDF will be generated, the Vin Vault side will be pre-signed by Mitchell Briggs, '
+      + 'and the investor will receive an OpenSign link to countersign.'
+    )) return;
     try {
-      await api.post('/jv_agreement', { investor_lead_id: id });
+      const res = await api.post('/jv_agreement', { investor_lead_id: id });
+      const { email_delivered, signing_url, reason } = res.data || {};
+      if (email_delivered === false && signing_url) {
+        // Email failed (or SMTP not configured) — surface the signing
+        // link so the operator can copy it manually instead of the row
+        // looking sent but the investor never hearing about it.
+        window.prompt(
+          `JV created but email did not send (${reason || 'unknown'}).\n`
+          + 'Copy this signing link and send it to the investor manually:',
+          signing_url
+        );
+      }
       load();
       onChanged?.();
     } catch (err) {
@@ -428,7 +454,27 @@ function InvestorDrawer({ investorId, onClose, onChanged }) {
                         </button>
                       )}
                       {r.jv_status === 'sent' && (
-                        <span className="px-2 py-1 text-[11px] text-emerald-700">Awaiting signature</span>
+                        <>
+                          <span className="px-2 py-1 text-[11px] text-emerald-700">Awaiting signature</span>
+                          <button
+                            onClick={() => sendJv(r.id)}
+                            className="px-2 py-1 text-[11px] font-medium text-blue-700 hover:bg-blue-50 rounded"
+                            title="Re-generate the PDF and re-send the signing link"
+                          >
+                            Resend
+                          </button>
+                        </>
+                      )}
+                      {r.jv_pdf_path && (
+                        <a
+                          href={`/${r.jv_pdf_path}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-100 rounded"
+                          title="Open the generated JV PDF in a new tab"
+                        >
+                          View PDF
+                        </a>
                       )}
                       <button
                         onClick={() => unlink(r.id)}
