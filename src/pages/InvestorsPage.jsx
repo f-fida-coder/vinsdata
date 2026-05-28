@@ -511,6 +511,12 @@ function InvestorDrawer({ investorId, onClose, onChanged }) {
 
 // ---- Apply-to-car modal (lead picker + terms) -----------------------------
 function ApplyToCarModal({ investorId, onClose, onApplied }) {
+  // 'search' = pick from the leads list. 'manual' = the operator is
+  // entering a car that never went through the upload pipeline (private
+  // acquisition, auction buy, etc.). After a manual save we drop the
+  // operator straight into the terms view with the freshly-created
+  // lead pre-picked so they don't have to re-find it.
+  const [mode, setMode]       = useState('search');
   const [q, setQ]             = useState('');
   const [results, setResults] = useState([]);
   const [picked, setPicked]   = useState(null);
@@ -521,9 +527,18 @@ function ApplyToCarModal({ investorId, onClose, onApplied }) {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
 
-  // Debounced lead search.
+  // Manual-car form state. Kept separate so toggling back to search
+  // doesn't wipe what the operator typed.
+  const [manual, setManual] = useState({
+    year: '', make: '', model: '', vin: '',
+    owner_name: '', owner_phone: '', owner_email: '',
+    target_purchase_price: '',
+  });
+
+  // Debounced lead search. Skips when the operator is on the manual
+  // form (no point hammering /leads while they're typing a VIN).
   useEffect(() => {
-    if (picked) return;
+    if (picked || mode === 'manual') return;
     let cancelled = false;
     const handle = setTimeout(() => {
       setLoading(true); setError('');
@@ -535,7 +550,55 @@ function ApplyToCarModal({ investorId, onClose, onApplied }) {
         .finally(() => { if (!cancelled) setLoading(false); });
     }, 200);
     return () => { cancelled = true; clearTimeout(handle); };
-  }, [q, picked]);
+  }, [q, picked, mode]);
+
+  // POST /api/investor_manual_car → creates the underlying lead row,
+  // then we slot the returned lead_id into `picked` as if the search
+  // had surfaced it. Operator lands on the terms screen with the new
+  // car already selected.
+  const saveManual = async () => {
+    if (!manual.vin.trim())                                                  { setError('VIN is required'); return; }
+    if (!manual.year.trim() && !manual.make.trim() && !manual.model.trim())  { setError('Enter at least year, make, or model'); return; }
+    setSaving(true); setError('');
+    try {
+      const body = {
+        vin:                   manual.vin.trim(),
+        year:                  manual.year.trim()  || null,
+        make:                  manual.make.trim()  || null,
+        model:                 manual.model.trim() || null,
+        owner_name:            manual.owner_name.trim()  || null,
+        owner_phone:           manual.owner_phone.trim() || null,
+        owner_email:           manual.owner_email.trim() || null,
+        target_purchase_price: manual.target_purchase_price === '' ? null : Number(manual.target_purchase_price),
+      };
+      const res = await api.post('/investor_manual_car', body);
+      const newLeadId = res.data?.lead_id;
+      if (!newLeadId) throw new Error('Server did not return a lead id');
+      // Synthesize a lead row shaped like /api/leads results so fmtLead
+      // can render it without refetching.
+      setPicked({
+        id: newLeadId,
+        normalized_payload: {
+          vin:   body.vin,
+          year:  body.year,
+          make:  body.make,
+          model: body.model,
+          full_name: body.owner_name || '(Manual entry)',
+        },
+      });
+      // Carry target purchase price into the JV via lead_states (server
+      // already stamped price_offered). Pre-fill investment amount with
+      // the target so the operator doesn't retype it.
+      if (body.target_purchase_price !== null && amount === '') {
+        setAmount(String(body.target_purchase_price));
+      }
+      setMode('search'); // collapse manual form once picked
+    } catch (err) {
+      setError(extractApiError(err, 'Failed to add manual car'));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const fmtLead = (lead) => {
     const np = lead.normalized_payload || {};
@@ -583,7 +646,7 @@ function ApplyToCarModal({ investorId, onClose, onApplied }) {
         <div className="px-5 py-4 overflow-y-auto space-y-3">
           {error && <div className="bg-red-50 border border-red-100 text-red-700 rounded-lg p-2 text-xs">{error}</div>}
 
-          {!picked ? (
+          {!picked && mode === 'search' ? (
             <>
               <div>
                 <label className={labelCls}>Pick a car</label>
@@ -599,7 +662,15 @@ function ApplyToCarModal({ investorId, onClose, onApplied }) {
                 {loading ? (
                   <p className="text-xs text-gray-400 py-4 text-center">Searching…</p>
                 ) : results.length === 0 ? (
-                  <p className="text-xs text-gray-400 py-4 text-center">No leads match.</p>
+                  <div className="py-4 text-center space-y-2">
+                    <p className="text-xs text-gray-400">No leads match.</p>
+                    <button
+                      onClick={() => setMode('manual')}
+                      className="px-3 py-1.5 text-[11px] font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg"
+                    >
+                      + Add the car manually
+                    </button>
+                  </div>
                 ) : (
                   <ul className="space-y-1">
                     {results.map((lead) => {
@@ -621,6 +692,86 @@ function ApplyToCarModal({ investorId, onClose, onApplied }) {
                   </ul>
                 )}
               </div>
+              {/* Always-available escape hatch — even with hits, the
+                  operator may want a brand-new manual entry. */}
+              {results.length > 0 && (
+                <div className="pt-1 border-t border-gray-100">
+                  <button
+                    onClick={() => setMode('manual')}
+                    className="w-full px-3 py-1.5 text-[11px] font-medium text-blue-700 hover:bg-blue-50 rounded-lg"
+                  >
+                    Not in the list? Add the car manually
+                  </button>
+                </div>
+              )}
+            </>
+          ) : !picked && mode === 'manual' ? (
+            <>
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold">Add a car manually</p>
+                <button
+                  onClick={() => setMode('search')}
+                  className="text-[11px] text-gray-600 hover:text-gray-900 underline"
+                >
+                  Back to search
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className={labelCls}>Year</label>
+                  <input value={manual.year} onChange={(e) => setManual({ ...manual, year: e.target.value })} className={inputCls} placeholder="2008" />
+                </div>
+                <div className="col-span-2">
+                  <label className={labelCls}>Make</label>
+                  <input value={manual.make} onChange={(e) => setManual({ ...manual, make: e.target.value })} className={inputCls} placeholder="Dodge" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={labelCls}>Model</label>
+                  <input value={manual.model} onChange={(e) => setManual({ ...manual, model: e.target.value })} className={inputCls} placeholder="Viper" />
+                </div>
+                <div>
+                  <label className={labelCls}>VIN <span className="text-red-500">*</span></label>
+                  <input
+                    value={manual.vin}
+                    onChange={(e) => setManual({ ...manual, vin: e.target.value.toUpperCase() })}
+                    className={inputCls}
+                    placeholder="1B3JZ69Z78V200288"
+                    maxLength={17}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>Target purchase price ($)</label>
+                <input
+                  type="number" min="0" step="100"
+                  value={manual.target_purchase_price}
+                  onChange={(e) => setManual({ ...manual, target_purchase_price: e.target.value })}
+                  className={inputCls}
+                  placeholder="e.g. 82000"
+                />
+                <p className="text-[10px] text-gray-400 mt-0.5">Pre-fills the JV agreement&rsquo;s &ldquo;Target Purchase Price&rdquo; line.</p>
+              </div>
+              <details className="text-[11px]">
+                <summary className="cursor-pointer text-gray-600 hover:text-gray-900 py-1">Owner contact (optional)</summary>
+                <div className="space-y-2 mt-2">
+                  <div>
+                    <label className={labelCls}>Owner name</label>
+                    <input value={manual.owner_name} onChange={(e) => setManual({ ...manual, owner_name: e.target.value })} className={inputCls} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className={labelCls}>Phone</label>
+                      <input value={manual.owner_phone} onChange={(e) => setManual({ ...manual, owner_phone: e.target.value })} className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Email</label>
+                      <input value={manual.owner_email} onChange={(e) => setManual({ ...manual, owner_email: e.target.value })} className={inputCls} />
+                    </div>
+                  </div>
+                </div>
+              </details>
             </>
           ) : (
             <>
@@ -657,6 +808,15 @@ function ApplyToCarModal({ investorId, onClose, onApplied }) {
 
         <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
           <button onClick={onClose} className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-900 rounded">Cancel</button>
+          {!picked && mode === 'manual' && (
+            <button
+              onClick={saveManual}
+              disabled={saving}
+              className="px-4 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40"
+            >
+              {saving ? 'Saving…' : 'Save car & continue'}
+            </button>
+          )}
           {picked && (
             <button
               onClick={apply}
