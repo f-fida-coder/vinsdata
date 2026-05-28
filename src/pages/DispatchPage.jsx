@@ -175,6 +175,10 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState('');
   const [notifyOpen, setNotifyOpen] = useState(false);
+  // Banner shown for ~6s after the save endpoint reports auto-notifications
+  // (i.e. transporter was assigned for the first time). Tells the
+  // operator that SMS + email went out so they don't double-notify.
+  const [autoNotice, setAutoNotice] = useState(null);
   const [draft, setDraft]     = useState({
     transport_date:          event.transport_date,
     transport_time:          event.transport_time || '',
@@ -190,11 +194,13 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
   const save = async () => {
     setSaving(true); setError('');
     try {
-      await api.put('/lead_transport', {
+      const res = await api.put('/lead_transport', {
         lead_id: event.lead_id,
         ...draft,
         assigned_transporter_id: draft.assigned_transporter_id === '' ? null : Number(draft.assigned_transporter_id),
       });
+      const autos = res.data?.auto_notifications || [];
+      if (autos.length > 0) setAutoNotice(autos);
       setEditing(false);
       onChanged?.();
     } catch (err) {
@@ -216,6 +222,14 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
     }
   };
 
+  // Auto-clear the auto-notification banner after 8s so it doesn't
+  // hang around forever.
+  useEffect(() => {
+    if (!autoNotice) return undefined;
+    const t = setTimeout(() => setAutoNotice(null), 8000);
+    return () => clearTimeout(t);
+  }, [autoNotice]);
+
   const inputCls = 'w-full bg-white border border-gray-200 rounded-md px-2 py-1.5 text-xs';
 
   return (
@@ -234,6 +248,31 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {/* Auto-notification banner — shows up after the operator
+              assigns a transporter for the first time. Lists what
+              channels actually went out (and which failed) so they
+              don't double-fire from the manual Notify modal. */}
+          {autoNotice && autoNotice.length > 0 && (
+            <div
+              className={`text-[12px] rounded-lg px-3 py-2 border ${
+                autoNotice.every((n) => n.status === 'sent')
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : 'bg-amber-50 border-amber-200 text-amber-800'
+              }`}
+            >
+              <div className="font-semibold mb-1">Transporter auto-notified</div>
+              <ul className="space-y-0.5">
+                {autoNotice.map((n, i) => (
+                  <li key={i} className="flex items-center gap-2">
+                    <span className="uppercase text-[10px] font-bold tracking-wider w-10">{n.channel}</span>
+                    <span>{n.status === 'sent' ? '✓ delivered' : `✗ ${n.error || 'failed'}`}</span>
+                    {n.recipient && <span className="text-[10px] opacity-70">→ {n.recipient}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-1.5">
             {TRANSPORT_STATUSES.map((s) => (
               <button

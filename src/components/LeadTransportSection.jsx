@@ -22,6 +22,10 @@ export default function LeadTransportSection({ leadId, normalizedPayload, onChan
   const [transporters, setTransporters] = useState([]);
   const [editing, setEditing]           = useState(false);
   const [notifyOpen, setNotifyOpen]     = useState(false);
+  // Auto-send banner from the lead_transport PUT response — shows
+  // up after the operator assigns a transporter for the first time
+  // so they can see which channels actually fired.
+  const [autoNotice, setAutoNotice]     = useState(null);
   const [draft, setDraft]               = useState({
     transport_date: '', transport_time: '', time_window: '',
     pickup_location: '', delivery_location: '', vehicle_info: '',
@@ -78,6 +82,8 @@ export default function LeadTransportSection({ leadId, normalizedPayload, onChan
       if (payload.transport_time === '') delete payload.transport_time;
       const res = await api.put('/lead_transport', payload);
       setTransport(res.data.transport || null);
+      const autos = res.data?.auto_notifications || [];
+      if (autos.length > 0) setAutoNotice(autos);
       setEditing(false);
       onChanged?.();
     } catch (err) {
@@ -86,6 +92,13 @@ export default function LeadTransportSection({ leadId, normalizedPayload, onChan
       setSaving(false);
     }
   };
+
+  // Auto-dismiss the auto-notification banner after 8s.
+  useEffect(() => {
+    if (!autoNotice) return undefined;
+    const t = setTimeout(() => setAutoNotice(null), 8000);
+    return () => clearTimeout(t);
+  }, [autoNotice]);
 
   const remove = async () => {
     if (!window.confirm('Remove this transport assignment?')) return;
@@ -212,8 +225,30 @@ export default function LeadTransportSection({ leadId, normalizedPayload, onChan
   const t = transport;
   const when = t.transport_date + (t.transport_time ? ` at ${t.transport_time}` : '') + (t.time_window ? ` (${t.time_window})` : '');
 
+  const autoBanner = autoNotice && autoNotice.length > 0 && (
+    <div
+      className={`text-[12px] rounded-lg px-3 py-2 border mb-2 ${
+        autoNotice.every((n) => n.status === 'sent')
+          ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+          : 'bg-amber-50 border-amber-200 text-amber-800'
+      }`}
+    >
+      <div className="font-semibold mb-1">Transporter auto-notified</div>
+      <ul className="space-y-0.5">
+        {autoNotice.map((n, i) => (
+          <li key={i} className="flex items-center gap-2">
+            <span className="uppercase text-[10px] font-bold tracking-wider w-10">{n.channel}</span>
+            <span>{n.status === 'sent' ? '✓ delivered' : `✗ ${n.error || 'failed'}`}</span>
+            {n.recipient && <span className="text-[10px] opacity-70">→ {n.recipient}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+
   return (
     <>
+      {autoBanner}
       <div className="rounded-xl border border-gray-100 bg-white">
         <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
           {/* Clickable status pills — operator can flip status in one

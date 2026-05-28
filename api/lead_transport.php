@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/pipeline.php';
+require_once __DIR__ . '/transport_notify_helpers.php';
 initSession();
 
 $user = requireAuth();
@@ -115,7 +116,97 @@ if ($method === 'PUT') {
         pipelineFail(500, 'Transport save failed: ' . $e->getMessage(), 'db_error');
     }
 
-    echo json_encode(['success' => true, 'transport' => fetchTransport($db, $leadId)]);
+    // Auto-notify on FIRST assignment. Trigger: oldAssignee was null AND
+    // newAssignee is not null. We don't fire on transporter swaps (X→Y),
+    // unassign (X→null), or no-ops (X→X) — the user explicitly chose
+    // "first assignment only" so swaps stay manual via the Notify modal.
+    //
+    // Best-effort: failures are swallowed and surfaced in the response
+    // so the assignment save itself never breaks because OpenPhone /
+    // Gmail had a hiccup. The operator can re-fire from the manual
+    // notify modal which shares the same helper.
+    $autoNotifications = [];
+    if ($oldAssignee === null && $newAssignee !== null) {
+        try {
+            // Re-fetch transport + transporter + the lead's normalized
+            // payload so we can build a body identical to what the manual
+            // modal would send.
+            $tStmt = $db->prepare(
+                'SELECT lt.*, r.normalized_payload_json
+                   FROM lead_transport lt
+                   JOIN imported_leads_raw r ON r.id = lt.imported_lead_id
+                  WHERE lt.imported_lead_id = :lid'
+            );
+            $tStmt->execute([':lid' => $leadId]);
+            $transportRow = $tStmt->fetch();
+
+            $trStmt = $db->prepare('SELECT id, name, email, phone FROM transporters WHERE id = :id');
+            $trStmt->execute([':id' => $newAssignee]);
+            $transporter = $trStmt->fetch();
+
+            if ($transportRow && $transporter) {
+                // Fire both channels the transporter is reachable on.
+                // No email on file → skip email. No phone → skip SMS.
+                // (sendTransporterNotification logs a failed row with
+                // "Transporter has no email/phone" if we tried anyway —
+                // skipping here keeps the history clean.)
+                foreach (['email', 'sms'] as $ch) {
+                    $reachable = $ch === 'email' ? !empty($transporter['email']) : !empty($transporter['phone']);
+                    if (!$reachable) continue;
+                    $autoNotifications[] = sendTransporterNotification(
+                        $db,
+                        (int) $transportRow['id'],
+                        $transportRow,
+                        $transporter,
+                        $ch,
+                        (int) $user['id'],
+                        null, // default subject
+                        null, // default body
+                        'auto_first_assign'
+                    );
+                }
+
+                // Bump status to 'notified' if at least one channel
+                // succeeded and we're not already past it on the state
+                // machine. Mirrors what transport_notify.php does on
+                // manual sends.
+                $anySent = false;
+                foreach ($autoNotifications as $n) {
+                    if ($n['status'] === 'sent') { $anySent = true; break; }
+                }
+                if ($anySent) {
+                    $forwardStates = ['assigned','in_transit','delivered','cancelled'];
+                    if (!in_array($transportRow['status'], $forwardStates, true)) {
+                        $db->prepare('UPDATE lead_transport SET status = "notified" WHERE id = :id')
+                            ->execute([':id' => (int) $transportRow['id']]);
+                        logLeadActivity(
+                            $db, $leadId, (int) $user['id'],
+                            'transport_status_changed', $transportRow['status'], 'notified'
+                        );
+                    }
+                    logLeadActivity($db, $leadId, (int) $user['id'], 'transport_notified', null, [
+                        'channel'         => implode('+', array_unique(array_map(fn($n) => $n['channel'], $autoNotifications))),
+                        'transporter_ids' => [(int) $transporter['id']],
+                        'sent_count'      => count(array_filter($autoNotifications, fn($n) => $n['status'] === 'sent')),
+                        'auto'            => true,
+                    ]);
+                }
+            }
+        } catch (Throwable $e) {
+            // Don't fail the whole save — surface in error_log + response.
+            error_log('[lead_transport] auto-notify failed: ' . $e->getMessage());
+            $autoNotifications[] = [
+                'channel' => 'all', 'status' => 'failed',
+                'error'   => $e->getMessage(),
+            ];
+        }
+    }
+
+    echo json_encode([
+        'success'            => true,
+        'transport'          => fetchTransport($db, $leadId),
+        'auto_notifications' => $autoNotifications,
+    ]);
     exit();
 }
 
