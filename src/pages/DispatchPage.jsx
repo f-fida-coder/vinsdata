@@ -6,6 +6,7 @@ import interactionPlugin from '@fullcalendar/interaction';
 import api, { extractApiError } from '../api';
 import { SectionHeader, Button, Icon } from '../components/ui';
 import { TRANSPORT_STATUSES, TRANSPORT_STATUS_BY_KEY } from '../lib/crm';
+import TransportNotifyModal from '../components/TransportNotifyModal';
 import '../styles/bos-calendar.css';
 
 function StatusCards({ summary, activeStatus, onSelect }) {
@@ -173,6 +174,7 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState('');
+  const [notifyOpen, setNotifyOpen] = useState(false);
   const [draft, setDraft]     = useState({
     transport_date:          event.transport_date,
     transport_time:          event.transport_time || '',
@@ -285,7 +287,7 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
             <a href={`/api/bill_of_sale?lead_id=${event.lead_id}&format=pdf`} target="_blank" rel="noreferrer" className="text-emerald-700 hover:text-emerald-900 font-medium">Download Bill of Sale PDF</a>
           </div>
           {!editing ? (
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap justify-end">
               <button
                 onClick={async () => {
                   if (!window.confirm('Delete this dispatch event? The lead and BoS stay; only the transport entry is removed.')) return;
@@ -301,7 +303,21 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
               >
                 Delete
               </button>
-              <button onClick={() => setEditing(true)} className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-md hover:bg-gray-800">Edit</button>
+              <button onClick={() => setEditing(true)} className="px-3 py-1.5 text-xs font-medium bg-white border border-gray-200 text-gray-800 rounded-md hover:bg-gray-50">
+                Edit
+              </button>
+              {/* Primary CTA — the operator's main job on this panel is
+                  to confirm the dispatch to the transporter. Opening the
+                  notify modal pre-fills body with vehicle + pickup +
+                  delivery + time from this row server-side; the operator
+                  picks channel (SMS/email/manual) + recipients and sends. */}
+              <button
+                onClick={() => setNotifyOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-md hover:bg-emerald-700"
+                title="Send the transporter a text or email confirming the dispatch"
+              >
+                <Icon name="mail" size={12}/> Notify transporter
+              </button>
             </div>
           ) : (
             <div className="flex gap-2">
@@ -312,6 +328,15 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
             </div>
           )}
         </div>
+
+        {notifyOpen && (
+          <TransportNotifyModal
+            transportId={event.id}
+            transporters={transporters.filter((t) => t.is_active)}
+            onClose={() => setNotifyOpen(false)}
+            onSent={() => { setNotifyOpen(false); onChanged?.(); }}
+          />
+        )}
       </aside>
     </div>
   );
