@@ -108,6 +108,16 @@ foreach ($pending as $r) {
         if ($campaign['channel'] === 'email' && !str_contains($body, 'unsubscribe')) {
             $body .= "\n\n---\nIf you no longer wish to receive these emails, unsubscribe here: $unsubUrl";
         }
+        // TCPA-compliance footer for SMS. Required for marketing SMS in
+        // the US — recipients must have a clear way to opt out. We add
+        // it only if the operator's body doesn't already mention STOP,
+        // so a hand-written message with custom opt-out copy isn't
+        // duplicated. Inbound STOP/CANCEL/UNSUBSCRIBE/etc. is handled
+        // by openphone_webhook.php which writes a suppression and
+        // skips the recipient on all future campaigns.
+        if ($campaign['channel'] === 'sms' && stripos($body, 'STOP') === false) {
+            $body .= "\n\nReply STOP to opt out.";
+        }
 
         $messageId = null;
         if (($provider === 'sendgrid' || $provider === 'auto') && $campaign['channel'] === 'email') {
@@ -120,6 +130,16 @@ foreach ($pending as $r) {
             // API rejects this number (invalid format, blocked, etc.)
             // we throw so the recipient goes into the failed bucket
             // with the actual API reason as fail_reason.
+            //
+            // Throttle to ~6 messages/sec so we stay comfortably under
+            // OpenPhone's 10/sec rate limit. Each iteration of the send
+            // loop sleeps 150ms before the next OpenPhone call — for a
+            // 500-recipient cap that's an extra ~75s of clock time but
+            // avoids 429s mid-blast that would put recipients in the
+            // failed bucket through no fault of their own. The sleep
+            // happens only on the OpenPhone path so email sends stay
+            // fast.
+            usleep(150_000);
             $opResult = dispatchOpenPhoneJob([
                 'kind'       => 'sms',
                 'to_address' => $r['resolved_to'],

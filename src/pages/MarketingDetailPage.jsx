@@ -104,6 +104,33 @@ export default function MarketingDetailPage() {
     }
   };
 
+  // Resend the failed + bounced recipients only. Hits the campaigns
+  // PATCH with requeue_failed=true which flips those rows back to
+  // 'pending' and the campaign status to 'queued', then immediately
+  // fires /marketing_send so the operator doesn't have to chain two
+  // clicks. Opted-out + skipped rows are never touched server-side.
+  // (failed_count from the server already includes bounces — see
+  // marketing_campaigns.php loadCampaignCounts().)
+  const resendFailed = async () => {
+    if (!campaign) return;
+    const failedTotal = campaign.failed_count ?? 0;
+    if (failedTotal === 0) {
+      setError('No failed or bounced recipients to resend.');
+      return;
+    }
+    if (!window.confirm(`Resend ${failedTotal} failed recipient(s)? Opted-out leads will still be skipped.`)) return;
+    setSending(true); setError('');
+    try {
+      await api.patch('/marketing_campaigns', { id: Number(id), requeue_failed: true });
+      await api.post('/marketing_send', { campaign_id: Number(id) });
+      await Promise.all([fetchCampaign(), fetchRecipients()]);
+    } catch (err) {
+      setError(extractApiError(err, 'Resend failed'));
+    } finally {
+      setSending(false);
+    }
+  };
+
   const deleteCampaign = async () => {
     if (!window.confirm('Delete this campaign and its recipient list? This cannot be undone.')) return;
     try {
@@ -161,6 +188,15 @@ export default function MarketingDetailPage() {
           {isSendable && pendingCount > 0 && (
             <Button variant="primary" icon="play" onClick={sendNow} disabled={sending}>
               {sending ? 'Sending…' : `Send ${pendingCount} pending`}
+            </Button>
+          )}
+          {/* Resend failed/bounced — available once the campaign has
+              completed (sent or partially_failed) and at least one
+              recipient is in a retryable state. Backend re-queues the
+              row and the same Send-now path picks it up. */}
+          {['sent','partially_failed'].includes(campaign.status) && (campaign.failed_count ?? 0) > 0 && (
+            <Button variant="secondary" icon="refresh" onClick={resendFailed} disabled={sending}>
+              {sending ? 'Resending…' : `Resend ${campaign.failed_count} failed`}
             </Button>
           )}
           {['draft','queued'].includes(campaign.status) && (

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api, { extractApiError } from '../api';
 import {
-  MARKETING_CHANNELS,
+  MARKETING_CHANNELS, smsCounter,
   LEAD_STATUSES, LEAD_PRIORITIES, LEAD_TEMPERATURES, LEAD_TIERS,
 } from '../lib/crm';
 import { Button, Icon, SectionHeader } from '../components/ui';
@@ -234,9 +234,16 @@ export default function MarketingComposerPage() {
                   </button>
                 ))}
               </div>
-              {channel !== 'email' && (
+              {channel === 'sms' && (
+                <p className="tiny" style={{ color: 'var(--text-3)', marginTop: 8 }}>
+                  Routed through OpenPhone. A &ldquo;Reply STOP to opt out&rdquo; footer is appended
+                  automatically; recipients who reply STOP are added to the suppression list
+                  and skipped on every future campaign.
+                </p>
+              )}
+              {channel === 'whatsapp' && (
                 <p className="tiny" style={{ color: 'var(--warn)', marginTop: 8 }}>
-                  SMS and WhatsApp are simulated in Phase 1 — sends are logged but not actually delivered until a provider is configured.
+                  WhatsApp is not wired to a real provider yet — sends are logged but not delivered.
                 </p>
               )}
             </div>
@@ -282,6 +289,7 @@ export default function MarketingComposerPage() {
                 Available variables: <code style={{ fontFamily: 'var(--font-mono)' }}>{'{{first_name}} {{last_name}} {{full_name}} {{vehicle}} {{vin}} {{city}} {{state}}'}</code>.
                 An unsubscribe footer is added automatically.
               </p>
+              {channel === 'sms' && <SmsCounter body={body}/>}
             </div>
             <div>
               <label className="field-label">Sender identity (optional)</label>
@@ -487,6 +495,50 @@ function Row({ label, children }) {
     <div className="mc-row" style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 12, alignItems: 'start' }}>
       <div className="kv-key" style={{ paddingTop: 4 }}>{label}</div>
       <div>{children}</div>
+    </div>
+  );
+}
+
+// Live SMS character + segment indicator. The server appends a "Reply
+// STOP to opt out" footer (TCPA compliance) for marketing SMS — that
+// adds ~25 chars to whatever the operator types, so we factor it into
+// the count to give an accurate "billed" preview.
+const STOP_FOOTER_PREVIEW = '\n\nReply STOP to opt out.';
+function SmsCounter({ body }) {
+  const withFooter = body.includes('STOP') ? body : body + STOP_FOOTER_PREVIEW;
+  const { length, segments, perSegment, limit, encoding } = smsCounter(withFooter);
+  const usedInSegment = segments > 0 ? length - (segments - 1) * perSegment : 0;
+  const warn = segments > 3 || (length > limit && segments === 1);
+  return (
+    <div
+      className="row"
+      style={{
+        marginTop: 8,
+        padding: '6px 10px',
+        background: warn ? 'var(--warn-bg, #fef3c7)' : 'var(--bg-2)',
+        border: '1px solid var(--border-0)',
+        borderRadius: 'var(--radius-md)',
+        gap: 12,
+        flexWrap: 'wrap',
+        fontSize: 11,
+        color: warn ? 'var(--warn, #92400e)' : 'var(--text-2)',
+      }}
+    >
+      <span>
+        <strong>{length}</strong> chars · <strong>{segments || 1}</strong> segment{segments === 1 ? '' : 's'}
+        {segments > 0 && (
+          <> ({usedInSegment}/{perSegment} in current)</>
+        )}
+      </span>
+      <span style={{ opacity: 0.7 }}>{encoding}</span>
+      {segments > 1 && (
+        <span title="OpenPhone bills one message per segment per recipient">
+          ⓘ {segments}× billed per recipient
+        </span>
+      )}
+      <span style={{ opacity: 0.7, marginLeft: 'auto' }}>
+        Includes auto-appended &ldquo;Reply STOP to opt out.&rdquo;
+      </span>
     </div>
   );
 }

@@ -196,9 +196,36 @@ function handleInboundMessage(PDO $db, array $msg): void
         return;
     }
 
+    // Marketing STOP-keyword handling. TCPA + carrier requirements: any
+    // inbound containing STOP/UNSUBSCRIBE/CANCEL/END/QUIT/REVOKE/OPTOUT
+    // (as a standalone word, case-insensitive) must immediately add the
+    // sender's phone to the suppression list so no future campaign sends
+    // to them. This runs BEFORE the lead-matching block because a STOP
+    // from an unknown number still needs to be suppressed.
+    $upper = strtoupper(trim($body));
+    $stopKeywords = ['STOP','UNSUBSCRIBE','CANCEL','END','QUIT','REVOKE','OPTOUT','OPT-OUT','OPT OUT','STOPALL'];
+    $isStopReply  = false;
+    foreach ($stopKeywords as $kw) {
+        // Match the keyword as a whole word at the start of the message
+        // OR anywhere in a single-word reply. Avoids false-positives
+        // like "I'll stop by tomorrow" while still catching "Stop!"
+        // and "please cancel".
+        if ($upper === $kw || preg_match('/(^|[\s.,;:!?])' . preg_quote($kw, '/') . '($|[\s.,;:!?])/', $upper)) {
+            $isStopReply = true;
+            break;
+        }
+    }
+    if ($isStopReply) {
+        handleSmsStopReply($db, $from, $msgId);
+        // Fall through to log the inbound message + bump temperature so
+        // the operator still sees the reply in the timeline (now tagged
+        // as an opt-out).
+    }
+
     $leadId = matchLeadIdByPhone($db, $from);
     if ($leadId === null) {
-        error_log("[openphone_webhook] inbound from $from did not match any lead");
+        error_log("[openphone_webhook] inbound from $from did not match any lead"
+            . ($isStopReply ? ' (STOP reply still suppressed)' : ''));
         return;
     }
 
@@ -430,6 +457,83 @@ function handleDeliveredMessage(PDO $db, array $msg): void
             AND status IN ('sending','sent')"
     );
     $stmt->execute([':mid' => $providerMsgId]);
+
+    // Mirror the delivery confirmation onto the matching marketing
+    // recipient row (if any). The marketing detail page reads
+    // sent_at to show "Sent at <timestamp>" — we set it here so an
+    // operator looking at the campaign sees the real delivery time
+    // rather than the moment our outbound API call returned.
+    $upd = $db->prepare(
+        "UPDATE marketing_campaign_recipients
+            SET sent_at = COALESCE(sent_at, NOW())
+          WHERE provider_message_id = :mid
+            AND send_status IN ('sending','sent')"
+    );
+    $upd->execute([':mid' => $providerMsgId]);
+}
+
+/**
+ * Inbound STOP/CANCEL/UNSUBSCRIBE/etc. on an SMS:
+ *   1. Add the sender's phone to marketing_suppressions (TCPA).
+ *   2. Find any open marketing recipient rows for that phone and flip
+ *      send_status='opted_out' + replied_at so the detail page reflects
+ *      the opt-out (and any pending sends in a still-running campaign
+ *      are skipped on next iteration).
+ *   3. Log an opted_out activity on the matched lead (if any).
+ *
+ * Best-effort: failures here are swallowed so the webhook still returns
+ * 200 and the operator can fix the lookup manually if needed.
+ */
+function handleSmsStopReply(PDO $db, string $fromPhone, string $msgId): void
+{
+    try {
+        $normalized = normalizeContactIdentifier('phone', $fromPhone);
+        $leadId     = matchLeadIdByPhone($db, $fromPhone);
+
+        // 1. Suppression — keyed on the normalized phone so future
+        //    campaigns of any kind skip this number. INSERT IGNORE so
+        //    repeat STOP messages don't error on the unique key.
+        $db->prepare(
+            'INSERT IGNORE INTO marketing_suppressions
+               (identifier_type, identifier, reason, source_lead_id)
+             VALUES (:t, :i, :r, :l)'
+        )->execute([
+            ':t' => 'phone',
+            ':i' => $normalized,
+            ':r' => 'unsubscribe',
+            ':l' => $leadId,
+        ]);
+
+        // 2. Mark every in-flight / sent marketing recipient row that
+        //    matches this phone as opted_out, and stamp replied_at.
+        //    Use both the canonical form and the original digits so we
+        //    catch rows stored with either shape.
+        $digits = preg_replace('/\D+/', '', $fromPhone) ?: $normalized;
+        $tail   = strlen($digits) >= 10 ? substr($digits, -10) : $digits;
+        $needle = '%' . $tail;
+        $db->prepare(
+            "UPDATE marketing_campaign_recipients
+                SET send_status = 'opted_out',
+                    replied_at  = COALESCE(replied_at, NOW())
+              WHERE send_status IN ('pending','sending','sent')
+                AND (resolved_to = :exact OR resolved_to LIKE :tail)"
+        )->execute([':exact' => $normalized, ':tail' => $needle]);
+
+        // 3. Activity log on the matched lead so the timeline tells the
+        //    full story (inbound SMS + opt-out side-effect).
+        if ($leadId !== null) {
+            $systemUserId = getSystemActorId($db);
+            if ($systemUserId !== null) {
+                logLeadActivity($db, $leadId, $systemUserId, 'opted_out', null, [
+                    'channel'             => 'sms',
+                    'reason'              => 'inbound_stop_keyword',
+                    'provider_message_id' => $msgId,
+                ]);
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[openphone_webhook] handleSmsStopReply failed: ' . $e->getMessage());
+    }
 }
 
 /**

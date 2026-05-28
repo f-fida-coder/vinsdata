@@ -512,6 +512,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'PATCH' || $_SERVER['REQUEST_METHOD'] === 'PU
         exit();
     }
 
+    // Requeue failed/bounced recipients so the operator can retry them.
+    // Only sent campaigns (or already-partially-failed ones) can be
+    // requeued — a draft has nothing to retry, a cancelled campaign
+    // shouldn't auto-revive, and an in-flight 'sending' campaign would
+    // race with the live send loop.
+    if (array_key_exists('requeue_failed', $input) && $input['requeue_failed']) {
+        if (!in_array($row['status'], ['sent','partially_failed'], true)) {
+            pipelineFail(409, "Can't requeue from '{$row['status']}' state — campaign must be sent or partially_failed", 'invalid_state');
+        }
+        // Reset failed + bounced rows to pending. Bounced is included
+        // because some "bounces" are transient (carrier glitches, full
+        // mailboxes that clear up); the operator decides if a retry is
+        // worth it. Opted_out + skipped are NEVER touched — those are
+        // suppression decisions, not transient failures.
+        $reset = $db->prepare(
+            "UPDATE marketing_campaign_recipients
+                SET send_status = 'pending',
+                    fail_reason = NULL,
+                    provider_message_id = NULL,
+                    sent_at = NULL
+              WHERE campaign_id = :c
+                AND send_status IN ('failed','bounced')"
+        );
+        $reset->execute([':c' => $id]);
+        $requeued = $reset->rowCount();
+        if ($requeued === 0) {
+            pipelineFail(422, 'No failed or bounced recipients to requeue', 'nothing_to_requeue');
+        }
+        // Flip the campaign back to queued so /marketing_send will
+        // accept it. Don't reset started_at — completed_at gets
+        // overwritten on the next run anyway.
+        $db->prepare("UPDATE marketing_campaigns SET status = 'queued', completed_at = NULL WHERE id = :id")
+            ->execute([':id' => $id]);
+        echo json_encode([
+            'success'     => true,
+            'requeued'    => $requeued,
+            'campaign'    => formatCampaign(loadCampaignOrFail($db, $id), loadCampaignCounts($db, $id)),
+        ]);
+        exit();
+    }
+
     if ($row['status'] !== 'draft') {
         pipelineFail(409, 'Only draft campaigns can be edited', 'invalid_state');
     }

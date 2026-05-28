@@ -34,10 +34,52 @@ export const LEAD_STATUSES = [
 ];
 
 export const MARKETING_CHANNELS = [
-  { key: 'email',    label: 'Email',    icon: '✉' },
-  { key: 'sms',      label: 'SMS',      icon: '✆' },
-  { key: 'whatsapp', label: 'WhatsApp', icon: '◉' },
+  { key: 'email',    label: 'Email',    icon: '✉', provider: 'Gmail / SendGrid' },
+  { key: 'sms',      label: 'SMS',      icon: '✆', provider: 'OpenPhone' },
+  { key: 'whatsapp', label: 'WhatsApp', icon: '◉', provider: 'Coming soon' },
 ];
+
+// Standard SMS segmentation rules. US carriers split messages into
+// 160-char chunks when the body is GSM-7-encodable and 70-char chunks
+// when any UCS-2 character (emoji, smart quotes, em dash) is present.
+// Multi-segment messages reserve 7 bits per segment for concat headers,
+// so the per-segment limit drops by 7 chars in either encoding.
+//
+// The composer uses smsCounter() to show "1 / 160" or "2 segments · GSM-7"
+// so the operator knows what OpenPhone will bill per recipient before
+// they click Send.
+export const SMS_LIMITS = {
+  GSM7_SINGLE: 160,
+  GSM7_MULTI:  153,
+  UCS2_SINGLE: 70,
+  UCS2_MULTI:  67,
+};
+
+// GSM-7 default alphabet (ETSI TS 100 900). If every char is in this set
+// the encoding stays GSM-7. Any out-of-set character (most emoji, smart
+// quotes, em dash) forces UCS-2, dropping the per-segment cap to 70.
+// Extension chars (^{}\\[~]|€) are GSM-7 but count as 2 chars each.
+const GSM7_BASIC = "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞ\x1bÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
+const GSM7_EXT   = "^{}\\[~]|€";
+
+export function smsCounter(body = '') {
+  let length = 0;
+  let isGsm7 = true;
+  for (const ch of body) {
+    if (GSM7_BASIC.includes(ch))      length += 1;
+    else if (GSM7_EXT.includes(ch))   length += 2;
+    else { isGsm7 = false; break; }
+  }
+  if (!isGsm7) length = [...body].length; // count code points, not UTF-16 units
+
+  const encoding = isGsm7 ? 'GSM-7' : 'UCS-2';
+  const single   = isGsm7 ? SMS_LIMITS.GSM7_SINGLE : SMS_LIMITS.UCS2_SINGLE;
+  const multi    = isGsm7 ? SMS_LIMITS.GSM7_MULTI  : SMS_LIMITS.UCS2_MULTI;
+
+  if (length === 0) return { length: 0, segments: 0, perSegment: single, limit: single, encoding };
+  if (length <= single) return { length, segments: 1, perSegment: single, limit: single, encoding };
+  return { length, segments: Math.ceil(length / multi), perSegment: multi, limit: multi, encoding };
+}
 
 export const CAMPAIGN_STATUS_META = {
   draft:             { label: 'Draft',             bg: 'bg-gray-100',    text: 'text-gray-700',    dot: 'bg-gray-400' },
