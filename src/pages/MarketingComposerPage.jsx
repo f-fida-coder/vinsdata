@@ -208,8 +208,12 @@ export default function MarketingComposerPage() {
             </div>
             <div>
               <label className="field-label">Channel</label>
-              <div className="mc-channels" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                {MARKETING_CHANNELS.map((c) => (
+              {/* WhatsApp is filtered out until a real provider is wired —
+                  the stub dispatcher would otherwise mark sends as
+                  "successful" without actually delivering anything,
+                  which is worse than the channel being absent. */}
+              <div className="mc-channels" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+                {MARKETING_CHANNELS.filter((c) => c.key !== 'whatsapp').map((c) => (
                   <button
                     key={c.key}
                     type="button"
@@ -239,11 +243,6 @@ export default function MarketingComposerPage() {
                   Routed through OpenPhone. A &ldquo;Reply STOP to opt out&rdquo; footer is appended
                   automatically; recipients who reply STOP are added to the suppression list
                   and skipped on every future campaign.
-                </p>
-              )}
-              {channel === 'whatsapp' && (
-                <p className="tiny" style={{ color: 'var(--warn)', marginTop: 8 }}>
-                  WhatsApp is not wired to a real provider yet — sends are logged but not delivered.
                 </p>
               )}
             </div>

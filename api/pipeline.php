@@ -436,7 +436,11 @@ function assertTransportStatus(string $s): void
     }
 }
 
-const MARKETING_CHANNELS          = ['email','sms','whatsapp'];
+// WhatsApp removed until a real provider is wired. The stub dispatcher
+// would otherwise mark sends as "successful" without delivering anything
+// — safer to 400 the request at the API edge so older clients / curl
+// callers can't accidentally create a stub-only campaign.
+const MARKETING_CHANNELS          = ['email','sms'];
 const MARKETING_CAMPAIGN_STATUSES = ['draft','queued','sending','sent','partially_failed','cancelled'];
 const MARKETING_SEND_STATUSES     = ['pending','sending','sent','failed','skipped','bounced','opted_out'];
 const MARKETING_SUPPRESSION_REASONS = ['unsubscribe','bounce','complaint','manual_dnc','legal'];
