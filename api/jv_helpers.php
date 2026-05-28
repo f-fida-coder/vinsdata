@@ -94,8 +94,61 @@ function fetchJvData(PDO $db, int $investorLeadId): array
 }
 }
 
+if (!function_exists('jvRequiredFields')) {
+function jvRequiredFields(): array
+{
+    // Single source of truth for "what must be filled before sending."
+    // Both the validator and the frontend prompt key off this.
+    //
+    // Returns an array of [key => human label]. The key matches the
+    // shape jv_agreement.php expects in its override map (and also
+    // the shape fetchJvData returns).
+    return [
+        'vehicle_year'          => 'Year',
+        'vehicle_make'          => 'Make',
+        'vehicle_model'         => 'Model',
+        'vehicle_vin'           => 'VIN',
+        'target_purchase_price' => 'Target purchase price',
+        'capital_contribution'  => 'Investor capital contribution',
+        'investor_share_pct'    => 'Investor share %',
+    ];
+}
+}
+
+if (!function_exists('jvMissingFields')) {
+function jvMissingFields(array $data): array
+{
+    // Returns [key => label] pairs of fields that are blank/zero.
+    // capital_contribution and share_pct are validated as > 0 because
+    // a JV with $0 capital or 0% share is meaningless paperwork.
+    $missing = [];
+    foreach (jvRequiredFields() as $key => $label) {
+        $v = $data[$key] ?? null;
+        if ($v === null || $v === '' || $v === '0') {
+            $missing[$key] = $label;
+            continue;
+        }
+        if ($key === 'capital_contribution' && (float) $v <= 0) {
+            $missing[$key] = $label;
+        }
+        if ($key === 'investor_share_pct' && (float) $v <= 0) {
+            $missing[$key] = $label;
+        }
+    }
+    return $missing;
+}
+}
+
 if (!function_exists('renderJvAgreementPdf')) {
-function renderJvAgreementPdf(array $d): string
+/**
+ * Render the JV agreement PDF.
+ *
+ * @param array      $d    Row from fetchJvData (+ any overrides applied).
+ * @param array|null $meta Out-param. Populated with ['pages' => int] so
+ *                         the caller can place OpenSign placeholders on
+ *                         the last page without guessing.
+ */
+function renderJvAgreementPdf(array $d, ?array &$meta = null): string
 {
     require_once __DIR__ . '/vendor/autoload.php';
 
@@ -243,30 +296,54 @@ function renderJvAgreementPdf(array $d): string
     $html .= '<h2>Entire Agreement</h2>';
     $html .= '<p>This Agreement constitutes the entire understanding of the Parties with respect to its subject matter and supersedes all prior negotiations, representations, or agreements, whether oral or written. This Agreement may be amended only by a written instrument signed by both Parties. This Agreement may be executed in counterparts, each of which shall be deemed an original, and which together shall constitute one and the same instrument. Electronic signatures shall have the same force and effect as original signatures.</p>';
 
-    // Signature blocks
-    // Vin Vault side is pre-signed with Mitchell Briggs in DancingScript.
-    // Investor side has blank signature + date for OpenSign to fill in.
+    // ---- Signature page ----
+    //
+    // Force the signature block onto its own final page so the OpenSign
+    // placeholder coordinates are deterministic. Without this break, the
+    // signature can land anywhere from y=200 to y=600 on whatever page
+    // the text reflow ended on, and the signer's widget shows up over
+    // body text.
+    //
+    // Layout below uses fixed-height divs (no margin collapse, explicit
+    // padding) so the cumulative y-offsets we hand to OpenSign match
+    // the visible signature line for both Operator (pre-signed) and
+    // Investor (blank) blocks.
     $opSig = '<span class="sig-text">' . $esc($d['operator_signer_name']) . '</span>';
 
-    $html .= '<div class="sig-block">';
-    $html .= '<p><b>IN WITNESS WHEREOF</b>, the Parties have executed this Agreement as of the Effective Date set forth above.</p>';
+    $html .= '<div class="page-break"></div>';
+    $html .= '<h2 style="margin-top:0">Signatures</h2>';
+    $html .= '<p style="margin:6px 0 24px 0;"><b>IN WITNESS WHEREOF</b>, the Parties have executed this Joint Venture Agreement as of the Effective Date set forth above.</p>';
 
-    $html .= '<div style="margin-top:18px;"><b>OPERATOR &mdash; ' . $esc($d['operator_name']) . '</b></div>';
-    $html .= '<div class="sig-row">Signature: ' . $opSig . '</div>';
-    $html .= '<p class="kv"><b>Name:</b> ' . $esc($d['operator_signer_name']) . '</p>';
-    $html .= '<p class="kv"><b>Title:</b> ' . $esc($d['operator_signer_title']) . '</p>';
-    $html .= '<p class="kv"><b>Date:</b> ' . $esc($d['effective_date']) . '</p>';
+    // Operator block — Mitchell Briggs pre-signed in DancingScript.
+    $html .= '<div style="margin-top:8px;">';
+    $html .= '<p style="margin:0 0 6px 0;font-size:11pt;"><b>OPERATOR &mdash; ' . $esc($d['operator_name']) . '</b></p>';
+    $html .= '<p style="margin:8px 0;line-height:1.2;">Signature: ' . $opSig . '</p>';
+    $html .= '<p class="kv" style="margin:4px 0;"><b>Name:</b> ' . $esc($d['operator_signer_name']) . '</p>';
+    $html .= '<p class="kv" style="margin:4px 0;"><b>Title:</b> ' . $esc($d['operator_signer_title']) . '</p>';
+    $html .= '<p class="kv" style="margin:4px 0;"><b>Date:</b> ' . $esc($d['effective_date']) . '</p>';
+    $html .= '</div>';
 
-    $html .= '<div style="margin-top:24px;"><b>INVESTOR &mdash; ' . $esc($investorLabel) . '</b></div>';
-    $html .= '<div class="sig-row">Signature: <span class="sig-line"></span></div>';
-    $html .= '<p class="kv"><b>Name:</b> ' . $esc($d['investor_name']) . '</p>';
-    if (!empty($d['investor_entity'])) {
-        $html .= '<p class="kv"><b>Entity:</b> ' . $esc($d['investor_entity']) . '</p>';
-    }
-    $html .= '<p class="kv"><b>Date:</b> <span class="sig-line" style="min-width:160px"></span></p>';
+    // Investor block — signature + date are the only blank fields. The
+    // OpenSign signature + date widgets land on these two sig-line spans.
+    // We always render the Entity row (blank if missing) so the date
+    // line's y-position stays fixed regardless of investor data shape.
+    $html .= '<div style="margin-top:48px;">';
+    $html .= '<p style="margin:0 0 6px 0;font-size:11pt;"><b>INVESTOR &mdash; ' . $esc($investorLabel) . '</b></p>';
+    $html .= '<p style="margin:8px 0;line-height:1.2;">Signature: <span class="sig-line" style="min-width:260px;height:24px;"></span></p>';
+    $html .= '<p class="kv" style="margin:4px 0;"><b>Name:</b> ' . $esc($d['investor_name'] ?: '_______________') . '</p>';
+    $html .= '<p class="kv" style="margin:4px 0;"><b>Entity:</b> ' . $esc($d['investor_entity'] ?: '—') . '</p>';
+    $html .= '<p class="kv" style="margin:4px 0;"><b>Date:</b> <span class="sig-line" style="min-width:160px;"></span></p>';
     $html .= '</div>';
 
     $mpdf->WriteHTML($html);
-    return $mpdf->Output('', 'S');
+    $bytes = $mpdf->Output('', 'S');
+
+    // Expose final page count so the OpenSign placeholders can target
+    // the actual last page (whatever number that ends up being after
+    // text reflow).
+    if ($meta !== null) {
+        $meta['pages'] = (int) $mpdf->page;
+    }
+    return $bytes;
 }
 }

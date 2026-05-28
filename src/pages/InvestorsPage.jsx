@@ -316,6 +316,10 @@ function InvestorDrawer({ investorId, onClose, onChanged }) {
   const [error, setError]           = useState('');
   const [applyOpen, setApplyOpen]   = useState(false);
   const [openLeadId, setOpenLeadId] = useState(null);
+  // Missing-fields prompt — set when the server returns 400 with a list
+  // of blanks. The modal collects values, then we re-POST /jv_agreement
+  // with the overrides nested under `overrides`.
+  const [fillState, setFillState]   = useState(null); // { id, missing, current }
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -346,11 +350,45 @@ function InvestorDrawer({ investorId, onClose, onChanged }) {
     }
   };
 
+  // Core send routine. Used both for the initial click and for the
+  // re-send after the operator fills in missing fields. `overrides` is
+  // an optional patch — when present, gets merged into the POST body
+  // and the server applies it to imported_leads_raw / lead_states /
+  // investor_leads before rendering the JV PDF.
+  const performSend = async (id, overrides = null) => {
+    try {
+      const body = { investor_lead_id: id };
+      if (overrides) body.overrides = overrides;
+      const res = await api.post('/jv_agreement', body);
+      const { email_delivered, signing_url, reason } = res.data || {};
+      if (email_delivered === false && signing_url) {
+        window.prompt(
+          `JV created but email did not send (${reason || 'unknown'}).\n`
+          + 'Copy this signing link and send it to the investor manually:',
+          signing_url
+        );
+      }
+      setFillState(null);
+      load();
+      onChanged?.();
+    } catch (err) {
+      const data = err?.response?.data;
+      // 400 with missing_fields → open the fill-in modal instead of
+      // bubbling the error. The operator types the values, and on
+      // submit we re-call performSend with overrides.
+      if (data && data.code === 'missing_fields' && data.missing_fields) {
+        setFillState({
+          id,
+          missing: data.missing_fields,
+          current: data.current || {},
+        });
+        return;
+      }
+      setError(extractApiError(err, 'Failed to send JV'));
+    }
+  };
+
   const sendJv = async (id) => {
-    // Pre-flight: confirm we have an investor email on file before
-    // hitting the endpoint. The server falls back to investor.email
-    // when the body omits `to`, but surfacing this client-side is
-    // friendlier than the 400 response.
     const target = (investor?.email || '').trim();
     if (!target) {
       setError('Add an email to this investor before sending the JV.');
@@ -361,24 +399,7 @@ function InvestorDrawer({ investorId, onClose, onChanged }) {
       + 'A PDF will be generated, the Vin Vault side will be pre-signed by Mitchell Briggs, '
       + 'and the investor will receive an OpenSign link to countersign.'
     )) return;
-    try {
-      const res = await api.post('/jv_agreement', { investor_lead_id: id });
-      const { email_delivered, signing_url, reason } = res.data || {};
-      if (email_delivered === false && signing_url) {
-        // Email failed (or SMTP not configured) — surface the signing
-        // link so the operator can copy it manually instead of the row
-        // looking sent but the investor never hearing about it.
-        window.prompt(
-          `JV created but email did not send (${reason || 'unknown'}).\n`
-          + 'Copy this signing link and send it to the investor manually:',
-          signing_url
-        );
-      }
-      load();
-      onChanged?.();
-    } catch (err) {
-      setError(extractApiError(err, 'Failed to send JV'));
-    }
+    performSend(id);
   };
 
   return (
@@ -496,6 +517,14 @@ function InvestorDrawer({ investorId, onClose, onChanged }) {
             investorId={investorId}
             onClose={() => setApplyOpen(false)}
             onApplied={() => { setApplyOpen(false); load(); onChanged?.(); }}
+          />
+        )}
+
+        {fillState && (
+          <MissingFieldsModal
+            state={fillState}
+            onClose={() => setFillState(null)}
+            onSubmit={(overrides) => performSend(fillState.id, overrides)}
           />
         )}
 
@@ -826,6 +855,104 @@ function ApplyToCarModal({ investorId, onClose, onApplied }) {
               {saving ? 'Applying…' : 'Apply investor'}
             </button>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- Missing-fields modal ------------------------------------------------
+//
+// Shown when /api/jv_agreement returns 400 with code='missing_fields'.
+// Collects values for the blanks (vehicle year/make/model/VIN, target
+// purchase price, capital contribution, share %) and re-submits.
+function MissingFieldsModal({ state, onClose, onSubmit }) {
+  const { missing, current } = state;
+  // Pre-fill from current (server-reported values) so the operator
+  // only has to touch the truly blank fields.
+  const [values, setValues] = useState(() => {
+    const seed = {};
+    Object.keys(missing).forEach((k) => { seed[k] = current?.[k] ?? ''; });
+    return seed;
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState('');
+
+  const set = (k, v) => setValues((prev) => ({ ...prev, [k]: v }));
+
+  const submit = async () => {
+    // Validate locally — every flagged field must be non-empty before
+    // we re-POST. Avoids a server round-trip just to find we missed
+    // one.
+    for (const [k, label] of Object.entries(missing)) {
+      const v = values[k];
+      if (v === '' || v === null || v === undefined) {
+        setError(`${label} is required`);
+        return;
+      }
+    }
+    setSaving(true); setError('');
+    try {
+      await onSubmit(values);
+      // onSubmit closes the modal via setFillState(null) on success.
+    } catch {
+      setSaving(false);
+    }
+  };
+
+  const fieldType = (k) =>
+    (k === 'target_purchase_price' || k === 'capital_contribution' || k === 'investor_share_pct')
+      ? 'number' : 'text';
+
+  const fieldStep = (k) => {
+    if (k === 'investor_share_pct') return '0.5';
+    if (k === 'target_purchase_price' || k === 'capital_contribution') return '100';
+    return undefined;
+  };
+
+  const inputCls = 'w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-2 text-[13px] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none';
+  const labelCls = 'block text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-gray-900/50" />
+      <div className="relative bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h3 className="text-base font-semibold text-gray-900">Fill in the missing fields</h3>
+          <p className="text-[11px] text-gray-500 mt-0.5">
+            The JV agreement can&rsquo;t be sent until every field has a value.
+          </p>
+        </div>
+
+        <div className="px-5 py-4 overflow-y-auto space-y-3">
+          {error && <div className="bg-red-50 border border-red-100 text-red-700 rounded-lg p-2 text-xs">{error}</div>}
+
+          {Object.entries(missing).map(([k, label]) => (
+            <div key={k}>
+              <label className={labelCls}>{label}</label>
+              <input
+                type={fieldType(k)}
+                step={fieldStep(k)}
+                min="0"
+                max={k === 'investor_share_pct' ? 100 : undefined}
+                value={values[k] ?? ''}
+                onChange={(e) => set(k, e.target.value)}
+                className={inputCls}
+                autoFocus={k === Object.keys(missing)[0]}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-900 rounded">Cancel</button>
+          <button
+            onClick={submit}
+            disabled={saving}
+            className="px-4 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40"
+          >
+            {saving ? 'Sending…' : 'Save & send JV'}
+          </button>
         </div>
       </div>
     </div>

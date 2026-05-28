@@ -70,8 +70,101 @@ if ($existing['jv_status'] === 'signed') {
     exit();
 }
 
-// ---- Load the joined data + render the PDF. ----
+// ---- Apply optional field overrides BEFORE loading the JV data. ----
+//
+// When the React drawer detects missing fields, it shows the admin a
+// "fill these in before sending" prompt and re-POSTs with the values
+// nested under `overrides`. We write each one to the right backing
+// table here so fetchJvData picks them up on the next read.
+//
+// Fields land in three places:
+//   vehicle_year/make/model/vin → imported_leads_raw.normalized_payload_json
+//   target_purchase_price        → lead_states.price_offered
+//   capital_contribution / share_pct → investor_leads
+$overrides = is_array($input['overrides'] ?? null) ? $input['overrides'] : [];
+if (!empty($overrides)) {
+    $importedLeadId = (int) $existing['imported_lead_id'];
+
+    // 1. Patch the lead's normalized_payload_json with any vehicle fields.
+    $vehicleKeys = ['vehicle_year' => 'year', 'vehicle_make' => 'make', 'vehicle_model' => 'model', 'vehicle_vin' => 'vin'];
+    $vehiclePatch = [];
+    foreach ($vehicleKeys as $inKey => $outKey) {
+        if (array_key_exists($inKey, $overrides) && trim((string) $overrides[$inKey]) !== '') {
+            $vehiclePatch[$outKey] = trim((string) $overrides[$inKey]);
+        }
+    }
+    if (!empty($vehiclePatch)) {
+        $leadStmt = $db->prepare('SELECT normalized_payload_json FROM imported_leads_raw WHERE id = :id');
+        $leadStmt->execute([':id' => $importedLeadId]);
+        $np = json_decode($leadStmt->fetchColumn() ?: 'null', true) ?: [];
+        $np = array_merge($np, $vehiclePatch);
+        $db->prepare('UPDATE imported_leads_raw SET normalized_payload_json = :np WHERE id = :id')
+            ->execute([':np' => json_encode($np), ':id' => $importedLeadId]);
+    }
+
+    // 2. Target purchase price → lead_states.price_offered. Upsert so we
+    //    don't lose other state fields on rows that already exist.
+    if (array_key_exists('target_purchase_price', $overrides) && $overrides['target_purchase_price'] !== '' && $overrides['target_purchase_price'] !== null) {
+        $price = (float) $overrides['target_purchase_price'];
+        if ($price < 0) pipelineFail(400, 'target_purchase_price must be non-negative', 'invalid_price');
+        $exists = $db->prepare('SELECT id FROM lead_states WHERE imported_lead_id = :id');
+        $exists->execute([':id' => $importedLeadId]);
+        if ($exists->fetchColumn()) {
+            $db->prepare('UPDATE lead_states SET price_offered = :p WHERE imported_lead_id = :id')
+                ->execute([':p' => $price, ':id' => $importedLeadId]);
+        } else {
+            $db->prepare(
+                "INSERT INTO lead_states (imported_lead_id, assigned_user_id, status, priority, price_offered)
+                 VALUES (:id, :uid, 'new', 'low', :p)"
+            )->execute([':id' => $importedLeadId, ':uid' => (int) $user['id'], ':p' => $price]);
+        }
+    }
+
+    // 3. Investor-side terms on investor_leads.
+    $ilFields = [];
+    $ilParams = [':id' => $investorLeadId];
+    if (array_key_exists('capital_contribution', $overrides) && $overrides['capital_contribution'] !== '' && $overrides['capital_contribution'] !== null) {
+        $amt = (float) $overrides['capital_contribution'];
+        if ($amt < 0) pipelineFail(400, 'capital_contribution must be non-negative', 'invalid_amount');
+        $ilFields[]            = 'investment_amount = :amt';
+        $ilParams[':amt']      = $amt;
+    }
+    if (array_key_exists('investor_share_pct', $overrides) && $overrides['investor_share_pct'] !== '' && $overrides['investor_share_pct'] !== null) {
+        $share = (float) $overrides['investor_share_pct'];
+        if ($share < 0 || $share > 100) pipelineFail(400, 'investor_share_pct must be 0-100', 'invalid_share');
+        $ilFields[]              = 'share_pct = :shr';
+        $ilParams[':shr']        = $share;
+    }
+    if (!empty($ilFields)) {
+        $db->prepare('UPDATE investor_leads SET ' . implode(', ', $ilFields) . ' WHERE id = :id')->execute($ilParams);
+    }
+}
+
+// ---- Load the joined data (now reflecting any overrides). ----
 $data = fetchJvData($db, $investorLeadId);
+
+// ---- Validate required fields. Surface the blanks back to the
+//      frontend so the admin can fill them in. ----
+$missing = jvMissingFields($data);
+if (!empty($missing)) {
+    http_response_code(400);
+    echo json_encode([
+        'success'        => false,
+        'error'          => 'Fill in missing fields before sending the JV agreement',
+        'code'           => 'missing_fields',
+        'missing_fields' => $missing,
+        'current'        => [
+            'vehicle_year'          => $data['vehicle_year'],
+            'vehicle_make'          => $data['vehicle_make'],
+            'vehicle_model'         => $data['vehicle_model'],
+            'vehicle_vin'           => $data['vehicle_vin'],
+            'target_purchase_price' => $data['target_purchase_price'],
+            'capital_contribution'  => $data['capital_contribution'],
+            'investor_share_pct'    => $data['investor_share_pct'],
+        ],
+    ]);
+    exit();
+}
 
 // Fall back to the investor's saved email if the caller didn't override.
 if ($to === '') {
@@ -81,11 +174,15 @@ if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
     pipelineFail(400, 'Investor email is required to send the JV agreement', 'missing_email');
 }
 
+$pdfMeta = [];
 try {
-    $pdfBytes = renderJvAgreementPdf($data);
+    $pdfBytes = renderJvAgreementPdf($data, $pdfMeta);
 } catch (Throwable $e) {
     pipelineFail(500, 'PDF generation failed: ' . $e->getMessage(), 'pdf_error');
 }
+// Last page = where the signature block was forced to. Fallback to 3
+// (typical case for this template) if mPDF didn't expose page count.
+$lastPage = max(1, (int) ($pdfMeta['pages'] ?? 3));
 
 // ---- Persist a copy on disk for audit + downstream PDF download. ----
 $jvDir = __DIR__ . '/uploads/jv';
@@ -233,12 +330,28 @@ $vehDesc = trim(implode(' ', array_filter([
 ]))) ?: 'Vehicle';
 $docName = 'JV Agreement — ' . $vehDesc;
 
-// Placeholder lives on page 2, on the INVESTOR signature line. The
-// signature block is rendered after the Operator (pre-signed) block,
-// so it falls ~mid-bottom of page 2. Coordinates are PDF points from
-// the top-left of Letter (612 × 792).
+// Placeholders live on the LAST page of the PDF — the signature block
+// is forced onto its own page by a page-break in renderJvAgreementPdf,
+// so the y-coordinates are deterministic regardless of how much body
+// text reflowed onto pages 1-2.
+//
+// Layout on the signature page (PDF points from top-left, Letter 612×792):
+//   y≈51   page top (margin)
+//   y≈70   "Signatures" h2
+//   y≈110  IN WITNESS WHEREOF paragraph
+//   y≈140  OPERATOR header
+//   y≈170  pre-signed Mitchell Briggs (cursive)
+//   y≈200-270  Operator Name/Title/Date lines
+//   y≈315  INVESTOR header (after 48pt margin)
+//   y≈350  INVESTOR signature line     ← signature widget
+//   y≈400  INVESTOR Name/Entity lines
+//   y≈445  INVESTOR Date line          ← date widget
+//
+// "Signature: " + "Date: " labels are bold ~70pt wide from the left
+// margin (22mm ≈ 62pt), so widgets start at x≈145 (sig) / x≈100 (date).
 $placeholderId  = uniqid('jvp_', true);
-$widgetKey      = (int) (microtime(true) * 1000);
+$widgetKeySig   = (int) (microtime(true) * 1000);
+$widgetKeyDate  = $widgetKeySig + 1;
 $placeholders   = [[
     'Id'           => $placeholderId,
     'Role'         => 'signer',
@@ -247,19 +360,39 @@ $placeholders   = [[
     'email'        => $signerEmail,
     'blockColor'   => '#93a3db',
     'placeHolder'  => [[
-        'pageNumber' => 2,
-        'pos'        => [[
-            'key'       => $widgetKey,
-            'xPosition' => 170,
-            'yPosition' => 600,
-            'width'     => 240,
-            'height'    => 48,
-            'Width'     => 240,
-            'Height'    => 48,
-            'isStamp'   => false,
-            'type'      => 'signature',
-            'options'   => ['name' => 'Signature'],
-        ]],
+        'pageNumber' => $lastPage,
+        'pos'        => [
+            // Investor signature line
+            [
+                'key'       => $widgetKeySig,
+                'xPosition' => 145,
+                'yPosition' => 345,
+                'width'     => 240,
+                'height'    => 40,
+                'Width'     => 240,
+                'Height'    => 40,
+                'isStamp'   => false,
+                'type'      => 'signature',
+                'options'   => ['name' => 'Signature'],
+            ],
+            // Investor date — OpenSign auto-fills with the signing
+            // timestamp when the signer commits the signature.
+            [
+                'key'       => $widgetKeyDate,
+                'xPosition' => 100,
+                'yPosition' => 442,
+                'width'     => 140,
+                'height'    => 24,
+                'Width'     => 140,
+                'Height'    => 24,
+                'isStamp'   => false,
+                'type'      => 'date',
+                'options'   => [
+                    'name'    => 'Date Signed',
+                    'response'=> date('m-d-Y'),
+                ],
+            ],
+        ],
     ]],
 ]];
 
