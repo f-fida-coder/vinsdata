@@ -28,7 +28,7 @@ const NAV_VISIBILITY = {
   // Filter/TLO/sales — anyone who needs to see "where in the pipeline
   // is this file" or hunt orphan imports. Dashboard is the new
   // high-level business overview that lives at /.
-  admin:        ['dashboard','files','leads','pipeline','tasks','reports','marketing','billOfSale','funding','dispatch','users','company'],
+  admin:        ['dashboard','files','leads','pipeline','tasks','reports','marketing','billOfSale','funding','dispatch','investors','users','company'],
   marketer:     ['dashboard','files','leads','pipeline','marketing','reports'],
   carfax:       ['dashboard','files','leads','pipeline','tasks','billOfSale','funding','dispatch'],
   filter:       ['dashboard','files','leads','pipeline','tasks','billOfSale','funding','dispatch'],
@@ -62,6 +62,9 @@ const ALL_NAV = [
   // directly from the Dashboard. /vehicles route stays as a redirect to
   // /leads in App.jsx so old bookmarks don't 404.
   { key: 'users',      label: 'Users',             icon: 'user',      to: '/users' },
+  // Investors — admin-only joint-venture workspace. Each investor can
+  // fund multiple cars; JV agreements live alongside the linkage.
+  { key: 'investors',  label: 'Investors',         icon: 'users',     to: '/investors' },
   { key: 'company',    label: 'Company',           icon: 'building',  to: '/company-settings' },
 ];
 
@@ -85,6 +88,7 @@ const ROUTE_LABEL_BY_PATH = {
   '/funding':          'Funding',
   '/dispatch':         'Dispatch',
   '/users':            'Users',
+  '/investors':        'Investors',
   '/company-settings': 'Company',
   '/logs':             'Activity Logs',
 };

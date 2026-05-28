@@ -13,6 +13,7 @@ import HomeDashboard from './pages/HomeDashboard';
 // from the Files page. /vehicles route still exists below as a redirect
 // to /leads so old bookmarks + g+v shortcut don't 404.
 import UsersPage from './pages/UsersPage';
+import InvestorsPage from './pages/InvestorsPage';
 import LogsPage from './pages/LogsPage';
 import LeadsPage from './pages/LeadsPage';
 import TasksPage from './pages/TasksPage';
@@ -124,6 +125,8 @@ function DashboardLayout() {
           <Route path="/dispatch" element={<DispatchPage />} />
           <Route path="/company-settings"  element={<RequireRoles roles={['admin']}             landing={landing}><CompanySettingsPage /></RequireRoles>} />
           <Route path="/users"             element={<RequireRoles roles={['admin']}             landing={landing}><UsersPage /></RequireRoles>} />
+          {/* Investors — admin-only joint-venture workspace */}
+          <Route path="/investors"         element={<RequireRoles roles={['admin']}             landing={landing}><InvestorsPage /></RequireRoles>} />
           <Route path="/logs"              element={<RequireRoles roles={['admin']}             landing={landing}><LogsPage /></RequireRoles>} />
           <Route path="*" element={<Navigate to={landing} replace />} />
         </Routes>
