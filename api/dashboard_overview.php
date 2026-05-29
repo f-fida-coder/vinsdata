@@ -164,6 +164,7 @@ $fileRows = $db->query(
                        AND s.assigned_user_id IS NOT NULL THEN 1 ELSE 0 END) AS assigned_with_phone,
             SUM(CASE WHEN r.norm_phone_primary IS NOT NULL AND r.norm_phone_primary <> ''
                        AND s.assigned_user_id IS NULL THEN 1 ELSE 0 END) AS unassigned_with_phone,
+            SUM(CASE WHEN s.status     = 'new' OR s.status IS NULL THEN 1 ELSE 0 END) AS new_leads,
             SUM(CASE WHEN s.status     = 'contacted'   THEN 1 ELSE 0 END) AS contacted,
             SUM(CASE WHEN s.status     = 'interested'  THEN 1 ELSE 0 END) AS interested,
             SUM(CASE WHEN s.lead_temperature = 'hot'   THEN 1 ELSE 0 END) AS hot,
@@ -198,17 +199,21 @@ $byFile = array_map(function ($r) {
             $r['model'],
             $r['trim'],
         ]))) ?: $r['vehicle_name'],
-        'total'                => $total,
+        // total_all = raw imported-row count (kept for downstream
+        // consumers + the per-file detail view). total = the value
+        // the Files dashboard displays in the "Total" column —
+        // leads with a primary phone, i.e. the callable pool.
+        'total_all'            => $total,
+        'total'                => $withPhone,
         'assigned'             => $assigned,
         'unassigned'           => (int) $r['unassigned'],
-        // Phone-aware aggregates. The Files dashboard's "Assigned %"
-        // column uses these as numerator + denominator instead of
-        // assigned/total, so the percentage tracks workforce coverage
-        // of leads we can actually CALL (rather than counting
-        // phoneless rows in the denominator and dragging the % down).
+        // Phone-aware aggregates used by HomeDashboard for the
+        // Assigned % bar (numerator/denominator) and the "+todo"
+        // pill. Tracks workforce coverage of the actionable pool.
         'with_phone'           => $withPhone,
         'assigned_with_phone'  => $assignedWithPhone,
         'unassigned_with_phone'=> $unassignedWithPhone,
+        'new_leads'            => (int) $r['new_leads'],
         'contacted'            => (int) $r['contacted'],
         'interested'           => (int) $r['interested'],
         'hot'                  => (int) $r['hot'],

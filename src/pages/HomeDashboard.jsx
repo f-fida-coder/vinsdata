@@ -189,6 +189,7 @@ export default function HomeDashboard() {
         .dash-pill-success { background: var(--success-bg, #d1fae5); color: var(--success, #047857); }
         .dash-pill-warn { background: var(--warm-bg, #fef3c7); color: var(--warm, #a16207); }
         .dash-pill-neutral { background: var(--bg-2); color: var(--text-2); }
+        .dash-pill-info { background: var(--info-bg, #dbeafe); color: var(--info, #1d4ed8); }
       `}</style>
     </div>
   );
@@ -345,8 +346,9 @@ function FilesPanel({ rows, isAdmin }) {
             <thead>
               <tr>
                 <th>File / Vehicle</th>
-                <th style={{ textAlign: 'right' }}>Total</th>
+                <th style={{ textAlign: 'right' }} title="Leads in this file that have a primary phone number (the callable pool)">Total</th>
                 {isAdmin && <th>Assigned</th>}
+                <th style={{ textAlign: 'right' }}>New</th>
                 <th style={{ textAlign: 'right' }}>Hot</th>
                 <th style={{ textAlign: 'right' }}>Closed</th>
               </tr>
@@ -360,7 +362,10 @@ function FilesPanel({ rows, isAdmin }) {
                       <div style={{ fontSize: 10, color: 'var(--text-3)' }}>{r.vehicle}</div>
                     </Link>
                   </td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                  <td
+                    style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}
+                    title={r.total_all !== undefined ? `${r.total_all.toLocaleString()} total imported · ${r.total.toLocaleString()} with phone` : undefined}
+                  >
                     {r.total.toLocaleString()}
                   </td>
                   {isAdmin && (
@@ -378,18 +383,28 @@ function FilesPanel({ rows, isAdmin }) {
                           <span className="dash-bar-fill" style={{ width: `${r.assigned_pct}%` }}/>
                         </span>
                         <span style={{ fontSize: 11, color: 'var(--text-2)' }}>{r.assigned_pct}%</span>
-                        {(r.unassigned_with_phone ?? r.unassigned) > 0 && (
+                        {/* "+N todo" = the raw count of leads with no
+                            assignee in this file. Operator asked for
+                            the literal unassigned count (not the
+                            phone-filtered one) so they can see total
+                            assignment debt at a glance. */}
+                        {r.unassigned > 0 && (
                           <Link
-                            to={`/leads?file_id=${r.file_id}&assigned_user_id=unassigned&has_phone=1`}
+                            to={`/leads?file_id=${r.file_id}&assigned_user_id=unassigned`}
                             className="dash-pill dash-pill-warn"
-                            title="Click to filter to unassigned leads that have a phone in this file"
+                            title="Click to filter to all unassigned leads in this file"
                           >
-                            +{r.unassigned_with_phone ?? r.unassigned} todo
+                            +{r.unassigned} todo
                           </Link>
                         )}
                       </div>
                     </td>
                   )}
+                  <td style={{ textAlign: 'right' }}>
+                    {r.new_leads > 0
+                      ? <span className="dash-pill dash-pill-info">{r.new_leads}</span>
+                      : <span style={{ color: 'var(--text-3)' }}>—</span>}
+                  </td>
                   <td style={{ textAlign: 'right' }}>
                     {r.hot > 0 ? <span className="dash-pill dash-pill-hot">{r.hot}</span> : <span style={{ color: 'var(--text-3)' }}>—</span>}
                   </td>
