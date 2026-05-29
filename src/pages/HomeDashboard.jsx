@@ -330,20 +330,19 @@ function Funnel({ funnel }) {
 // ---- Files panel ------------------------------------------------------
 
 function FilesPanel({ rows, isAdmin }) {
-  // Compact "last assigned" formatter — shows just MM/DD on the same
-  // year, MM/DD/YY across years. Full timestamp on hover via title.
+  // Compact "last assigned" formatter — always MM/DD/YY so the year
+  // is visible at a glance (operator asked for it explicitly; before
+  // this we dropped the year for same-year dates to save space).
   // Returns null for files that never had an assignment so the cell
   // renders an em-dash instead of "Invalid Date".
   const fmtShortDate = (s) => {
     if (!s) return null;
     const d = new Date(String(s).replace(' ', 'T'));
     if (Number.isNaN(d.getTime())) return null;
-    const now = new Date();
-    const sameYear = d.getFullYear() === now.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
     const yy = String(d.getFullYear()).slice(-2);
-    return sameYear ? `${mm}/${dd}` : `${mm}/${dd}/${yy}`;
+    return `${mm}/${dd}/${yy}`;
   };
   const fmtFullStamp = (s) => {
     if (!s) return '';
