@@ -404,18 +404,17 @@ function FilesPanel({ rows, isAdmin }) {
                           <span className="dash-bar-fill" style={{ width: `${r.assigned_pct}%` }}/>
                         </span>
                         <span style={{ fontSize: 11, color: 'var(--text-2)' }}>{r.assigned_pct}%</span>
-                        {/* "+N todo" = the raw count of leads with no
-                            assignee in this file. Operator asked for
-                            the literal unassigned count (not the
-                            phone-filtered one) so they can see total
-                            assignment debt at a glance. */}
+                        {/* "N left" = raw count of leads with no
+                            assignee in this file. Total assignment
+                            debt at a glance. Clicks through to the
+                            unassigned subset on the leads page. */}
                         {r.unassigned > 0 && (
                           <Link
                             to={`/leads?file_id=${r.file_id}&assigned_user_id=unassigned`}
                             className="dash-pill dash-pill-warn"
                             title="Click to filter to all unassigned leads in this file"
                           >
-                            +{r.unassigned} todo
+                            {r.unassigned} left
                           </Link>
                         )}
                       </div>
