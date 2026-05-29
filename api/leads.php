@@ -306,6 +306,14 @@ foreach (['batch_id' => 'b.id', 'file_id' => 'b.file_id', 'artifact_id' => 'b.ar
     }
 }
 
+// has_phone=1 restricts to leads with a non-empty primary phone — the
+// same definition the Files dashboard's "Assigned %" denominator uses.
+// Mirrors the click-through path from "+N todo" on HomeDashboard so
+// the destination lead list matches what the percentage is counting.
+if (!empty($_GET['has_phone']) && ($_GET['has_phone'] === '1' || $_GET['has_phone'] === 'true')) {
+    $where[] = "(r.norm_phone_primary IS NOT NULL AND r.norm_phone_primary <> '')";
+}
+
 // Stage
 if (!empty($_GET['source_stage'])) {
     assertStage($_GET['source_stage']);

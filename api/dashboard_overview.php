@@ -145,6 +145,12 @@ $funnel = array_map(fn($s) => ['key' => $s, 'count' => $byStatus[$s] ?? 0], $fun
 // We aggregate across all batches that came from the same file (the
 // "same file uploaded N times" bug from earlier sprints means one file
 // can spawn multiple batches; users still want a single per-file row).
+// "Has a phone" is keyed on norm_phone_primary, the indexed canonical
+// column we use everywhere else for phone-matching (duplicate scan,
+// reply lookup, etc.). Leads with only a secondary/3rd/4th phone in
+// the JSON payload aren't counted as "callable" by the dashboard —
+// operators work the primary slot, and the % is meant to track
+// workforce coverage of the actionable pool.
 $fileRows = $db->query(
     "SELECT f.id AS file_id,
             COALESCE(NULLIF(f.display_name, ''), f.file_name) AS file_name,
@@ -153,6 +159,11 @@ $fileRows = $db->query(
             COUNT(r.id) AS total,
             SUM(CASE WHEN s.assigned_user_id IS NOT NULL THEN 1 ELSE 0 END) AS assigned,
             SUM(CASE WHEN s.assigned_user_id IS NULL     THEN 1 ELSE 0 END) AS unassigned,
+            SUM(CASE WHEN r.norm_phone_primary IS NOT NULL AND r.norm_phone_primary <> '' THEN 1 ELSE 0 END) AS with_phone,
+            SUM(CASE WHEN r.norm_phone_primary IS NOT NULL AND r.norm_phone_primary <> ''
+                       AND s.assigned_user_id IS NOT NULL THEN 1 ELSE 0 END) AS assigned_with_phone,
+            SUM(CASE WHEN r.norm_phone_primary IS NOT NULL AND r.norm_phone_primary <> ''
+                       AND s.assigned_user_id IS NULL THEN 1 ELSE 0 END) AS unassigned_with_phone,
             SUM(CASE WHEN s.status     = 'contacted'   THEN 1 ELSE 0 END) AS contacted,
             SUM(CASE WHEN s.status     = 'interested'  THEN 1 ELSE 0 END) AS interested,
             SUM(CASE WHEN s.lead_temperature = 'hot'   THEN 1 ELSE 0 END) AS hot,
@@ -172,27 +183,38 @@ $fileRows = $db->query(
 )->fetchAll();
 
 $byFile = array_map(function ($r) {
-    $total = (int) $r['total'];
-    $assigned = (int) $r['assigned'];
+    $total              = (int) $r['total'];
+    $assigned           = (int) $r['assigned'];
+    $withPhone          = (int) $r['with_phone'];
+    $assignedWithPhone  = (int) $r['assigned_with_phone'];
+    $unassignedWithPhone= (int) $r['unassigned_with_phone'];
     return [
-        'file_id'          => (int) $r['file_id'],
-        'file_name'        => $r['file_name'],
-        'vehicle_id'       => (int) $r['vehicle_id'],
-        'vehicle'          => trim(implode(' ', array_filter([
+        'file_id'              => (int) $r['file_id'],
+        'file_name'            => $r['file_name'],
+        'vehicle_id'           => (int) $r['vehicle_id'],
+        'vehicle'              => trim(implode(' ', array_filter([
             $r['vehicle_year'] ?: $r['file_year'],
             $r['make'],
             $r['model'],
             $r['trim'],
         ]))) ?: $r['vehicle_name'],
-        'total'            => $total,
-        'assigned'         => $assigned,
-        'unassigned'       => (int) $r['unassigned'],
-        'contacted'        => (int) $r['contacted'],
-        'interested'       => (int) $r['interested'],
-        'hot'              => (int) $r['hot'],
-        'closed'           => (int) $r['closed'],
-        'assigned_pct'     => $total > 0 ? round(($assigned / $total) * 100) : 0,
-        'last_imported_at' => $r['last_imported_at'],
+        'total'                => $total,
+        'assigned'             => $assigned,
+        'unassigned'           => (int) $r['unassigned'],
+        // Phone-aware aggregates. The Files dashboard's "Assigned %"
+        // column uses these as numerator + denominator instead of
+        // assigned/total, so the percentage tracks workforce coverage
+        // of leads we can actually CALL (rather than counting
+        // phoneless rows in the denominator and dragging the % down).
+        'with_phone'           => $withPhone,
+        'assigned_with_phone'  => $assignedWithPhone,
+        'unassigned_with_phone'=> $unassignedWithPhone,
+        'contacted'            => (int) $r['contacted'],
+        'interested'           => (int) $r['interested'],
+        'hot'                  => (int) $r['hot'],
+        'closed'               => (int) $r['closed'],
+        'assigned_pct'         => $withPhone > 0 ? round(($assignedWithPhone / $withPhone) * 100) : 0,
+        'last_imported_at'     => $r['last_imported_at'],
     ];
 }, $fileRows);
 

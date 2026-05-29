@@ -366,17 +366,25 @@ function FilesPanel({ rows, isAdmin }) {
                   {isAdmin && (
                     <td>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        <span className="dash-bar" title={`${r.assigned} of ${r.total} assigned`}>
+                        {/* Denominator is leads with a primary phone (the
+                            callable pool), not all leads — so the bar
+                            tracks how much of the workable list has an
+                            agent on it rather than getting dragged down
+                            by phoneless rows we can't action anyway. */}
+                        <span
+                          className="dash-bar"
+                          title={`${r.assigned_with_phone ?? r.assigned} of ${r.with_phone ?? r.total} leads with a phone are assigned`}
+                        >
                           <span className="dash-bar-fill" style={{ width: `${r.assigned_pct}%` }}/>
                         </span>
                         <span style={{ fontSize: 11, color: 'var(--text-2)' }}>{r.assigned_pct}%</span>
-                        {r.unassigned > 0 && (
+                        {(r.unassigned_with_phone ?? r.unassigned) > 0 && (
                           <Link
-                            to={`/leads?file_id=${r.file_id}&assigned_user_id=unassigned`}
+                            to={`/leads?file_id=${r.file_id}&assigned_user_id=unassigned&has_phone=1`}
                             className="dash-pill dash-pill-warn"
-                            title="Click to filter to the unassigned leads in this file"
+                            title="Click to filter to unassigned leads that have a phone in this file"
                           >
-                            +{r.unassigned} todo
+                            +{r.unassigned_with_phone ?? r.unassigned} todo
                           </Link>
                         )}
                       </div>
