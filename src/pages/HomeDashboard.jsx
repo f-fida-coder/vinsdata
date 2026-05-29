@@ -330,6 +330,27 @@ function Funnel({ funnel }) {
 // ---- Files panel ------------------------------------------------------
 
 function FilesPanel({ rows, isAdmin }) {
+  // Compact "last assigned" formatter — shows just MM/DD on the same
+  // year, MM/DD/YY across years. Full timestamp on hover via title.
+  // Returns null for files that never had an assignment so the cell
+  // renders an em-dash instead of "Invalid Date".
+  const fmtShortDate = (s) => {
+    if (!s) return null;
+    const d = new Date(String(s).replace(' ', 'T'));
+    if (Number.isNaN(d.getTime())) return null;
+    const now = new Date();
+    const sameYear = d.getFullYear() === now.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yy = String(d.getFullYear()).slice(-2);
+    return sameYear ? `${mm}/${dd}` : `${mm}/${dd}/${yy}`;
+  };
+  const fmtFullStamp = (s) => {
+    if (!s) return '';
+    const d = new Date(String(s).replace(' ', 'T'));
+    return Number.isNaN(d.getTime()) ? s : d.toLocaleString();
+  };
+
   return (
     <div className="dash-section">
       <div className="dash-section-head">
@@ -351,6 +372,7 @@ function FilesPanel({ rows, isAdmin }) {
                 <th style={{ textAlign: 'right' }}>New</th>
                 <th style={{ textAlign: 'right' }}>Hot</th>
                 <th style={{ textAlign: 'right' }}>Closed</th>
+                <th style={{ textAlign: 'right' }} title="Most recent date an assigned lead in this file was touched">Last assigned</th>
               </tr>
             </thead>
             <tbody>
@@ -410,6 +432,12 @@ function FilesPanel({ rows, isAdmin }) {
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     {r.closed > 0 ? <span className="dash-pill dash-pill-success">{r.closed}</span> : <span style={{ color: 'var(--text-3)' }}>—</span>}
+                  </td>
+                  <td
+                    style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 11, color: 'var(--text-2)' }}
+                    title={r.last_assigned_at ? fmtFullStamp(r.last_assigned_at) : 'No leads in this file have been assigned yet'}
+                  >
+                    {fmtShortDate(r.last_assigned_at) || <span style={{ color: 'var(--text-3)' }}>—</span>}
                   </td>
                 </tr>
               ))}

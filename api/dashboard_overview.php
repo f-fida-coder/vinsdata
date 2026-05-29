@@ -169,6 +169,9 @@ $fileRows = $db->query(
             SUM(CASE WHEN s.status     = 'interested'  THEN 1 ELSE 0 END) AS interested,
             SUM(CASE WHEN s.lead_temperature = 'hot'   THEN 1 ELSE 0 END) AS hot,
             SUM(CASE WHEN s.status     = 'deal_closed' THEN 1 ELSE 0 END) AS closed,
+            -- Most recent assignment activity in this file. Uses the
+            -- assigned-row updated_at so admins can spot stale files.
+            MAX(CASE WHEN s.assigned_user_id IS NOT NULL THEN s.updated_at END) AS last_assigned_at,
             MAX(b.imported_at) AS last_imported_at
        FROM files f
        JOIN vehicles v                  ON v.id = f.vehicle_id
@@ -219,6 +222,7 @@ $byFile = array_map(function ($r) {
         'hot'                  => (int) $r['hot'],
         'closed'               => (int) $r['closed'],
         'assigned_pct'         => $withPhone > 0 ? round(($assignedWithPhone / $withPhone) * 100) : 0,
+        'last_assigned_at'     => $r['last_assigned_at'],
         'last_imported_at'     => $r['last_imported_at'],
     ];
 }, $fileRows);
