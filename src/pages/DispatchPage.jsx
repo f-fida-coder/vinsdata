@@ -170,6 +170,163 @@ function TransporterPanel({ transporters, onChanged }) {
   );
 }
 
+// Communication log + inline quick-SMS sender. Lives inside the
+// dispatch side panel. Reads /api/transport_notify history (the same
+// endpoint the Notify modal uses), and POSTs a single-channel send
+// directly when the operator types in the inline textarea + clicks
+// Send text. Failures bubble inline so the operator sees them next
+// to the textarea.
+function TransportCommSection({ transportId, assignedTransporter, refreshKey }) {
+  const [history, setHistory]     = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [smsBody, setSmsBody]     = useState('');
+  const [sending, setSending]     = useState(false);
+  const [sendError, setSendError] = useState('');
+  const [sendInfo,  setSendInfo]  = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/transport_notify', { params: { transport_id: transportId } });
+      setHistory(Array.isArray(res.data) ? res.data : []);
+    } catch {
+      /* nice-to-have, ignore */
+    } finally {
+      setLoading(false);
+    }
+  }, [transportId]);
+
+  // Reload on mount, on transport switch, and after the parent's
+  // auto-notification banner fires (refreshKey changes).
+  useEffect(() => { load(); }, [load, refreshKey]);
+
+  const sendText = async () => {
+    if (!assignedTransporter) {
+      setSendError('Assign a transporter first.');
+      return;
+    }
+    if (!assignedTransporter.phone) {
+      setSendError(`${assignedTransporter.name} has no phone on file.`);
+      return;
+    }
+    const trimmed = smsBody.trim();
+    if (!trimmed) {
+      setSendError('Type a message before sending.');
+      return;
+    }
+    setSending(true); setSendError(''); setSendInfo('');
+    try {
+      const res = await api.post('/transport_notify', {
+        transport_id:    transportId,
+        transporter_ids: [assignedTransporter.id],
+        channel:         'sms',
+        body:            trimmed,
+      });
+      const sentCount = res.data?.sent ?? 0;
+      const attempted = res.data?.attempted ?? 0;
+      if (sentCount > 0) {
+        setSendInfo(`Text sent (${sentCount}/${attempted}).`);
+        setSmsBody('');
+      } else {
+        const fr = res.data?.results?.[0]?.error || 'send failed';
+        setSendError(fr);
+      }
+      load();
+    } catch (err) {
+      setSendError(extractApiError(err, 'Failed to send text'));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const fmtTime = (s) => {
+    if (!s) return '';
+    const d = new Date(String(s).replace(' ', 'T'));
+    if (Number.isNaN(d.getTime())) return s;
+    const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
+    if (diffSec < 60) return 'just now';
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+    if (diffSec < 86400 * 7) return `${Math.floor(diffSec / 86400)}d ago`;
+    return d.toLocaleDateString();
+  };
+
+  const recent = history.slice(0, 8);
+
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+      <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+          Communication
+        </div>
+        <div className="text-[10px] text-gray-400">
+          {loading ? 'loading…' : history.length === 0 ? 'no sends yet' : `${history.length} total`}
+        </div>
+      </div>
+
+      {/* History list */}
+      {!loading && recent.length > 0 && (
+        <ul className="divide-y divide-gray-100 max-h-44 overflow-y-auto">
+          {recent.map((h) => (
+            <li key={h.id} className="px-3 py-1.5 text-[11px]">
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                    h.status === 'sent'   ? 'bg-emerald-50 text-emerald-700'
+                    : h.status === 'failed' ? 'bg-red-50 text-red-700'
+                    : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {h.status === 'sent' ? '✓' : h.status === 'failed' ? '✗' : '•'} {h.channel.toUpperCase()}
+                </span>
+                <span className="text-gray-700 truncate font-medium">{h.transporter_name || 'Unknown'}</span>
+                <span className="text-gray-300 ml-auto whitespace-nowrap">{fmtTime(h.sent_at)}</span>
+              </div>
+              {h.recipient && (
+                <div className="text-[10px] text-gray-500 truncate mt-0.5 ml-[1px]">→ {h.recipient}</div>
+              )}
+              {h.error_message && (
+                <div className="text-[10px] text-red-600 truncate mt-0.5" title={h.error_message}>
+                  {h.error_message}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Inline quick-SMS sender */}
+      <div className="border-t border-gray-100 px-3 py-2.5 bg-gray-50/40 space-y-1.5">
+        <div className="text-[10px] text-gray-500">
+          {assignedTransporter
+            ? <>Send text to <b>{assignedTransporter.name}</b>{assignedTransporter.phone ? ` (${assignedTransporter.phone})` : ' — no phone on file'}</>
+            : <span className="text-gray-400 italic">Assign a transporter to enable quick-text.</span>}
+        </div>
+        <textarea
+          rows={2}
+          value={smsBody}
+          onChange={(e) => setSmsBody(e.target.value)}
+          placeholder="Quick text — e.g. Confirming pickup tomorrow 9 AM, please confirm."
+          disabled={!assignedTransporter?.phone || sending}
+          className="w-full bg-white border border-gray-200 rounded-md px-2 py-1.5 text-xs disabled:bg-gray-50 disabled:text-gray-400"
+        />
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-gray-400">{smsBody.length} chars</span>
+          {sendError && <span className="text-[10px] text-red-600 truncate" title={sendError}>{sendError}</span>}
+          {sendInfo  && <span className="text-[10px] text-emerald-700">{sendInfo}</span>}
+          <button
+            onClick={sendText}
+            disabled={sending || !assignedTransporter?.phone || !smsBody.trim()}
+            className="ml-auto px-3 py-1 text-[11px] font-semibold text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {sending ? 'Sending…' : 'Send text'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EventSidePanel({ event, transporters, onClose, onChanged }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving]   = useState(false);
@@ -315,6 +472,20 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
               </select>
               <textarea rows={2} placeholder="Notes" className={inputCls} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
             </div>
+          )}
+
+          {/* Communication log + quick SMS send. Pinned inside the
+              side panel (not behind a modal) so the operator can
+              glance at past sends and shoot a quick text without
+              clicking through. The full Notify modal is still
+              available via the footer button for multi-channel or
+              multi-recipient blasts. */}
+          {event.id && (
+            <TransportCommSection
+              transportId={event.id}
+              assignedTransporter={transporters.find((t) => t.id === event.assigned_transporter_id) || null}
+              refreshKey={autoNotice ? Date.now() : 0}
+            />
           )}
 
           {error && <p className="text-xs text-red-600">{error}</p>}
