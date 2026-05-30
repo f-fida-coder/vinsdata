@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -170,16 +170,93 @@ function TransporterPanel({ transporters, onChanged }) {
   );
 }
 
-// Communication log + inline quick-SMS sender. Lives inside the
-// dispatch side panel. Reads /api/transport_notify history (the same
-// endpoint the Notify modal uses), and POSTs a single-channel send
-// directly when the operator types in the inline textarea + clicks
-// Send text. Failures bubble inline so the operator sees them next
-// to the textarea.
-function TransportCommSection({ transportId, assignedTransporter, refreshKey }) {
+// Compact address renderer with a map-pin link to Google Maps. The
+// pin sits inline-block to the right so it doesn't break the
+// whitespace-pre-wrap formatting of multi-line addresses. No API key
+// or embed — just google.com/maps?q=<encoded> opens in a new tab.
+function AddressWithMap({ address }) {
+  return (
+    <span>
+      <span className="whitespace-pre-wrap">{address}</span>
+      <a
+        href={`https://www.google.com/maps?q=${encodeURIComponent(address)}`}
+        target="_blank"
+        rel="noreferrer"
+        title="Open in Google Maps"
+        className="ml-1.5 text-blue-600 hover:text-blue-800 no-underline"
+      >
+        📍
+      </a>
+    </span>
+  );
+}
+
+// Pre-written message templates the operator can drop into the comm
+// section without retyping the same boilerplate. Variables in the
+// {{name}} form are filled from the dispatch row (vehicle, pickup,
+// delivery, date, time). Unused variables stay as literal "{{var}}"
+// so the operator knows what to fill in by hand.
+//
+// SMS templates aim for ~160 chars (single GSM-7 segment); email
+// templates can be longer and may set a subject.
+const TRANSPORT_TEMPLATES = [
+  {
+    key:     'pickup_confirm',
+    label:   '✅ Confirm pickup',
+    subject: 'Pickup confirmed — {{vehicle}}',
+    body:    'Hi, confirming pickup of {{vehicle}} on {{date}}{{time_clause}}. Pickup at: {{pickup}}. Please reply to confirm. Thanks!',
+  },
+  {
+    key:     'on_the_way',
+    label:   '🚛 On the way',
+    subject: 'On the way — {{vehicle}}',
+    body:    'On my way to pick up the {{vehicle}}. ETA shortly — will text on arrival.',
+  },
+  {
+    key:     'vehicle_ready',
+    label:   '🔑 Vehicle ready',
+    subject: 'Vehicle ready — {{vehicle}}',
+    body:    'The {{vehicle}} is ready for pickup at {{pickup}}. Let me know when you\'re on the way.',
+  },
+  {
+    key:     'reschedule',
+    label:   '🔁 Need to reschedule',
+    subject: 'Reschedule needed — {{vehicle}}',
+    body:    'Need to reschedule the {{vehicle}} pickup originally set for {{date}}{{time_clause}}. Please reply with a new time that works.',
+  },
+  {
+    key:     'delivered',
+    label:   '📦 Delivered',
+    subject: 'Delivered — {{vehicle}}',
+    body:    'The {{vehicle}} has been delivered to {{delivery}}. Please reply to confirm receipt. Thank you.',
+  },
+];
+
+function renderTransportTemplate(template, event) {
+  const vehicle  = event?.vehicle_info || 'the vehicle';
+  const pickup   = event?.pickup_location   || '{{pickup}}';
+  const delivery = event?.delivery_location || '{{delivery}}';
+  const date     = event?.transport_date    || '{{date}}';
+  // Build "at HH:MM" / "(window)" if either is set, else empty so the
+  // sentence reads cleanly with no awkward placeholders.
+  let timeClause = '';
+  if (event?.transport_time) timeClause += ` at ${event.transport_time}`;
+  if (event?.time_window)    timeClause += ` (${event.time_window})`;
+  const vars = { vehicle, pickup, delivery, date, time_clause: timeClause };
+  const sub = (s) => String(s || '').replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (m, k) => vars[k.toLowerCase()] ?? m);
+  return { subject: sub(template.subject), body: sub(template.body) };
+}
+
+// Communication log + inline quick-send (SMS or Email). Lives inside
+// the dispatch side panel. Reads /api/transport_notify history (the
+// same endpoint the Notify modal uses), and POSTs a single-channel
+// single-recipient send. Failures bubble inline.
+function TransportCommSection({ transportId, assignedTransporter, refreshKey, event }) {
   const [history, setHistory]     = useState([]);
   const [loading, setLoading]     = useState(true);
-  const [smsBody, setSmsBody]     = useState('');
+  const [channel, setChannel]     = useState('sms'); // sms | email
+  const [subject, setSubject]     = useState('');
+  const [body, setBody]           = useState('');
   const [sending, setSending]     = useState(false);
   const [sendError, setSendError] = useState('');
   const [sendInfo,  setSendInfo]  = useState('');
@@ -200,40 +277,57 @@ function TransportCommSection({ transportId, assignedTransporter, refreshKey }) 
   // auto-notification banner fires (refreshKey changes).
   useEffect(() => { load(); }, [load, refreshKey]);
 
-  const sendText = async () => {
+  // Reachability check per channel — used to disable Send + show why.
+  const reachableOn = (ch) =>
+    !!assignedTransporter && (ch === 'sms' ? !!assignedTransporter.phone : !!assignedTransporter.email);
+
+  // Apply a template into the channel-appropriate fields. Subject is
+  // only used for email; on SMS we drop it.
+  const applyTemplate = (key) => {
+    const t = TRANSPORT_TEMPLATES.find((x) => x.key === key);
+    if (!t) return;
+    const r = renderTransportTemplate(t, event);
+    setBody(r.body);
+    if (channel === 'email') setSubject(r.subject);
+  };
+
+  const send = async () => {
     if (!assignedTransporter) {
       setSendError('Assign a transporter first.');
       return;
     }
-    if (!assignedTransporter.phone) {
-      setSendError(`${assignedTransporter.name} has no phone on file.`);
+    if (!reachableOn(channel)) {
+      setSendError(`${assignedTransporter.name} has no ${channel === 'sms' ? 'phone' : 'email'} on file.`);
       return;
     }
-    const trimmed = smsBody.trim();
+    const trimmed = body.trim();
     if (!trimmed) {
       setSendError('Type a message before sending.');
       return;
     }
     setSending(true); setSendError(''); setSendInfo('');
     try {
-      const res = await api.post('/transport_notify', {
+      const payload = {
         transport_id:    transportId,
         transporter_ids: [assignedTransporter.id],
-        channel:         'sms',
+        channel,
         body:            trimmed,
-      });
+      };
+      if (channel === 'email' && subject.trim()) payload.subject = subject.trim();
+      const res = await api.post('/transport_notify', payload);
       const sentCount = res.data?.sent ?? 0;
       const attempted = res.data?.attempted ?? 0;
       if (sentCount > 0) {
-        setSendInfo(`Text sent (${sentCount}/${attempted}).`);
-        setSmsBody('');
+        setSendInfo(`${channel === 'sms' ? 'Text' : 'Email'} sent (${sentCount}/${attempted}).`);
+        setBody('');
+        if (channel === 'email') setSubject('');
       } else {
         const fr = res.data?.results?.[0]?.error || 'send failed';
         setSendError(fr);
       }
       load();
     } catch (err) {
-      setSendError(extractApiError(err, 'Failed to send text'));
+      setSendError(extractApiError(err, 'Failed to send'));
     } finally {
       setSending(false);
     }
@@ -295,31 +389,90 @@ function TransportCommSection({ transportId, assignedTransporter, refreshKey }) 
         </ul>
       )}
 
-      {/* Inline quick-SMS sender */}
-      <div className="border-t border-gray-100 px-3 py-2.5 bg-gray-50/40 space-y-1.5">
-        <div className="text-[10px] text-gray-500">
-          {assignedTransporter
-            ? <>Send text to <b>{assignedTransporter.name}</b>{assignedTransporter.phone ? ` (${assignedTransporter.phone})` : ' — no phone on file'}</>
-            : <span className="text-gray-400 italic">Assign a transporter to enable quick-text.</span>}
+      {/* Inline quick-send (SMS or Email) */}
+      <div className="border-t border-gray-100 px-3 py-2.5 bg-gray-50/40 space-y-2">
+        {/* Channel toggle. Both buttons render so the operator can see
+            which methods are even possible, but each disables when the
+            transporter doesn't have the corresponding contact info. */}
+        <div className="flex items-center gap-1.5">
+          {['sms', 'email'].map((c) => {
+            const ok = reachableOn(c);
+            const active = channel === c;
+            return (
+              <button
+                key={c}
+                onClick={() => { setChannel(c); setSendError(''); setSendInfo(''); }}
+                disabled={!ok}
+                title={!ok && assignedTransporter ? `${assignedTransporter.name} has no ${c === 'sms' ? 'phone' : 'email'} on file` : undefined}
+                className={`px-2 py-1 text-[11px] font-semibold rounded-md border transition ${
+                  active
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : ok
+                      ? 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                      : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                }`}
+              >
+                {c === 'sms' ? '✆ Text' : '✉ Email'}
+              </button>
+            );
+          })}
+          <div className="text-[10px] text-gray-500 ml-auto truncate min-w-0">
+            {assignedTransporter ? (
+              <>To <b>{assignedTransporter.name}</b>
+                {channel === 'sms'
+                  ? (assignedTransporter.phone ? ` · ${assignedTransporter.phone}` : '')
+                  : (assignedTransporter.email ? ` · ${assignedTransporter.email}` : '')}
+              </>
+            ) : <span className="text-gray-400 italic">Assign a transporter to enable.</span>}
+          </div>
         </div>
+
+        {/* Template picker — pre-fills body (and subject on email). */}
+        {assignedTransporter && (
+          <select
+            value=""
+            onChange={(e) => { applyTemplate(e.target.value); e.target.value = ''; }}
+            className="w-full bg-white border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-700"
+          >
+            <option value="">Use a template…</option>
+            {TRANSPORT_TEMPLATES.map((t) => (
+              <option key={t.key} value={t.key}>{t.label}</option>
+            ))}
+          </select>
+        )}
+
+        {/* Subject (email only) */}
+        {channel === 'email' && (
+          <input
+            type="text"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder="Subject (optional — defaults to vehicle + VIN)"
+            disabled={!reachableOn('email') || sending}
+            className="w-full bg-white border border-gray-200 rounded-md px-2 py-1.5 text-xs disabled:bg-gray-50 disabled:text-gray-400"
+          />
+        )}
+
         <textarea
-          rows={2}
-          value={smsBody}
-          onChange={(e) => setSmsBody(e.target.value)}
-          placeholder="Quick text — e.g. Confirming pickup tomorrow 9 AM, please confirm."
-          disabled={!assignedTransporter?.phone || sending}
+          rows={channel === 'email' ? 4 : 2}
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          placeholder={channel === 'sms'
+            ? 'Quick text — e.g. Confirming pickup tomorrow 9 AM, please confirm.'
+            : 'Email body — leave blank to use the default with vehicle + pickup + delivery + time.'}
+          disabled={!reachableOn(channel) || sending}
           className="w-full bg-white border border-gray-200 rounded-md px-2 py-1.5 text-xs disabled:bg-gray-50 disabled:text-gray-400"
         />
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-gray-400">{smsBody.length} chars</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] text-gray-400">{body.length} chars</span>
           {sendError && <span className="text-[10px] text-red-600 truncate" title={sendError}>{sendError}</span>}
           {sendInfo  && <span className="text-[10px] text-emerald-700">{sendInfo}</span>}
           <button
-            onClick={sendText}
-            disabled={sending || !assignedTransporter?.phone || !smsBody.trim()}
+            onClick={send}
+            disabled={sending || !reachableOn(channel) || !body.trim()}
             className="ml-auto px-3 py-1 text-[11px] font-semibold text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {sending ? 'Sending…' : 'Send text'}
+            {sending ? 'Sending…' : (channel === 'sms' ? 'Send text' : 'Send email')}
           </button>
         </div>
       </div>
@@ -368,7 +521,13 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
   };
 
   const setStatusQuick = async (status) => {
-    setSaving(true);
+    if (status === event.status) return;
+    // Cancellation is destructive enough that operators should confirm
+    // — once cancelled the row is hidden from active calendar views.
+    if (status === 'cancelled' && !window.confirm('Mark this dispatch as cancelled? You can still edit it afterwards, but it will be hidden from active views.')) {
+      return;
+    }
+    setSaving(true); setError('');
     try {
       await api.put('/lead_transport', { lead_id: event.lead_id, status });
       onChanged?.();
@@ -430,17 +589,59 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
             </div>
           )}
 
-          <div className="flex flex-wrap gap-1.5">
-            {TRANSPORT_STATUSES.map((s) => (
+          {/* Dispatch status workflow. Renders the linear forward flow
+              (new → notified → assigned → in_transit → delivered) as
+              connected pills with the current step highlighted +
+              previous steps shown as completed. Cancelled lives off to
+              the side with its own confirm. Each pill is clickable so
+              the operator can jump to any state — there's no enforced
+              forward-only progression, just visual sugar. */}
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Dispatch status</div>
+            <div className="flex items-center gap-0">
+              {(() => {
+                const flow = TRANSPORT_STATUSES.filter((s) => s.key !== 'cancelled');
+                const currentIdx = flow.findIndex((s) => s.key === event.status);
+                return flow.map((s, idx) => {
+                  const isCurrent  = event.status === s.key;
+                  const isPast     = currentIdx >= 0 && idx < currentIdx;
+                  const isFuture   = currentIdx >= 0 && idx > currentIdx;
+                  return (
+                    <Fragment key={s.key}>
+                      <button
+                        onClick={() => setStatusQuick(s.key)}
+                        disabled={saving}
+                        className={`px-2 py-1 text-[11px] font-medium rounded-md border transition whitespace-nowrap ${
+                          isCurrent  ? `${s.bg} ${s.text} border-transparent shadow-sm` :
+                          isPast     ? 'bg-emerald-50 text-emerald-700 border-transparent' :
+                          isFuture   ? 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-800' :
+                                       'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                        }`}
+                        title={isCurrent ? `Currently ${s.label}` : `Set to ${s.label}`}
+                      >
+                        {isPast && '✓ '}{s.label}
+                      </button>
+                      {idx < flow.length - 1 && (
+                        <span className={`mx-1 text-[10px] ${isPast || isCurrent ? 'text-emerald-500' : 'text-gray-300'}`}>→</span>
+                      )}
+                    </Fragment>
+                  );
+                });
+              })()}
+              <span className="mx-1.5 text-[10px] text-gray-300">·</span>
               <button
-                key={s.key}
-                onClick={() => setStatusQuick(s.key)}
-                disabled={saving || event.status === s.key}
-                className={`px-2 py-1 text-[11px] font-medium rounded-md border transition ${event.status === s.key ? `${s.bg} ${s.text} border-transparent` : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                onClick={() => setStatusQuick('cancelled')}
+                disabled={saving || event.status === 'cancelled'}
+                className={`px-2 py-1 text-[11px] font-medium rounded-md border transition ${
+                  event.status === 'cancelled'
+                    ? 'bg-rose-50 text-rose-700 border-transparent shadow-sm'
+                    : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'
+                }`}
+                title="Cancel this dispatch"
               >
-                {s.label}
+                ✕ Cancel
               </button>
-            ))}
+            </div>
           </div>
 
           {!editing ? (
@@ -448,10 +649,43 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
               <table className="w-full text-xs">
                 <tbody>
                   <tr><td className="px-3 py-1.5 font-medium text-gray-600 w-2/5">Date</td><td className="px-3 py-1.5 text-gray-900">{event.transport_date}{event.transport_time ? ` at ${event.transport_time}` : ''}{event.time_window ? ` (${event.time_window})` : ''}</td></tr>
-                  <tr className="bg-gray-50/40"><td className="px-3 py-1.5 font-medium text-gray-600">Pickup</td><td className="px-3 py-1.5 text-gray-900 whitespace-pre-wrap">{event.pickup_location || '—'}</td></tr>
-                  <tr><td className="px-3 py-1.5 font-medium text-gray-600">Delivery</td><td className="px-3 py-1.5 text-gray-900 whitespace-pre-wrap">{event.delivery_location || '—'}</td></tr>
+                  <tr className="bg-gray-50/40">
+                    <td className="px-3 py-1.5 font-medium text-gray-600">Pickup</td>
+                    <td className="px-3 py-1.5 text-gray-900 whitespace-pre-wrap">
+                      {event.pickup_location
+                        ? <AddressWithMap address={event.pickup_location}/>
+                        : '—'}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-3 py-1.5 font-medium text-gray-600">Delivery</td>
+                    <td className="px-3 py-1.5 text-gray-900 whitespace-pre-wrap">
+                      {event.delivery_location
+                        ? <AddressWithMap address={event.delivery_location}/>
+                        : '—'}
+                    </td>
+                  </tr>
                   <tr className="bg-gray-50/40"><td className="px-3 py-1.5 font-medium text-gray-600">Vehicle</td><td className="px-3 py-1.5 text-gray-900">{event.vehicle_info || '—'}</td></tr>
                   <tr><td className="px-3 py-1.5 font-medium text-gray-600">Transporter</td><td className="px-3 py-1.5 text-gray-900">{event.transporter_name || <span className="text-gray-400">Unassigned</span>}</td></tr>
+                  {/* If both pickup + delivery are set, surface a single
+                      "Directions" link that opens the route in Google
+                      Maps so the operator can eyeball mileage / time. */}
+                  {event.pickup_location && event.delivery_location && (
+                    <tr className="bg-gray-50/40">
+                      <td className="px-3 py-1.5 font-medium text-gray-600">Route</td>
+                      <td className="px-3 py-1.5 text-gray-900">
+                        <a
+                          href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(event.pickup_location)}&destination=${encodeURIComponent(event.delivery_location)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
+                          title="Open driving directions in Google Maps"
+                        >
+                          🗺 Directions →
+                        </a>
+                      </td>
+                    </tr>
+                  )}
                   {event.notes && <tr className="bg-gray-50/40"><td className="px-3 py-1.5 font-medium text-gray-600">Notes</td><td className="px-3 py-1.5 text-gray-900 whitespace-pre-wrap">{event.notes}</td></tr>}
                 </tbody>
               </table>
@@ -485,6 +719,7 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
               transportId={event.id}
               assignedTransporter={transporters.find((t) => t.id === event.assigned_transporter_id) || null}
               refreshKey={autoNotice ? Date.now() : 0}
+              event={event}
             />
           )}
 
