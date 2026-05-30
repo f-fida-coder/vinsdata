@@ -13,7 +13,11 @@
 // neither caller has to know.
 
 require_once __DIR__ . '/pipeline.php';
-require_once __DIR__ . '/marketing_send.php';   // sendEmailViaSendGrid (Gmail SMTP fallback)
+// Email send (Gmail SMTP fallback) — pure-functions file only. Pulling
+// marketing_send.php here used to fire its top-level request handler
+// (requireAuth + pipelineFail(405) for non-POST) and 405 the calling
+// endpoint, which is what broke /api/lead_transport saves on dispatch.
+require_once __DIR__ . '/marketing_email_helpers.php';
 require_once __DIR__ . '/outbound_helpers.php'; // dispatchOpenPhoneJob
 
 if (!function_exists('buildDefaultTransportSubject')) {
