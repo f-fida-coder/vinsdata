@@ -2,7 +2,11 @@
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/pipeline.php';
-require_once __DIR__ . '/marketing_send.php';
+// Pure email-send helpers — NOT marketing_send.php (which is a
+// request handler that 405s any non-POST during the require, see
+// the dispatch 405 fix commit). transport_notify_helpers also pulls
+// these in for the auto-notify-on-first-assign path.
+require_once __DIR__ . '/marketing_email_helpers.php';
 require_once __DIR__ . '/outbound_helpers.php';
 require_once __DIR__ . '/transport_notify_helpers.php';
 initSession();
