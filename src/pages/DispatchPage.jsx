@@ -871,7 +871,12 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
               })()}
             </div>
             <div className="text-[10px] text-gray-500 mb-2">Click any step below to change status — no Edit mode needed.</div>
-            <div className="flex items-center gap-0">
+            {/* Forward flow on its own row, can wrap if needed on
+                narrow screens (the side panel is 460px). Cancel lives
+                on a separate row below, right-aligned, visually set
+                apart so the destructive action doesn't sit jammed up
+                against the normal progression. */}
+            <div className="flex items-center gap-0 flex-wrap">
               {(() => {
                 const flow = TRANSPORT_STATUSES.filter((s) => s.key !== 'cancelled');
                 const currentIdx = flow.findIndex((s) => s.key === event.status);
@@ -901,18 +906,22 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
                   );
                 });
               })()}
-              <span className="mx-1.5 text-[10px] text-gray-300">·</span>
+            </div>
+            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200/70">
+              <span className="text-[10px] text-gray-400">
+                {event.status === 'cancelled' ? 'This dispatch is cancelled.' : 'Not going through?'}
+              </span>
               <button
                 onClick={() => setStatusQuick('cancelled')}
                 disabled={saving || event.status === 'cancelled'}
-                className={`px-2 py-1 text-[11px] font-medium rounded-md border transition ${
+                className={`px-2.5 py-1 text-[11px] font-semibold rounded-md border transition ${
                   event.status === 'cancelled'
-                    ? 'bg-rose-50 text-rose-700 border-transparent shadow-sm'
-                    : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'
+                    ? 'bg-rose-100 text-rose-800 border-transparent shadow-sm'
+                    : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300'
                 }`}
                 title="Cancel this dispatch"
               >
-                ✕ Cancel
+                ✕ Cancel dispatch
               </button>
             </div>
           </div>
