@@ -248,13 +248,24 @@ function renderTransportTemplate(template, event) {
 }
 
 // Communication log + inline quick-send (SMS or Email). Lives inside
-// the dispatch side panel. Reads /api/transport_notify history (the
-// same endpoint the Notify modal uses), and POSTs a single-channel
-// single-recipient send. Failures bubble inline.
-function TransportCommSection({ transportId, assignedTransporter, refreshKey, event }) {
-  const [history, setHistory]     = useState([]);
+// the dispatch side panel. Reads notification history (transporter
+// side from /api/transport_notify, customer side from /api/lead_send),
+// merges the two streams, and POSTs the chosen channel to the chosen
+// recipient(s). Failures bubble inline.
+function TransportCommSection({ transportId, leadId, assignedTransporter, customerName, customerPhone, customerEmail, refreshKey, event }) {
+  // History is now the union of two streams (transporter notifications
+  // + customer outbound jobs). We merge + sort by timestamp so the
+  // operator sees one chronological feed.
+  const [transporterHistory, setTransporterHistory] = useState([]);
+  const [customerHistory,    setCustomerHistory]    = useState([]);
   const [loading, setLoading]     = useState(true);
   const [channel, setChannel]     = useState('sms'); // sms | email
+  // Recipient targeting. Defaults to transporter only on first load —
+  // the operator usually pings the transporter first ("on the way",
+  // pickup confirm) and only loops the customer in for delivered or
+  // reschedule notes. Both can be toggled on for a single dual-send.
+  const [toTransporter, setToTransporter] = useState(true);
+  const [toCustomer,    setToCustomer]    = useState(false);
   const [subject, setSubject]     = useState('');
   const [body, setBody]           = useState('');
   const [sending, setSending]     = useState(false);
@@ -264,22 +275,29 @@ function TransportCommSection({ transportId, assignedTransporter, refreshKey, ev
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/transport_notify', { params: { transport_id: transportId } });
-      setHistory(Array.isArray(res.data) ? res.data : []);
-    } catch {
-      /* nice-to-have, ignore */
+      // Pull both streams in parallel. Failures on either side are
+      // non-blocking — operator still sees what we have.
+      const [trans, lead] = await Promise.allSettled([
+        api.get('/transport_notify', { params: { transport_id: transportId } }),
+        leadId ? api.get('/lead_send', { params: { lead_id: leadId } }) : Promise.resolve({ value: { data: { jobs: [] } } }),
+      ]);
+      setTransporterHistory(trans.status === 'fulfilled' && Array.isArray(trans.value.data) ? trans.value.data : []);
+      setCustomerHistory(lead.status === 'fulfilled' ? (lead.value.data?.jobs || []) : []);
     } finally {
       setLoading(false);
     }
-  }, [transportId]);
+  }, [transportId, leadId]);
 
   // Reload on mount, on transport switch, and after the parent's
   // auto-notification banner fires (refreshKey changes).
   useEffect(() => { load(); }, [load, refreshKey]);
 
-  // Reachability check per channel — used to disable Send + show why.
-  const reachableOn = (ch) =>
+  // Reachability per recipient × channel. Operator can't pick a
+  // recipient who has no contact on the chosen channel.
+  const transporterReachable = (ch) =>
     !!assignedTransporter && (ch === 'sms' ? !!assignedTransporter.phone : !!assignedTransporter.email);
+  const customerReachable = (ch) =>
+    ch === 'sms' ? !!customerPhone : !!customerEmail;
 
   // Apply a template into the channel-appropriate fields. Subject is
   // only used for email; on SMS we drop it.
@@ -292,12 +310,23 @@ function TransportCommSection({ transportId, assignedTransporter, refreshKey, ev
   };
 
   const send = async () => {
-    if (!assignedTransporter) {
-      setSendError('Assign a transporter first.');
+    // Validate at least one recipient is picked and reachable on the
+    // chosen channel. We don't auto-fall-through to a different
+    // channel — operator picked SMS, we send SMS.
+    if (!toTransporter && !toCustomer) {
+      setSendError('Pick at least one recipient (Transporter / Customer).');
       return;
     }
-    if (!reachableOn(channel)) {
+    if (toTransporter && !assignedTransporter) {
+      setSendError('No transporter assigned — uncheck Transporter or assign one first.');
+      return;
+    }
+    if (toTransporter && !transporterReachable(channel)) {
       setSendError(`${assignedTransporter.name} has no ${channel === 'sms' ? 'phone' : 'email'} on file.`);
+      return;
+    }
+    if (toCustomer && !customerReachable(channel)) {
+      setSendError(`Customer has no ${channel === 'sms' ? 'phone' : 'email'} on file.`);
       return;
     }
     const trimmed = body.trim();
@@ -305,25 +334,70 @@ function TransportCommSection({ transportId, assignedTransporter, refreshKey, ev
       setSendError('Type a message before sending.');
       return;
     }
+
     setSending(true); setSendError(''); setSendInfo('');
-    try {
-      const payload = {
+
+    // Build the two send calls. Both routes go to OpenPhone (SMS) or
+    // Gmail SMTP (email) under the hood — different audit tables
+    // (transport_notifications vs outbound_jobs) but same delivery.
+    const calls = [];
+    if (toTransporter) {
+      const p = {
         transport_id:    transportId,
         transporter_ids: [assignedTransporter.id],
         channel,
         body:            trimmed,
       };
-      if (channel === 'email' && subject.trim()) payload.subject = subject.trim();
-      const res = await api.post('/transport_notify', payload);
-      const sentCount = res.data?.sent ?? 0;
-      const attempted = res.data?.attempted ?? 0;
-      if (sentCount > 0) {
-        setSendInfo(`${channel === 'sms' ? 'Text' : 'Email'} sent (${sentCount}/${attempted}).`);
+      if (channel === 'email' && subject.trim()) p.subject = subject.trim();
+      calls.push({ who: 'transporter', promise: api.post('/transport_notify', p) });
+    }
+    if (toCustomer) {
+      const p = {
+        lead_id: leadId,
+        kind:    channel,
+        to:      channel === 'sms' ? customerPhone : customerEmail,
+        body:    trimmed,
+      };
+      if (channel === 'email' && subject.trim()) p.subject = subject.trim();
+      calls.push({ who: 'customer', promise: api.post('/lead_send', p) });
+    }
+
+    try {
+      const results = await Promise.allSettled(calls.map((c) => c.promise));
+      const lines = [];
+      let anySent = false;
+      let anyFailed = false;
+      results.forEach((r, i) => {
+        const who = calls[i].who;
+        if (r.status === 'fulfilled') {
+          // transport_notify shape: { sent, attempted, results: [...] }
+          // lead_send shape: { success, job:{ status, fail_reason }, ... }
+          if (who === 'transporter') {
+            const sentCount = r.value.data?.sent ?? 0;
+            if (sentCount > 0) { anySent = true; lines.push(`Transporter ✓`); }
+            else { anyFailed = true; lines.push(`Transporter ✗ ${r.value.data?.results?.[0]?.error || 'failed'}`); }
+          } else {
+            const job = r.value.data?.job || r.value.data;
+            const ok  = (job?.status === 'sent' || r.value.data?.success);
+            if (ok) { anySent = true; lines.push(`Customer ✓`); }
+            else { anyFailed = true; lines.push(`Customer ✗ ${job?.fail_reason || 'failed'}`); }
+          }
+        } else {
+          anyFailed = true;
+          lines.push(`${who === 'transporter' ? 'Transporter' : 'Customer'} ✗ ${extractApiError(r.reason, 'failed')}`);
+        }
+      });
+
+      if (anySent && !anyFailed) {
+        setSendInfo(`${channel === 'sms' ? 'Text' : 'Email'} sent — ${lines.join(' · ')}`);
+        setBody('');
+        if (channel === 'email') setSubject('');
+      } else if (anySent && anyFailed) {
+        setSendInfo(`Partial — ${lines.join(' · ')}`);
         setBody('');
         if (channel === 'email') setSubject('');
       } else {
-        const fr = res.data?.results?.[0]?.error || 'send failed';
-        setSendError(fr);
+        setSendError(lines.join(' · '));
       }
       load();
     } catch (err) {
@@ -345,7 +419,37 @@ function TransportCommSection({ transportId, assignedTransporter, refreshKey, ev
     return d.toLocaleDateString();
   };
 
-  const recent = history.slice(0, 8);
+  // Normalize both streams onto one shape, tag each with "side" so
+  // the row badge can show TRANSPORTER vs CUSTOMER, and sort newest
+  // first by timestamp.
+  const mergedHistory = useMemo(() => {
+    const t = transporterHistory.map((h) => ({
+      key:       `t-${h.id}`,
+      side:      'transporter',
+      channel:   String(h.channel || '').toLowerCase(),
+      status:    h.status,
+      name:      h.transporter_name || 'Transporter',
+      recipient: h.recipient,
+      error:     h.error_message,
+      ts:        h.sent_at || h.created_at,
+    }));
+    const c = customerHistory.map((j) => ({
+      key:       `c-${j.id}`,
+      side:      'customer',
+      channel:   String(j.kind || '').toLowerCase(),
+      status:    j.status === 'sent' ? 'sent' : (j.status === 'failed' ? 'failed' : (j.status || 'pending')),
+      name:      customerName || 'Customer',
+      recipient: j.to_address,
+      error:     j.fail_reason,
+      ts:        j.sent_at || j.created_at,
+    }));
+    return [...t, ...c].sort((a, b) => {
+      const at = new Date(String(a.ts || '').replace(' ', 'T')).getTime() || 0;
+      const bt = new Date(String(b.ts || '').replace(' ', 'T')).getTime() || 0;
+      return bt - at;
+    });
+  }, [transporterHistory, customerHistory, customerName]);
+  const recent = mergedHistory.slice(0, 8);
 
   return (
     <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
@@ -354,15 +458,15 @@ function TransportCommSection({ transportId, assignedTransporter, refreshKey, ev
           Communication
         </div>
         <div className="text-[10px] text-gray-400">
-          {loading ? 'loading…' : history.length === 0 ? 'no sends yet' : `${history.length} total`}
+          {loading ? 'loading…' : mergedHistory.length === 0 ? 'no sends yet' : `${mergedHistory.length} total`}
         </div>
       </div>
 
-      {/* History list */}
+      {/* History list — merged transporter + customer streams. */}
       {!loading && recent.length > 0 && (
         <ul className="divide-y divide-gray-100 max-h-44 overflow-y-auto">
           {recent.map((h) => (
-            <li key={h.id} className="px-3 py-1.5 text-[11px]">
+            <li key={h.key} className="px-3 py-1.5 text-[11px]">
               <div className="flex items-center gap-1.5">
                 <span
                   className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${
@@ -371,17 +475,27 @@ function TransportCommSection({ transportId, assignedTransporter, refreshKey, ev
                     : 'bg-gray-100 text-gray-600'
                   }`}
                 >
-                  {h.status === 'sent' ? '✓' : h.status === 'failed' ? '✗' : '•'} {h.channel.toUpperCase()}
+                  {h.status === 'sent' ? '✓' : h.status === 'failed' ? '✗' : '•'} {(h.channel || '').toUpperCase()}
                 </span>
-                <span className="text-gray-700 truncate font-medium">{h.transporter_name || 'Unknown'}</span>
-                <span className="text-gray-300 ml-auto whitespace-nowrap">{fmtTime(h.sent_at)}</span>
+                <span
+                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                    h.side === 'customer'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'bg-purple-50 text-purple-700'
+                  }`}
+                  title={h.side === 'customer' ? 'Sent to customer (lead)' : 'Sent to transporter'}
+                >
+                  {h.side === 'customer' ? 'CUST' : 'TRANS'}
+                </span>
+                <span className="text-gray-700 truncate font-medium">{h.name}</span>
+                <span className="text-gray-300 ml-auto whitespace-nowrap">{fmtTime(h.ts)}</span>
               </div>
               {h.recipient && (
                 <div className="text-[10px] text-gray-500 truncate mt-0.5 ml-[1px]">→ {h.recipient}</div>
               )}
-              {h.error_message && (
-                <div className="text-[10px] text-red-600 truncate mt-0.5" title={h.error_message}>
-                  {h.error_message}
+              {h.error && (
+                <div className="text-[10px] text-red-600 truncate mt-0.5" title={h.error}>
+                  {h.error}
                 </div>
               )}
             </li>
@@ -389,57 +503,76 @@ function TransportCommSection({ transportId, assignedTransporter, refreshKey, ev
         </ul>
       )}
 
-      {/* Inline quick-send (SMS or Email) */}
+      {/* Inline quick-send (SMS or Email, to Transporter and/or Customer) */}
       <div className="border-t border-gray-100 px-3 py-2.5 bg-gray-50/40 space-y-2">
-        {/* Channel toggle. Both buttons render so the operator can see
-            which methods are even possible, but each disables when the
-            transporter doesn't have the corresponding contact info. */}
+        {/* Recipient toggles. Either or both can be selected; an active
+            recipient with no contact on the current channel surfaces a
+            tooltip explaining why send will be blocked. */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mr-1">To:</span>
+          {[
+            { key: 'transporter', label: 'Transporter', name: assignedTransporter?.name, on: toTransporter, set: setToTransporter,
+              reachable: assignedTransporter ? transporterReachable(channel) : false,
+              disabledReason: !assignedTransporter ? 'No transporter assigned' : (!transporterReachable(channel) ? `No ${channel === 'sms' ? 'phone' : 'email'} on file` : null) },
+            { key: 'customer',    label: 'Customer',    name: customerName,             on: toCustomer,    set: setToCustomer,
+              reachable: customerReachable(channel),
+              disabledReason: !customerReachable(channel) ? `Customer has no ${channel === 'sms' ? 'phone' : 'email'} on file` : null },
+          ].map((r) => {
+            const disabled = !!r.disabledReason;
+            return (
+              <button
+                key={r.key}
+                onClick={() => { if (!disabled) { r.set(!r.on); setSendError(''); setSendInfo(''); } }}
+                disabled={disabled}
+                title={r.disabledReason || `Send to ${r.name || r.label}`}
+                className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-md border transition ${
+                  r.on && !disabled
+                    ? (r.key === 'customer'
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-purple-600 text-white border-purple-600')
+                    : disabled
+                      ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                      : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                <span className="text-[9px]">{r.on && !disabled ? '✓' : '○'}</span>
+                {r.label}
+                {r.name && <span className="text-[9px] opacity-70 font-normal max-w-[80px] truncate">· {r.name}</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Channel toggle */}
         <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mr-1">Via:</span>
           {['sms', 'email'].map((c) => {
-            const ok = reachableOn(c);
             const active = channel === c;
             return (
               <button
                 key={c}
                 onClick={() => { setChannel(c); setSendError(''); setSendInfo(''); }}
-                disabled={!ok}
-                title={!ok && assignedTransporter ? `${assignedTransporter.name} has no ${c === 'sms' ? 'phone' : 'email'} on file` : undefined}
                 className={`px-2 py-1 text-[11px] font-semibold rounded-md border transition ${
-                  active
-                    ? 'bg-emerald-600 text-white border-emerald-600'
-                    : ok
-                      ? 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                      : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                  active ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
                 }`}
               >
                 {c === 'sms' ? '✆ Text' : '✉ Email'}
               </button>
             );
           })}
-          <div className="text-[10px] text-gray-500 ml-auto truncate min-w-0">
-            {assignedTransporter ? (
-              <>To <b>{assignedTransporter.name}</b>
-                {channel === 'sms'
-                  ? (assignedTransporter.phone ? ` · ${assignedTransporter.phone}` : '')
-                  : (assignedTransporter.email ? ` · ${assignedTransporter.email}` : '')}
-              </>
-            ) : <span className="text-gray-400 italic">Assign a transporter to enable.</span>}
-          </div>
         </div>
 
         {/* Template picker — pre-fills body (and subject on email). */}
-        {assignedTransporter && (
-          <select
-            value=""
-            onChange={(e) => { applyTemplate(e.target.value); e.target.value = ''; }}
-            className="w-full bg-white border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-700"
-          >
-            <option value="">Use a template…</option>
-            {TRANSPORT_TEMPLATES.map((t) => (
-              <option key={t.key} value={t.key}>{t.label}</option>
-            ))}
-          </select>
-        )}
+        <select
+          value=""
+          onChange={(e) => { applyTemplate(e.target.value); e.target.value = ''; }}
+          className="w-full bg-white border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-700"
+        >
+          <option value="">Use a template…</option>
+          {TRANSPORT_TEMPLATES.map((t) => (
+            <option key={t.key} value={t.key}>{t.label}</option>
+          ))}
+        </select>
 
         {/* Subject (email only) */}
         {channel === 'email' && (
@@ -448,7 +581,7 @@ function TransportCommSection({ transportId, assignedTransporter, refreshKey, ev
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             placeholder="Subject (optional — defaults to vehicle + VIN)"
-            disabled={!reachableOn('email') || sending}
+            disabled={sending}
             className="w-full bg-white border border-gray-200 rounded-md px-2 py-1.5 text-xs disabled:bg-gray-50 disabled:text-gray-400"
           />
         )}
@@ -460,7 +593,7 @@ function TransportCommSection({ transportId, assignedTransporter, refreshKey, ev
           placeholder={channel === 'sms'
             ? 'Quick text — e.g. Confirming pickup tomorrow 9 AM, please confirm.'
             : 'Email body — leave blank to use the default with vehicle + pickup + delivery + time.'}
-          disabled={!reachableOn(channel) || sending}
+          disabled={sending}
           className="w-full bg-white border border-gray-200 rounded-md px-2 py-1.5 text-xs disabled:bg-gray-50 disabled:text-gray-400"
         />
         <div className="flex items-center gap-2 flex-wrap">
@@ -469,10 +602,16 @@ function TransportCommSection({ transportId, assignedTransporter, refreshKey, ev
           {sendInfo  && <span className="text-[10px] text-emerald-700">{sendInfo}</span>}
           <button
             onClick={send}
-            disabled={sending || !reachableOn(channel) || !body.trim()}
+            disabled={sending || !body.trim() || (!toTransporter && !toCustomer)}
             className="ml-auto px-3 py-1 text-[11px] font-semibold text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {sending ? 'Sending…' : (channel === 'sms' ? 'Send text' : 'Send email')}
+            {sending
+              ? 'Sending…'
+              : (() => {
+                  const count = (toTransporter ? 1 : 0) + (toCustomer ? 1 : 0);
+                  const label = channel === 'sms' ? 'text' : 'email';
+                  return count > 1 ? `Send ${label} ×${count}` : `Send ${label}`;
+                })()}
           </button>
         </div>
       </div>
@@ -717,7 +856,11 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
           {event.id && (
             <TransportCommSection
               transportId={event.id}
+              leadId={event.lead_id}
               assignedTransporter={transporters.find((t) => t.id === event.assigned_transporter_id) || null}
+              customerName={event.lead_name}
+              customerPhone={event.lead_phone}
+              customerEmail={event.lead_email}
               refreshKey={autoNotice ? Date.now() : 0}
               event={event}
             />

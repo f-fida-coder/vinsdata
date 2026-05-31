@@ -79,6 +79,13 @@ $events = array_map(function ($r) {
 
     $startIso = $r['transport_date'];
     if ($r['transport_time']) $startIso .= 'T' . $r['transport_time'];
+    // Customer contact details — surfaced on the event so the dispatch
+    // event panel's inline send form can target the customer (lead)
+    // without an extra round-trip to /api/leads. We expose just the
+    // primary phone/email; the lead drawer has the full picker for
+    // alternate numbers / emails.
+    $leadPhone = $np['phone_primary'] ?? $np['phone'] ?? null;
+    $leadEmail = $np['email_primary'] ?? $np['email'] ?? null;
     return [
         'id'                      => (int) $r['id'],
         'lead_id'                 => (int) $r['imported_lead_id'],
@@ -92,6 +99,8 @@ $events = array_map(function ($r) {
         'vehicle_info'            => $vehicle,
         'vehicle_vin'             => $vin,
         'lead_name'               => $name ?: null,
+        'lead_phone'              => $leadPhone,
+        'lead_email'              => $leadEmail,
         'assigned_transporter_id' => $r['assigned_transporter_id'] !== null ? (int) $r['assigned_transporter_id'] : null,
         'transporter_name'        => $r['transporter_name'],
         'transporter_phone'       => $r['transporter_phone'],
