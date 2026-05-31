@@ -497,40 +497,99 @@ function Composer({ kind, leadId, initialTo, initialSubject, initialBody, phones
 }
 
 function OutreachHistoryList({ items, loading }) {
+  // Compact "today / yesterday / Mon DD" + time so the log reads like
+  // an audit trail. Full timestamp on hover via title.
+  const fmtLogStamp = (s) => {
+    if (!s) return '—';
+    const d = new Date(String(s).replace(' ', 'T'));
+    if (Number.isNaN(d.getTime())) return s;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    if (day.getTime() === today.getTime()) return `Today ${time}`;
+    const yest = new Date(today); yest.setDate(yest.getDate() - 1);
+    if (day.getTime() === yest.getTime()) return `Yesterday ${time}`;
+    return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
+  };
+
   if (loading && items.length === 0) {
-    return <p className="text-[11px] text-gray-400 italic mt-3">Loading send history…</p>;
+    return <p className="text-[11px] text-gray-400 italic mt-3">Loading messages…</p>;
   }
   if (items.length === 0) {
-    return <p className="text-[11px] text-gray-400 italic mt-3">No sends yet.</p>;
+    return <p className="text-[11px] text-gray-400 italic mt-3">No messages yet.</p>;
   }
+  // The lead_send endpoint mixes outbound jobs + inbound replies
+  // (synthesized from lead_activities). Both arrive here merged;
+  // we sort by timestamp and render inbound rows distinctly so the
+  // operator can read it as a two-way conversation.
+  const sorted = [...items].sort((a, b) => {
+    const at = new Date(String(a.sent_at || a.created_at || '').replace(' ', 'T')).getTime() || 0;
+    const bt = new Date(String(b.sent_at || b.created_at || '').replace(' ', 'T')).getTime() || 0;
+    return bt - at;
+  });
   return (
     <div className="mt-3 space-y-1.5">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Recent sends</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Recent messages</p>
       <ul className="space-y-1">
-        {items.slice(0, 10).map((j) => (
-          <li
-            key={j.id}
-            className="flex items-center justify-between text-[12px] py-1.5 px-2 rounded border border-gray-100 bg-gray-50"
-          >
-            <span className="flex items-center gap-2 min-w-0">
-              <OutreachKindBadge kind={j.kind} />
-              <span className="truncate text-gray-900">
-                {j.kind === 'email' ? (j.subject || j.to_address) : j.to_address}
-              </span>
-            </span>
-            <span className="flex items-center gap-2 shrink-0 ml-2">
-              <OutreachStatusPill status={j.status} />
-              <span className="text-[10px] text-gray-400">
-                {(() => {
-                  const s = j.sent_at || j.created_at;
-                  if (!s) return '—';
-                  const d = new Date(String(s).replace(' ', 'T'));
-                  return Number.isNaN(d.getTime()) ? s : d.toLocaleString();
-                })()}
-              </span>
-            </span>
-          </li>
-        ))}
+        {sorted.slice(0, 15).map((j) => {
+          const inbound = j.direction === 'inbound' || j.status === 'received';
+          // Tinted background on inbound so the customer's replies pop
+          // visually against operator-sent rows.
+          const rowBg = inbound
+            ? (j.kind === 'sms' ? 'bg-blue-50/60 border-blue-100' : 'bg-emerald-50/60 border-emerald-100')
+            : 'bg-gray-50 border-gray-100';
+          return (
+            <li key={j.id} className={`rounded border px-2 py-1.5 text-[12px] ${rowBg}`}>
+              <div className="flex items-center gap-2 min-w-0">
+                <OutreachKindBadge kind={j.kind} />
+                {/* Direction arrow — distinguishes inbound replies from
+                    outbound sends at a glance. */}
+                <span
+                  className={`text-[10px] font-bold ${inbound ? 'text-emerald-700' : 'text-gray-500'}`}
+                  title={inbound ? 'Inbound (reply from customer)' : 'Outbound (sent by operator)'}
+                >
+                  {inbound ? '←' : '→'}
+                </span>
+                <span className="truncate text-gray-900 flex-1 min-w-0">
+                  {/* Outbound: subject (email) or recipient (SMS).
+                      Inbound: from-address since the body lives below. */}
+                  {inbound
+                    ? <>from <span className="font-medium">{j.to_address || '—'}</span></>
+                    : (j.kind === 'email' ? (j.subject || j.to_address) : j.to_address)}
+                </span>
+                <span className="flex items-center gap-2 shrink-0">
+                  <OutreachStatusPill status={j.status} />
+                  <span
+                    className="text-[10px] text-gray-400 whitespace-nowrap"
+                    title={(() => {
+                      const s = j.sent_at || j.created_at;
+                      if (!s) return '';
+                      const d = new Date(String(s).replace(' ', 'T'));
+                      return Number.isNaN(d.getTime()) ? s : d.toLocaleString();
+                    })()}
+                  >
+                    {fmtLogStamp(j.sent_at || j.created_at)}
+                  </span>
+                </span>
+              </div>
+              {/* Inbound row: show the customer's reply text as a
+                  blockquote underneath. Outbound rows don't display
+                  body because the operator already knows what they
+                  sent and the row gets noisy. */}
+              {inbound && j.body && (
+                <div className="text-[12px] text-gray-900 mt-1 italic border-l-2 border-emerald-300 pl-2 whitespace-pre-wrap break-words">
+                  {j.body}
+                </div>
+              )}
+              {/* Outbound failure: surface the actual error. */}
+              {!inbound && j.fail_reason && (
+                <div className="text-[10px] text-red-600 mt-0.5 truncate" title={j.fail_reason}>
+                  {j.fail_reason}
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
@@ -554,11 +613,12 @@ function OutreachKindBadge({ kind }) {
 
 function OutreachStatusPill({ status }) {
   const META = {
-    pending: { label: 'pending', bg: '#fef3c7', text: '#a16207' },
-    sending: { label: 'sending', bg: '#dbeafe', text: '#1d4ed8' },
-    sent:    { label: 'sent',    bg: '#d1fae5', text: '#047857' },
-    failed:  { label: 'failed',  bg: '#fee2e2', text: '#b91c1c' },
-    bounced: { label: 'bounced', bg: '#fee2e2', text: '#b91c1c' },
+    pending:  { label: 'pending',  bg: '#fef3c7', text: '#a16207' },
+    sending:  { label: 'sending',  bg: '#dbeafe', text: '#1d4ed8' },
+    sent:     { label: 'sent',     bg: '#d1fae5', text: '#047857' },
+    received: { label: 'received', bg: '#dbeafe', text: '#1d4ed8' },
+    failed:   { label: 'failed',   bg: '#fee2e2', text: '#b91c1c' },
+    bounced:  { label: 'bounced',  bg: '#fee2e2', text: '#b91c1c' },
   };
   const m = META[status] || { label: status, bg: '#f4f4f5', text: '#52525b' };
   return (
