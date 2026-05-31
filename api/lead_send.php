@@ -40,20 +40,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // time a lead texts back. We synthesize a job-shaped row for each
     // so the dispatch panel's Activity log can render both streams
     // through the same component path.
+    // The webhook writes the inbound SMS payload to new_value_json
+    // (per pipeline.php's logLeadActivity signature — oldValue=null,
+    // newValue=<payload>). NOT a column called payload_json — that's
+    // what tripped the first version of this query.
     $actStmt = $db->prepare(
-        "SELECT id, payload_json, created_at
+        "SELECT id, new_value_json, created_at
            FROM lead_activities
           WHERE imported_lead_id = :lead
             AND activity_type    = 'contact_logged'
-            AND JSON_EXTRACT(payload_json, '$.direction') = 'inbound'
-            AND JSON_EXTRACT(payload_json, '$.channel')   = 'sms'
+            AND JSON_EXTRACT(new_value_json, '$.direction') = 'inbound'
+            AND JSON_EXTRACT(new_value_json, '$.channel')   = 'sms'
           ORDER BY created_at DESC, id DESC
           LIMIT 100"
     );
     $actStmt->execute([':lead' => $leadId]);
     $inbound = [];
     foreach ($actStmt->fetchAll() as $a) {
-        $payload = json_decode($a['payload_json'] ?? 'null', true) ?: [];
+        $payload = json_decode($a['new_value_json'] ?? 'null', true) ?: [];
         $inbound[] = [
             'id'         => 'in-' . (int) $a['id'],
             'kind'       => 'sms',
