@@ -170,6 +170,35 @@ function TransporterPanel({ transporters, onChanged }) {
   );
 }
 
+// Pickup-countdown pill at the top of the side panel. Shows how many
+// days until pickup, "today" / "tomorrow" with emphasis, or overdue
+// in red if the date has passed and the dispatch is still in an open
+// state (delivered + cancelled suppress the pill).
+function PickupCountdown({ date, status }) {
+  if (!date) return null;
+  if (status === 'delivered' || status === 'cancelled') return null;
+  const target = new Date(String(date).replace(' ', 'T'));
+  if (Number.isNaN(target.getTime())) return null;
+  // Compare on the day boundary so "today at 5pm" doesn't say "in 0 days"
+  // and "1 hour ago" doesn't say "overdue".
+  const today = new Date(); today.setHours(0,0,0,0);
+  const day   = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+  const diff  = Math.round((day - today) / 86400000);
+
+  let label, cls;
+  if (diff < 0)      { label = `Overdue ${-diff}d`; cls = 'bg-rose-100 text-rose-800 border-rose-200'; }
+  else if (diff === 0) { label = 'Today';            cls = 'bg-amber-100 text-amber-800 border-amber-200'; }
+  else if (diff === 1) { label = 'Tomorrow';         cls = 'bg-amber-50 text-amber-700 border-amber-100'; }
+  else if (diff <= 7)  { label = `In ${diff} days`;  cls = 'bg-blue-50 text-blue-700 border-blue-100'; }
+  else                  { label = `In ${diff} days`; cls = 'bg-gray-50 text-gray-600 border-gray-200'; }
+
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border ${cls}`}>
+      {label}
+    </span>
+  );
+}
+
 // Compact address renderer with a map-pin link to Google Maps. The
 // pin sits inline-block to the right so it doesn't break the
 // whitespace-pre-wrap formatting of multi-line addresses. No API key
@@ -407,19 +436,7 @@ function TransportCommSection({ transportId, leadId, assignedTransporter, custom
     }
   };
 
-  const fmtTime = (s) => {
-    if (!s) return '';
-    const d = new Date(String(s).replace(' ', 'T'));
-    if (Number.isNaN(d.getTime())) return s;
-    const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
-    if (diffSec < 60) return 'just now';
-    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
-    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
-    if (diffSec < 86400 * 7) return `${Math.floor(diffSec / 86400)}d ago`;
-    return d.toLocaleDateString();
-  };
-
-  // Normalize both streams onto one shape, tag each with "side" so
+// Normalize both streams onto one shape, tag each with "side" so
   // the row badge can show TRANSPORTER vs CUSTOMER, and sort newest
   // first by timestamp.
   const mergedHistory = useMemo(() => {
@@ -449,62 +466,42 @@ function TransportCommSection({ transportId, leadId, assignedTransporter, custom
       return bt - at;
     });
   }, [transporterHistory, customerHistory, customerName]);
-  const recent = mergedHistory.slice(0, 8);
+  // Log expansion — show the most recent 5 by default, expand to all.
+  const [logExpanded, setLogExpanded] = useState(false);
+  const recent = logExpanded ? mergedHistory : mergedHistory.slice(0, 5);
+
+  // Full-timestamp formatter for the log view (chronological audit feel,
+  // not the loose "3m ago" relative format used in summary cards).
+  const fmtLogStamp = (s) => {
+    if (!s) return '—';
+    const d = new Date(String(s).replace(' ', 'T'));
+    if (Number.isNaN(d.getTime())) return s;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const day   = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const sameDay = day.getTime() === today.getTime();
+    const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    if (sameDay) return `Today ${time}`;
+    const yest = new Date(today); yest.setDate(yest.getDate() - 1);
+    if (day.getTime() === yest.getTime()) return `Yesterday ${time}`;
+    return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
+  };
 
   return (
     <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
-      <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
+      {/* Send-first layout — operator's primary action is to send, not
+          to scroll history. Header reflects the send action; the log
+          below is the audit trail. */}
+      <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between bg-gray-50/40">
         <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-          Communication
+          Send a message
         </div>
         <div className="text-[10px] text-gray-400">
-          {loading ? 'loading…' : mergedHistory.length === 0 ? 'no sends yet' : `${mergedHistory.length} total`}
+          via OpenPhone (SMS) + Gmail (Email)
         </div>
       </div>
 
-      {/* History list — merged transporter + customer streams. */}
-      {!loading && recent.length > 0 && (
-        <ul className="divide-y divide-gray-100 max-h-44 overflow-y-auto">
-          {recent.map((h) => (
-            <li key={h.key} className="px-3 py-1.5 text-[11px]">
-              <div className="flex items-center gap-1.5">
-                <span
-                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                    h.status === 'sent'   ? 'bg-emerald-50 text-emerald-700'
-                    : h.status === 'failed' ? 'bg-red-50 text-red-700'
-                    : 'bg-gray-100 text-gray-600'
-                  }`}
-                >
-                  {h.status === 'sent' ? '✓' : h.status === 'failed' ? '✗' : '•'} {(h.channel || '').toUpperCase()}
-                </span>
-                <span
-                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
-                    h.side === 'customer'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'bg-purple-50 text-purple-700'
-                  }`}
-                  title={h.side === 'customer' ? 'Sent to customer (lead)' : 'Sent to transporter'}
-                >
-                  {h.side === 'customer' ? 'CUST' : 'TRANS'}
-                </span>
-                <span className="text-gray-700 truncate font-medium">{h.name}</span>
-                <span className="text-gray-300 ml-auto whitespace-nowrap">{fmtTime(h.ts)}</span>
-              </div>
-              {h.recipient && (
-                <div className="text-[10px] text-gray-500 truncate mt-0.5 ml-[1px]">→ {h.recipient}</div>
-              )}
-              {h.error && (
-                <div className="text-[10px] text-red-600 truncate mt-0.5" title={h.error}>
-                  {h.error}
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-
       {/* Inline quick-send (SMS or Email, to Transporter and/or Customer) */}
-      <div className="border-t border-gray-100 px-3 py-2.5 bg-gray-50/40 space-y-2">
+      <div className="px-3 py-2.5 space-y-2">
         {/* Recipient toggles. Either or both can be selected; an active
             recipient with no contact on the current channel surfaces a
             tooltip explaining why send will be blocked. */}
@@ -615,6 +612,77 @@ function TransportCommSection({ transportId, leadId, assignedTransporter, custom
           </button>
         </div>
       </div>
+
+      {/* Communication LOG — chronological audit trail of every send
+          on this dispatch, latest first. Merged view of transporter
+          notifications + customer outbound jobs. */}
+      <div className="border-t border-gray-100">
+        <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/40 flex items-center justify-between">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+            Activity log
+          </div>
+          <div className="text-[10px] text-gray-400">
+            {loading ? 'loading…' : mergedHistory.length === 0 ? 'no sends yet' : `${mergedHistory.length} entr${mergedHistory.length === 1 ? 'y' : 'ies'}`}
+          </div>
+        </div>
+
+        {loading ? (
+          <p className="text-[11px] text-gray-400 italic px-3 py-3">Loading…</p>
+        ) : recent.length === 0 ? (
+          <p className="text-[11px] text-gray-400 italic px-3 py-3">No messages sent yet. Use the form above to text or email.</p>
+        ) : (
+          <>
+            <ul className="divide-y divide-gray-100 max-h-64 overflow-y-auto">
+              {recent.map((h) => (
+                <li key={h.key} className="px-3 py-2 text-[11px]">
+                  {/* Row 1: timestamp · direction · status · channel */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-gray-400 font-mono text-[10px] tabular-nums">{fmtLogStamp(h.ts)}</span>
+                    <span
+                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                        h.side === 'customer'
+                          ? 'bg-blue-50 text-blue-700'
+                          : 'bg-purple-50 text-purple-700'
+                      }`}
+                      title={h.side === 'customer' ? 'Sent to customer (lead)' : 'Sent to transporter'}
+                    >
+                      → {h.side === 'customer' ? 'CUST' : 'TRANS'}
+                    </span>
+                    <span
+                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                        h.status === 'sent'   ? 'bg-emerald-50 text-emerald-700'
+                        : h.status === 'failed' ? 'bg-red-50 text-red-700'
+                        : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {h.status === 'sent' ? '✓' : h.status === 'failed' ? '✗' : '•'} {(h.channel || '').toUpperCase()}
+                    </span>
+                  </div>
+                  {/* Row 2: recipient name + address */}
+                  <div className="text-[11px] text-gray-700 truncate mt-0.5">
+                    <span className="font-medium">{h.name}</span>
+                    {h.recipient && <span className="text-gray-500"> · {h.recipient}</span>}
+                  </div>
+                  {/* Row 3 (conditional): error message */}
+                  {h.error && (
+                    <div className="text-[10px] text-red-600 mt-0.5" title={h.error}>
+                      {h.error}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {mergedHistory.length > 5 && (
+              <button
+                onClick={() => setLogExpanded((v) => !v)}
+                className="w-full text-center px-3 py-1.5 text-[11px] text-gray-500 hover:text-gray-800 hover:bg-gray-50 border-t border-gray-100"
+              >
+                {logExpanded ? 'Show recent only' : `Show all ${mergedHistory.length} entries`}
+              </button>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -628,17 +696,32 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
   // (i.e. transporter was assigned for the first time). Tells the
   // operator that SMS + email went out so they don't double-notify.
   const [autoNotice, setAutoNotice] = useState(null);
-  const [draft, setDraft]     = useState({
-    transport_date:          event.transport_date,
-    transport_time:          event.transport_time || '',
-    time_window:             event.time_window    || '',
-    pickup_location:         event.pickup_location || '',
-    delivery_location:       event.delivery_location || '',
-    vehicle_info:            event.vehicle_info || '',
-    status:                  event.status,
-    assigned_transporter_id: event.assigned_transporter_id ?? '',
-    notes:                   event.notes || '',
+  // Snapshot of the event into draft. Synced via the effect below
+  // whenever the event prop changes OR when entering Edit mode, so
+  // status pill / quick-edit changes get folded in before the
+  // operator starts typing. Status is intentionally NOT in draft
+  // anymore — it lives on the workflow pills above the form.
+  const initialDraft = (e) => ({
+    transport_date:          e.transport_date,
+    transport_time:          e.transport_time || '',
+    time_window:             e.time_window    || '',
+    pickup_location:         e.pickup_location || '',
+    delivery_location:       e.delivery_location || '',
+    vehicle_info:            e.vehicle_info || '',
+    assigned_transporter_id: e.assigned_transporter_id ?? '',
+    notes:                   e.notes || '',
   });
+  const [draft, setDraft] = useState(() => initialDraft(event));
+  // Whenever the parent reloads and hands us a fresh event row, refresh
+  // the draft snapshot so the inputs show current data (status pill
+  // clicks fire onChanged → loadEvents → new event prop). Without this
+  // useEffect the Edit form would still show stale values from when
+  // the panel first opened.
+  useEffect(() => {
+    if (!editing) setDraft(initialDraft(event));
+    // We don't blow away in-progress edits — only re-snapshot when the
+    // operator isn't actively editing.
+  }, [event, editing]);
 
   const save = async () => {
     setSaving(true); setError('');
@@ -696,7 +779,10 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
             <div className="min-w-0">
               <p className="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">Bill of Sale</p>
               <h2 className="text-base font-semibold text-gray-900 truncate mt-0.5">{event.title}</h2>
-              {event.vehicle_vin && <p className="text-[11px] text-gray-500 mt-1 font-mono">VIN {event.vehicle_vin}</p>}
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                {event.vehicle_vin && <p className="text-[11px] text-gray-500 font-mono">VIN {event.vehicle_vin}</p>}
+                <PickupCountdown date={event.transport_date} status={event.status}/>
+              </div>
             </div>
             <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100">&times;</button>
           </div>
@@ -733,10 +819,23 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
               connected pills with the current step highlighted +
               previous steps shown as completed. Cancelled lives off to
               the side with its own confirm. Each pill is clickable so
-              the operator can jump to any state — there's no enforced
-              forward-only progression, just visual sugar. */}
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Dispatch status</div>
+              the operator can jump to any state — no enforced forward-
+              only progression. Status is editable from here directly;
+              no need to enter Edit mode. */}
+          <div className="rounded-xl bg-gradient-to-b from-gray-50 to-white border border-gray-200 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Dispatch status</div>
+              {(() => {
+                const meta = TRANSPORT_STATUS_BY_KEY[event.status] || TRANSPORT_STATUS_BY_KEY.new;
+                return (
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold ${meta.bg} ${meta.text}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`}/>
+                    {meta.label}
+                  </span>
+                );
+              })()}
+            </div>
+            <div className="text-[10px] text-gray-500 mb-2">Click any step below to change status — no Edit mode needed.</div>
             <div className="flex items-center gap-0">
               {(() => {
                 const flow = TRANSPORT_STATUSES.filter((s) => s.key !== 'cancelled');
@@ -831,19 +930,46 @@ function EventSidePanel({ event, transporters, onClose, onChanged }) {
             </div>
           ) : (
             <div className="space-y-2">
+              <p className="text-[10px] text-gray-500 italic mb-1">
+                Status is changed via the pills above — not in this form.
+              </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <input type="date" className={inputCls} value={draft.transport_date} onChange={(e) => setDraft({ ...draft, transport_date: e.target.value })} />
-                <input type="time" className={inputCls} value={draft.transport_time || ''} onChange={(e) => setDraft({ ...draft, transport_time: e.target.value })} />
-                <input type="text" placeholder="Window" className={inputCls} value={draft.time_window} onChange={(e) => setDraft({ ...draft, time_window: e.target.value })} />
+                <label className="block">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-0.5 block">Date</span>
+                  <input type="date" className={inputCls} value={draft.transport_date} onChange={(e) => setDraft({ ...draft, transport_date: e.target.value })} />
+                </label>
+                <label className="block">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-0.5 block">Time</span>
+                  <input type="time" className={inputCls} value={draft.transport_time || ''} onChange={(e) => setDraft({ ...draft, transport_time: e.target.value })} />
+                </label>
+                <label className="block">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-0.5 block">Window</span>
+                  <input type="text" placeholder="9 AM–12 PM" className={inputCls} value={draft.time_window} onChange={(e) => setDraft({ ...draft, time_window: e.target.value })} />
+                </label>
               </div>
-              <textarea rows={2} placeholder="Pickup location" className={inputCls} value={draft.pickup_location} onChange={(e) => setDraft({ ...draft, pickup_location: e.target.value })} />
-              <textarea rows={2} placeholder="Delivery location" className={inputCls} value={draft.delivery_location} onChange={(e) => setDraft({ ...draft, delivery_location: e.target.value })} />
-              <input className={inputCls} placeholder="Vehicle info" value={draft.vehicle_info} onChange={(e) => setDraft({ ...draft, vehicle_info: e.target.value })} />
-              <select className={inputCls} value={draft.assigned_transporter_id ?? ''} onChange={(e) => setDraft({ ...draft, assigned_transporter_id: e.target.value })}>
-                <option value="">Unassigned</option>
-                {transporters.filter((t) => t.is_active).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-              <textarea rows={2} placeholder="Notes" className={inputCls} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
+              <label className="block">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-0.5 block">Pickup location</span>
+                <textarea rows={2} className={inputCls} value={draft.pickup_location} onChange={(e) => setDraft({ ...draft, pickup_location: e.target.value })} />
+              </label>
+              <label className="block">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-0.5 block">Delivery location</span>
+                <textarea rows={2} className={inputCls} value={draft.delivery_location} onChange={(e) => setDraft({ ...draft, delivery_location: e.target.value })} />
+              </label>
+              <label className="block">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-0.5 block">Vehicle</span>
+                <input className={inputCls} value={draft.vehicle_info} onChange={(e) => setDraft({ ...draft, vehicle_info: e.target.value })} />
+              </label>
+              <label className="block">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-0.5 block">Transporter</span>
+                <select className={inputCls} value={draft.assigned_transporter_id ?? ''} onChange={(e) => setDraft({ ...draft, assigned_transporter_id: e.target.value })}>
+                  <option value="">Unassigned</option>
+                  {transporters.filter((t) => t.is_active).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-0.5 block">Notes</span>
+                <textarea rows={3} className={inputCls} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
+              </label>
             </div>
           )}
 
