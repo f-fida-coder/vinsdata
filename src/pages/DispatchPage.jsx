@@ -1131,9 +1131,19 @@ export default function DispatchPage() {
       if (statusFilter) params.status = statusFilter;
       if (transporterFilter) params.transporter_id = transporterFilter;
       const res = await api.get('/dispatch_calendar', { params });
-      setEvents(res.data.events || []);
+      const fresh = res.data.events || [];
+      setEvents(fresh);
       setSummary(res.data.summary || {});
       setError('');
+      // Keep the open side panel in sync. openEvent is a snapshot taken
+      // at click time; without re-syncing, status pill clicks would
+      // update the DB + calendar but the panel kept rendering the
+      // old status. Find the matching row by id and replace it.
+      setOpenEvent((prev) => {
+        if (!prev) return prev;
+        const next = fresh.find((e) => e.id === prev.id);
+        return next || prev;
+      });
     } catch (err) {
       setError(extractApiError(err, 'Failed to load dispatch data'));
     } finally {
