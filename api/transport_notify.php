@@ -21,6 +21,9 @@ $db   = getDBConnection();
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $transportId = (int) ($_GET['transport_id'] ?? 0);
     if ($transportId <= 0) pipelineFail(400, 'transport_id is required', 'missing_id');
+    // Returns both outbound (operator-sent) and inbound (transporter
+    // reply, written by the openphone_webhook) rows so the dispatch
+    // panel's Activity log reads as a two-way thread.
     $stmt = $db->prepare(
         'SELECT n.*, t.name AS transporter_name, u.name AS sent_by_name
            FROM transport_notifications n
@@ -36,6 +39,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $r['id']             = (int) $r['id'];
         $r['transport_id']   = (int) $r['transport_id'];
         $r['transporter_id'] = $r['transporter_id'] !== null ? (int) $r['transporter_id'] : null;
+        // Older rows (pre-migration 035) won't have direction set;
+        // explicit default keeps the API shape stable for the frontend.
+        if (!isset($r['direction']) || $r['direction'] === null || $r['direction'] === '') {
+            $r['direction'] = 'outbound';
+        }
+        // Hide the "[inbound msg_id]..." dedupe probe from the
+        // operator — error_message is meant for actual failures.
+        if (!empty($r['error_message']) && strpos((string) $r['error_message'], '[inbound msg_id]') === 0) {
+            $r['error_message'] = null;
+        }
     }
     echo json_encode($rows);
     exit();

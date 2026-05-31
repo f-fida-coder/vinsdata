@@ -23,15 +23,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $leadId = (int) ($_GET['lead_id'] ?? 0);
     if ($leadId <= 0) pipelineFail(400, 'lead_id is required', 'missing_fields');
 
+    // Outbound jobs (operator-sent SMS/email to the customer)
     $stmt = $db->prepare(
-        'SELECT id, kind, provider, to_address, subject, status, fail_reason, sent_at, created_at
+        'SELECT id, kind, provider, to_address, subject, body, status, fail_reason, sent_at, created_at
            FROM outbound_jobs
           WHERE imported_lead_id = :lead
           ORDER BY created_at DESC, id DESC
           LIMIT 200'
     );
     $stmt->execute([':lead' => $leadId]);
-    echo json_encode(['success' => true, 'jobs' => $stmt->fetchAll()]);
+    $jobs = $stmt->fetchAll();
+
+    // Inbound replies from the customer. The OpenPhone webhook writes
+    // a contact_logged activity with payload.channel='sms' +
+    // payload.direction='inbound' + payload.body=<reply text> each
+    // time a lead texts back. We synthesize a job-shaped row for each
+    // so the dispatch panel's Activity log can render both streams
+    // through the same component path.
+    $actStmt = $db->prepare(
+        "SELECT id, payload_json, created_at
+           FROM lead_activities
+          WHERE imported_lead_id = :lead
+            AND activity_type    = 'contact_logged'
+            AND JSON_EXTRACT(payload_json, '$.direction') = 'inbound'
+            AND JSON_EXTRACT(payload_json, '$.channel')   = 'sms'
+          ORDER BY created_at DESC, id DESC
+          LIMIT 100"
+    );
+    $actStmt->execute([':lead' => $leadId]);
+    $inbound = [];
+    foreach ($actStmt->fetchAll() as $a) {
+        $payload = json_decode($a['payload_json'] ?? 'null', true) ?: [];
+        $inbound[] = [
+            'id'         => 'in-' . (int) $a['id'],
+            'kind'       => 'sms',
+            'direction'  => 'inbound',
+            'provider'   => $payload['provider']           ?? 'openphone',
+            'to_address' => $payload['sender']             ?? null,
+            'subject'    => null,
+            'body'       => $payload['body']               ?? null,
+            'status'     => 'received',
+            'fail_reason'=> null,
+            'sent_at'    => $a['created_at'],
+            'created_at' => $a['created_at'],
+        ];
+    }
+
+    // Tag outbound rows so the frontend can render direction without
+    // guessing. Pre-existing rows lack the field; default to outbound.
+    foreach ($jobs as &$j) { if (!isset($j['direction'])) $j['direction'] = 'outbound'; }
+    echo json_encode(['success' => true, 'jobs' => array_merge($jobs, $inbound)]);
     exit();
 }
 

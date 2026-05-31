@@ -440,23 +440,32 @@ function TransportCommSection({ transportId, leadId, assignedTransporter, custom
   // the row badge can show TRANSPORTER vs CUSTOMER, and sort newest
   // first by timestamp.
   const mergedHistory = useMemo(() => {
+    // direction = outbound (we sent) | inbound (they replied). Inbound
+    // is what makes the log read like a two-way conversation rather
+    // than a one-way audit trail.
     const t = transporterHistory.map((h) => ({
       key:       `t-${h.id}`,
       side:      'transporter',
+      direction: h.direction || 'outbound',
       channel:   String(h.channel || '').toLowerCase(),
       status:    h.status,
       name:      h.transporter_name || 'Transporter',
       recipient: h.recipient,
+      body:      h.body,
       error:     h.error_message,
       ts:        h.sent_at || h.created_at,
     }));
     const c = customerHistory.map((j) => ({
       key:       `c-${j.id}`,
       side:      'customer',
+      direction: j.direction || 'outbound',
       channel:   String(j.kind || '').toLowerCase(),
-      status:    j.status === 'sent' ? 'sent' : (j.status === 'failed' ? 'failed' : (j.status || 'pending')),
+      status:    (j.direction === 'inbound' || j.status === 'received')
+                   ? 'received'
+                   : (j.status === 'sent' ? 'sent' : (j.status === 'failed' ? 'failed' : (j.status || 'pending'))),
       name:      customerName || 'Customer',
       recipient: j.to_address,
+      body:      j.body,
       error:     j.fail_reason,
       ts:        j.sent_at || j.created_at,
     }));
@@ -633,44 +642,70 @@ function TransportCommSection({ transportId, leadId, assignedTransporter, custom
         ) : (
           <>
             <ul className="divide-y divide-gray-100 max-h-64 overflow-y-auto">
-              {recent.map((h) => (
-                <li key={h.key} className="px-3 py-2 text-[11px]">
-                  {/* Row 1: timestamp · direction · status · channel */}
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-gray-400 font-mono text-[10px] tabular-nums">{fmtLogStamp(h.ts)}</span>
-                    <span
-                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
-                        h.side === 'customer'
-                          ? 'bg-blue-50 text-blue-700'
-                          : 'bg-purple-50 text-purple-700'
-                      }`}
-                      title={h.side === 'customer' ? 'Sent to customer (lead)' : 'Sent to transporter'}
-                    >
-                      → {h.side === 'customer' ? 'CUST' : 'TRANS'}
-                    </span>
-                    <span
-                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                        h.status === 'sent'   ? 'bg-emerald-50 text-emerald-700'
-                        : h.status === 'failed' ? 'bg-red-50 text-red-700'
-                        : 'bg-gray-100 text-gray-600'
-                      }`}
-                    >
-                      {h.status === 'sent' ? '✓' : h.status === 'failed' ? '✗' : '•'} {(h.channel || '').toUpperCase()}
-                    </span>
-                  </div>
-                  {/* Row 2: recipient name + address */}
-                  <div className="text-[11px] text-gray-700 truncate mt-0.5">
-                    <span className="font-medium">{h.name}</span>
-                    {h.recipient && <span className="text-gray-500"> · {h.recipient}</span>}
-                  </div>
-                  {/* Row 3 (conditional): error message */}
-                  {h.error && (
-                    <div className="text-[10px] text-red-600 mt-0.5" title={h.error}>
-                      {h.error}
+              {recent.map((h) => {
+                const inbound = h.direction === 'inbound';
+                // Inbound rows get tinted backgrounds so the operator
+                // can scan the log and pick out replies at a glance.
+                const rowBg = inbound
+                  ? (h.side === 'customer' ? 'bg-blue-50/40' : 'bg-purple-50/40')
+                  : 'bg-white';
+                return (
+                  <li key={h.key} className={`px-3 py-2 text-[11px] ${rowBg}`}>
+                    {/* Row 1: timestamp · direction · status · channel */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-gray-400 font-mono text-[10px] tabular-nums">{fmtLogStamp(h.ts)}</span>
+                      <span
+                        className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                          h.side === 'customer'
+                            ? (inbound ? 'bg-blue-100 text-blue-800' : 'bg-blue-50 text-blue-700')
+                            : (inbound ? 'bg-purple-100 text-purple-800' : 'bg-purple-50 text-purple-700')
+                        }`}
+                        title={
+                          inbound
+                            ? (h.side === 'customer' ? 'Reply from customer' : 'Reply from transporter')
+                            : (h.side === 'customer' ? 'Sent to customer' : 'Sent to transporter')
+                        }
+                      >
+                        {inbound ? '←' : '→'} {h.side === 'customer' ? 'CUST' : 'TRANS'}
+                      </span>
+                      <span
+                        className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                          h.status === 'received' ? 'bg-emerald-50 text-emerald-700'
+                          : h.status === 'sent'     ? 'bg-emerald-50 text-emerald-700'
+                          : h.status === 'failed'   ? 'bg-red-50 text-red-700'
+                          : 'bg-gray-100 text-gray-600'
+                        }`}
+                      >
+                        {h.status === 'received' ? '📥' : h.status === 'sent' ? '✓' : h.status === 'failed' ? '✗' : '•'} {(h.channel || '').toUpperCase()}
+                      </span>
                     </div>
-                  )}
-                </li>
-              ))}
+                    {/* Row 2: name + address (outbound) OR full body text (inbound) */}
+                    {inbound && h.body ? (
+                      <div className="text-[11px] text-gray-900 mt-1 italic border-l-2 border-gray-300 pl-2 whitespace-pre-wrap break-words">
+                        {h.body}
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-gray-700 truncate mt-0.5">
+                        <span className="font-medium">{h.name}</span>
+                        {h.recipient && <span className="text-gray-500"> · {h.recipient}</span>}
+                      </div>
+                    )}
+                    {/* Row 3 — sender info for inbound (since body took row 2) */}
+                    {inbound && (
+                      <div className="text-[10px] text-gray-500 mt-0.5">
+                        from <span className="font-medium">{h.name}</span>
+                        {h.recipient && <> · {h.recipient}</>}
+                      </div>
+                    )}
+                    {/* Error row (outbound failures only) */}
+                    {!inbound && h.error && (
+                      <div className="text-[10px] text-red-600 mt-0.5" title={h.error}>
+                        {h.error}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
             {mergedHistory.length > 5 && (
               <button

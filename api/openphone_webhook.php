@@ -222,10 +222,24 @@ function handleInboundMessage(PDO $db, array $msg): void
         // as an opt-out).
     }
 
+    // Transporter inbound: if the sender matches a known transporter
+    // phone, log the reply as an inbound transport_notifications row
+    // against their most-recent active dispatch. The dispatch panel's
+    // Activity log surfaces inbound + outbound on the same timeline so
+    // the operator can read it as a conversation. Returning a lead
+    // match later (below) is independent — same number CAN belong to
+    // both a lead and a transporter (rare); we log to both.
+    $transporterMatch = matchTransporterByPhone($db, $from);
+    if ($transporterMatch !== null) {
+        logInboundTransporterReply($db, (int) $transporterMatch['id'], $from, $body, $msgId);
+    }
+
     $leadId = matchLeadIdByPhone($db, $from);
     if ($leadId === null) {
-        error_log("[openphone_webhook] inbound from $from did not match any lead"
-            . ($isStopReply ? ' (STOP reply still suppressed)' : ''));
+        if ($transporterMatch === null) {
+            error_log("[openphone_webhook] inbound from $from did not match any lead or transporter"
+                . ($isStopReply ? ' (STOP reply still suppressed)' : ''));
+        }
         return;
     }
 
@@ -545,6 +559,117 @@ function handleSmsStopReply(PDO $db, string $fromPhone, string $msgId): void
  * Returns the most recently created matching lead, since one VIN can
  * have multiple imports across files.
  */
+/**
+ * Find a transporter whose phone matches the inbound number. Same
+ * digit-tail match as matchLeadIdByPhone — handles "(817) 395-2397"
+ * vs "+18173952397" vs "8173952397" by stripping everything that
+ * isn't a digit and comparing the last 10 digits.
+ *
+ * Returns the matching row (id, name) or null. Inactive transporters
+ * are included so historical reply matching still works after a
+ * transporter is deactivated.
+ */
+function matchTransporterByPhone(PDO $db, string $rawPhone): ?array
+{
+    $digits = preg_replace('/\D+/', '', $rawPhone);
+    if ($digits === '') return null;
+    $tail = substr($digits, -10);
+    if (strlen($tail) < 10) return null;
+    $needle = '%' . $tail . '%';
+    $stmt = $db->prepare(
+        "SELECT id, name
+           FROM transporters
+          WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, '-',''),' ',''),'(',''),')',''),'+',''),'.','') LIKE :needle
+          ORDER BY is_active DESC, id ASC
+          LIMIT 1"
+    );
+    $stmt->execute([':needle' => $needle]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+/**
+ * Log an inbound SMS reply from a transporter to their most-recent
+ * active dispatch. Falls back to the most-recent dispatch period if
+ * nothing is active, so the message still surfaces in a relevant
+ * panel rather than disappearing.
+ *
+ * The sender (transporter) doesn't write to lead_activities — that
+ * table is for lead-side timeline entries. Inbound replies go into
+ * transport_notifications with direction='inbound' so they merge
+ * with outbound rows on the dispatch panel's Activity log.
+ */
+function logInboundTransporterReply(PDO $db, int $transporterId, string $from, string $body, string $msgId): void
+{
+    // 1. Pick the dispatch row this reply most likely refers to.
+    //    Active dispatches (not delivered/cancelled) ordered by most
+    //    recently touched. Falls back to any most-recent row.
+    $stmt = $db->prepare(
+        "SELECT id FROM lead_transport
+          WHERE assigned_transporter_id = :tid
+            AND status NOT IN ('delivered','cancelled')
+          ORDER BY updated_at DESC, id DESC
+          LIMIT 1"
+    );
+    $stmt->execute([':tid' => $transporterId]);
+    $transportId = $stmt->fetchColumn();
+    if (!$transportId) {
+        $stmt = $db->prepare(
+            "SELECT id FROM lead_transport
+              WHERE assigned_transporter_id = :tid
+              ORDER BY updated_at DESC, id DESC
+              LIMIT 1"
+        );
+        $stmt->execute([':tid' => $transporterId]);
+        $transportId = $stmt->fetchColumn();
+    }
+    if (!$transportId) {
+        error_log("[openphone_webhook] transporter $transporterId replied but has no dispatch rows; dropping inbound");
+        return;
+    }
+
+    // 2. Skip duplicates. OpenPhone occasionally re-delivers a webhook
+    //    event; guard on provider_message_id via the (rebuilt-uniquely)
+    //    error_message field. There's no dedicated FK column for the
+    //    OpenPhone message id on transport_notifications today, so we
+    //    re-use the existing schema and dedupe on a hash-friendly probe.
+    if ($msgId !== '') {
+        $dup = $db->prepare(
+            "SELECT id FROM transport_notifications
+              WHERE transport_id = :tid
+                AND direction    = 'inbound'
+                AND error_message = :probe
+              LIMIT 1"
+        );
+        $probe = '[inbound msg_id]' . $msgId;
+        $dup->execute([':tid' => (int) $transportId, ':probe' => $probe]);
+        if ($dup->fetchColumn()) return;
+    }
+
+    // 3. Insert the inbound row. sent_by is set to the system actor
+    //    so the FK constraint stays happy; the row is otherwise the
+    //    inverse shape of an outbound send (recipient = our number,
+    //    body = what the transporter wrote).
+    $systemUserId = getSystemActorId($db);
+    $ins = $db->prepare(
+        'INSERT INTO transport_notifications
+           (transport_id, transporter_id, channel, direction, recipient, subject, body, sent_by, status, error_message, sent_at)
+         VALUES
+           (:tid, :rid, :ch, :dir, :rec, NULL, :body, :u, :st, :err, NOW())'
+    );
+    $ins->execute([
+        ':tid'  => (int) $transportId,
+        ':rid'  => $transporterId,
+        ':ch'   => 'sms',
+        ':dir'  => 'inbound',
+        ':rec'  => $from,
+        ':body' => mb_substr($body, 0, 4000),
+        ':u'    => $systemUserId,
+        ':st'   => 'sent', // status enum is sent/failed; "sent" = received OK
+        ':err'  => $msgId !== '' ? ('[inbound msg_id]' . $msgId) : null,
+    ]);
+}
+
 function matchLeadIdByPhone(PDO $db, string $rawPhone): ?int
 {
     $digits = preg_replace('/\D+/', '', $rawPhone);
