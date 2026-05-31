@@ -92,6 +92,13 @@ $events = array_map(function ($r) {
         'title'                   => ($name ?: 'Lead #' . $r['imported_lead_id']) . ' — ' . ($vehicle ?: 'Vehicle'),
         'start'                   => $startIso,
         'all_day'                 => $r['transport_time'] === null,
+        // Surface date + time as separate fields so the side panel's
+        // PickupCountdown badge and Edit form's date/time inputs can
+        // bind directly. `start` (combined ISO) is what FullCalendar
+        // consumes; React's <input type="date"> wants the YYYY-MM-DD
+        // string alone, which MySQL returns natively in this column.
+        'transport_date'          => $r['transport_date'],
+        'transport_time'          => $r['transport_time'],
         'status'                  => $r['status'],
         'time_window'             => $r['time_window'],
         'pickup_location'         => $r['pickup_location'],
