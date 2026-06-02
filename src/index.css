@@ -185,15 +185,13 @@ body { font-family: var(--font-sans); }
   border-bottom: 1px solid #1a1a1d;
 }
 .sb-logo {
+  /* Real Vin Vault SVG logo from public/favicon.svg. Sized for the
+     sidebar header chip; object-fit keeps the proportions if the
+     source aspect ratio changes. No background — the SVG carries its
+     own purple/silver gradient. */
   width: 28px; height: 28px;
-  background: linear-gradient(135deg, #fff 0%, #c0c0c0 100%);
-  border-radius: 6px;
-  display: grid; place-items: center;
-  color: #0a0a0b;
-  font-weight: 700;
-  font-size: 14px;
-  font-family: var(--font-sans);
-  letter-spacing: -0.025em;
+  object-fit: contain;
+  display: block;
 }
 .sb-brand-text { display: flex; flex-direction: column; line-height: 1.15; }
 .sb-brand-name { color: #fff; font-weight: 600; font-size: 13px; letter-spacing: 0.02em; }

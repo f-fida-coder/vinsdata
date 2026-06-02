@@ -32,17 +32,19 @@ export default function LoginPage() {
     }}>
       <div style={{ width: '100%', maxWidth: 380 }}>
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <div style={{
-            width: 56, height: 56,
-            borderRadius: 12,
-            background: 'linear-gradient(135deg, #fff 0%, #c0c0c0 100%)',
-            display: 'grid', placeItems: 'center',
-            color: '#0a0a0b',
-            fontWeight: 700, fontSize: 24,
-            fontFamily: 'var(--font-sans)',
-            letterSpacing: '-0.025em',
-            margin: '0 auto 16px',
-          }}>V</div>
+          {/* Real Vin Vault SVG logo. The SVG carries its own
+              gradient — no background plate needed; an outer drop-
+              shadow gives it depth against the dark login backdrop. */}
+          <img
+            src="/favicon.svg"
+            alt="Vin Vault"
+            style={{
+              width: 64, height: 64,
+              display: 'block',
+              margin: '0 auto 16px',
+              filter: 'drop-shadow(0 4px 12px rgba(132, 60, 255, 0.35))',
+            }}
+          />
           <h1 style={{
             fontFamily: 'var(--font-sans)',
             fontSize: 32, fontWeight: 700,

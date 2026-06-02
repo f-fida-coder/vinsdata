@@ -122,7 +122,7 @@ export function Sidebar({ onSignOut, mobileOpen, onMobileClose }) {
       {mobileOpen && <div className="sb-backdrop" onClick={onMobileClose}/>} 
       <aside className={`sidebar ${mobileOpen ? 'is-open' : ''}`}>
         <div className="sb-brand">
-          <div className="sb-logo">V</div>
+          <img className="sb-logo" src="/favicon.svg" alt="Vin Vault"/>
           <div className="sb-brand-text">
             <span className="sb-brand-name">VINVAULT</span>
             <span className="sb-brand-sub">Internal CRM</span>
