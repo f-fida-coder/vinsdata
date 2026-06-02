@@ -35,14 +35,18 @@ export default function LoginPage() {
           {/* Real Vin Vault SVG logo. The SVG carries its own
               gradient — no background plate needed; an outer drop-
               shadow gives it depth against the dark login backdrop. */}
+          {/* Brand icon with a soft drop-shadow so it lifts off the
+              dark login backdrop. Shadow is white-tinted (low alpha)
+              instead of the purple from the prior favicon since the
+              new mark is monochrome. */}
           <img
-            src="/favicon.svg"
+            src="/logo.svg"
             alt="Vin Vault"
             style={{
-              width: 64, height: 64,
+              width: 72, height: 72,
               display: 'block',
               margin: '0 auto 16px',
-              filter: 'drop-shadow(0 4px 12px rgba(132, 60, 255, 0.35))',
+              filter: 'drop-shadow(0 6px 16px rgba(255, 255, 255, 0.08))',
             }}
           />
           <h1 style={{
