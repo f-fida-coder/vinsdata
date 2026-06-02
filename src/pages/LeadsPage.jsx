@@ -1129,17 +1129,26 @@ export default function LeadsPage() {
                       <td className="px-2 py-2 whitespace-nowrap">
                         <div className="flex items-center gap-1.5 max-w-[260px]">
                           <span className="text-sm font-semibold text-gray-900 truncate" title={name}>{name}</span>
-                          {/* Collector indicator. The label was set up as
-                              a CarFax convention for high-value contacts
-                              (see migration 020) — we surface it inline
-                              by the name, no separate column, so it's
-                              one glance from the leads list. */}
+                          {/* Inline label indicators. Collector + Potential
+                              Investor live next to the name (no separate
+                              column) so the high-value flags are one
+                              glance from the leads list. Seeded labels
+                              with auto_follow_up=1, per migrations 020
+                              and 036 respectively. */}
                           {(labels || []).some((l) => l.name === 'Collector') && (
                             <span
                               title="This lead is flagged Collector"
                               className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700 whitespace-nowrap"
                             >
                               Collector
+                            </span>
+                          )}
+                          {(labels || []).some((l) => l.name === 'Potential Investor') && (
+                            <span
+                              title="This lead is flagged as a Potential Investor"
+                              className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-700 whitespace-nowrap"
+                            >
+                              Investor
                             </span>
                           )}
                           {/* "×N" chip when the same phone shows up on
