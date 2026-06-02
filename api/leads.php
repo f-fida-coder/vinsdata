@@ -736,6 +736,21 @@ $sortDirs   = $rawDir  === '' ? [] : array_map('strtolower', array_map('trim', e
 // Cap at 2 sort keys — anything beyond is operator fat-finger or abuse.
 if (count($sortFields) > 2) $sortFields = array_slice($sortFields, 0, 2);
 
+// Workflow-ordered sort for status: instead of alphabetical
+// (callback / contacted / deal_closed / ...), order by where the
+// lead sits in the operational pipeline so a "sort by Status" pass
+// surfaces actionable rows (new, contacted, callback, interested)
+// at the top and terminal / cold states (disqualified, do_not_call)
+// at the bottom. NULL status (rows without a lead_states row yet)
+// is grouped with 'new' since that's effectively what they are.
+// Mirrors the src/lib/crm.js LEAD_STATUSES array order.
+$statusOrderSql =
+    "FIELD(COALESCE(s.status,'new'),"
+    . "'new','contacted','callback','interested','value_gap',"
+    . "'no_answer','voicemail_left','wrong_number','not_interested',"
+    . "'nurture','marketing','deal_closed','disqualified','do_not_call'"
+    . ")";
+
 $nativeSorts = [
     'imported_at'       => 'b.imported_at',
     'created_at'        => 'r.created_at',
@@ -748,7 +763,7 @@ $nativeSorts = [
     'model'             => 'r.norm_model',
     'year'              => 'r.norm_year',
     'tier'              => 'tier',
-    'status'            => 's.status',
+    'status'            => $statusOrderSql,
     'priority'          => 's.priority',
     'lead_temperature'  => 's.lead_temperature',
     'price_wanted'      => 's.price_wanted',
