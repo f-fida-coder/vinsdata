@@ -887,6 +887,17 @@ export default function LeadsPage() {
                 onChangeMax={(v) => updateFilter('number_of_owners_max', v)}
               />
 
+              {/* Status dropdown — surfaces every status from
+                  LEAD_STATUSES (not just the QuickFilterPills set),
+                  so operators can isolate Closed / Disqualified /
+                  Do not call / Nurture / etc. that aren't on the
+                  quick row. Selecting the same status as an active
+                  quick pill leaves them in sync since both write to
+                  the same filters.status field. */}
+              <FilterSelect label="Status" value={filters.status} onChange={(v) => updateFilter('status', v)}>
+                <option value="">Any status</option>
+                {LEAD_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+              </FilterSelect>
               <FilterSelect label="Priority" value={filters.priority} onChange={(v) => updateFilter('priority', v)}>
                 <option value="">Any priority</option>
                 {LEAD_PRIORITIES.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
