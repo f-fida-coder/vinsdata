@@ -151,16 +151,17 @@ if ($method === 'PUT') {
     if (!empty($input['taxes_paid_by']) && !in_array($input['taxes_paid_by'], BOS_TAXES_PAID_BY, true)) {
         pipelineFail(400, 'Invalid taxes_paid_by', 'invalid_taxes_paid_by');
     }
-    // additional_terms cap. Keeps the Odometer Disclosure block on
-    // page 2 of the rendered PDF by guaranteeing sections 5-7 stay
-    // within page-2 budget. 800 chars ~ 150 words ~ 8-10 wrapped
-    // lines at 11pt — comfortable room for a thoughtful clause or
-    // two without overflowing the page. The client-side textarea
-    // also enforces maxLength=800; this is the server-side guard.
+    // additional_terms cap. Generous limit since the Odometer block
+    // now lives on its own page (forced page-break in bos_helpers.php),
+    // so this section is no longer competing for page-2 budget.
+    // 1500 chars ~ 250 words ~ 18-20 wrapped lines at 11pt — enough
+    // room for a substantive clause-by-clause statement without
+    // ballooning the page count. Hard wall keeps the UI sensible and
+    // prevents a runaway paste-of-an-entire-contract scenario.
     if (isset($input['additional_terms']) && $input['additional_terms'] !== null) {
         $at = (string) $input['additional_terms'];
-        if (mb_strlen($at) > 800) {
-            pipelineFail(400, 'Additional terms must be 800 characters or fewer (got ' . mb_strlen($at) . ').', 'additional_terms_too_long');
+        if (mb_strlen($at) > 1500) {
+            pipelineFail(400, 'Additional terms must be 1500 characters or fewer (got ' . mb_strlen($at) . ').', 'additional_terms_too_long');
         }
     }
 
