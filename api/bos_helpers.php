@@ -292,13 +292,15 @@ function renderBillOfSalePdf(array $d): string
     }
     $html .= '</div>';
 
-    // Odometer Disclosure block — pinned to its OWN page via a
-    // forced page-break-before, regardless of how much content
-    // sections 5-7 generated. page-break-inside: avoid is still
-    // applied so the disclosure stays as a single unit and never
-    // splits mid-paragraph. Net result: the disclosure always
-    // starts on a fresh page, fully self-contained.
-    $html .= '<div style="page-break-before: always; page-break-inside: avoid">';
+    // Odometer Disclosure block — flows naturally after Section 7.
+    // page-break-inside: avoid keeps the disclosure together as a
+    // single unit (heading + clauses + signatures), so mPDF will
+    // push the whole block to the next page if it doesn't fit on
+    // the current one — but it won't be FORCED there. Short or
+    // blank Additional Terms means Odometer often fits at the end
+    // of page 2; long Additional Terms cleanly moves it to page 3.
+    // Either way, no near-empty page from a forced break.
+    $html .= '<div style="page-break-inside: avoid; margin-top: 24px">';
     $html .= '<h1 style="margin-top:0">ODOMETER DISCLOSURE STATEMENT</h1>';
     $html .= '<p class="clause">FEDERAL and STATE LAW requires that you state the mileage in connection with the transfer of ownership. Failure to complete or providing a false statement may result in fines and/or imprisonment.</p>';
     $html .= '<p>I/We, ' . $blank($d['seller_name'], '220px')
