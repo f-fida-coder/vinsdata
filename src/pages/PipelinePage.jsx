@@ -11,7 +11,9 @@ import {
 
 const STATUS_DOT_VAR = {
   new: 'var(--info)', contacted: 'var(--text-2)', callback: 'var(--warm)',
-  interested: 'var(--success)', not_interested: 'var(--text-3)',
+  interested: 'var(--success)',
+  verbal_commitment: 'var(--success)', pending_close: 'var(--success)',
+  not_interested: 'var(--text-3)',
   wrong_number: 'var(--hot)', no_answer: 'var(--text-3)',
   voicemail_left: 'var(--info)', deal_closed: 'var(--success)',
   nurture: 'var(--info)', disqualified: 'var(--text-3)',

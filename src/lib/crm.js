@@ -17,20 +17,25 @@ export const roleLabel = (key) => ROLE_LABEL[key] || key || '—';
 
 
 export const LEAD_STATUSES = [
-  { key: 'new',             label: 'New',             bg: 'bg-blue-50',    text: 'text-blue-700',    dot: 'bg-blue-500' },
-  { key: 'contacted',       label: 'Contacted',       bg: 'bg-sky-50',     text: 'text-sky-700',     dot: 'bg-sky-500' },
-  { key: 'callback',        label: 'Callback',        bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500' },
-  { key: 'interested',      label: 'Interested',      bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
-  { key: 'value_gap',       label: 'Value Gap',       bg: 'bg-orange-50',  text: 'text-orange-700',  dot: 'bg-orange-500' },
-  { key: 'not_interested',  label: 'Not interested',  bg: 'bg-gray-100',   text: 'text-gray-700',    dot: 'bg-gray-500' },
-  { key: 'wrong_number',    label: 'Wrong number',    bg: 'bg-rose-50',    text: 'text-rose-700',    dot: 'bg-rose-400' },
-  { key: 'no_answer',       label: 'No answer',       bg: 'bg-slate-50',   text: 'text-slate-700',   dot: 'bg-slate-400' },
-  { key: 'voicemail_left',  label: 'Voicemail left',  bg: 'bg-indigo-50',  text: 'text-indigo-700',  dot: 'bg-indigo-500' },
-  { key: 'deal_closed',     label: 'Deal closed',     bg: 'bg-green-100',  text: 'text-green-800',   dot: 'bg-green-600' },
-  { key: 'nurture',         label: 'Nurture',         bg: 'bg-violet-50',  text: 'text-violet-700',  dot: 'bg-violet-500' },
-  { key: 'disqualified',    label: 'Disqualified',    bg: 'bg-gray-100',   text: 'text-gray-600',    dot: 'bg-gray-400' },
-  { key: 'do_not_call',     label: 'Do not call',     bg: 'bg-red-50',     text: 'text-red-700',     dot: 'bg-red-500' },
-  { key: 'marketing',       label: 'Marketing',       bg: 'bg-fuchsia-50', text: 'text-fuchsia-700', dot: 'bg-fuchsia-500' },
+  { key: 'new',                label: 'New',                bg: 'bg-blue-50',    text: 'text-blue-700',    dot: 'bg-blue-500' },
+  { key: 'contacted',          label: 'Contacted',          bg: 'bg-sky-50',     text: 'text-sky-700',     dot: 'bg-sky-500' },
+  { key: 'callback',           label: 'Callback',           bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500' },
+  { key: 'interested',         label: 'Interested',         bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+  // Closing-funnel states between Interested and Deal closed. Colored
+  // teal + lime so they read as "in the same family as success" but
+  // distinct from interested (emerald) and deal_closed (green-600).
+  { key: 'verbal_commitment',  label: 'Verbal Commitment',  bg: 'bg-teal-50',    text: 'text-teal-700',    dot: 'bg-teal-500' },
+  { key: 'pending_close',      label: 'Pending Close',      bg: 'bg-lime-50',    text: 'text-lime-800',    dot: 'bg-lime-500' },
+  { key: 'value_gap',          label: 'Value Gap',          bg: 'bg-orange-50',  text: 'text-orange-700',  dot: 'bg-orange-500' },
+  { key: 'not_interested',     label: 'Not interested',     bg: 'bg-gray-100',   text: 'text-gray-700',    dot: 'bg-gray-500' },
+  { key: 'wrong_number',       label: 'Wrong number',       bg: 'bg-rose-50',    text: 'text-rose-700',    dot: 'bg-rose-400' },
+  { key: 'no_answer',          label: 'No answer',          bg: 'bg-slate-50',   text: 'text-slate-700',   dot: 'bg-slate-400' },
+  { key: 'voicemail_left',     label: 'Voicemail left',     bg: 'bg-indigo-50',  text: 'text-indigo-700',  dot: 'bg-indigo-500' },
+  { key: 'deal_closed',        label: 'Deal closed',        bg: 'bg-green-100',  text: 'text-green-800',   dot: 'bg-green-600' },
+  { key: 'nurture',            label: 'Nurture',            bg: 'bg-violet-50',  text: 'text-violet-700',  dot: 'bg-violet-500' },
+  { key: 'disqualified',       label: 'Disqualified',       bg: 'bg-gray-100',   text: 'text-gray-600',    dot: 'bg-gray-400' },
+  { key: 'do_not_call',        label: 'Do not call',        bg: 'bg-red-50',     text: 'text-red-700',     dot: 'bg-red-500' },
+  { key: 'marketing',          label: 'Marketing',          bg: 'bg-fuchsia-50', text: 'text-fuchsia-700', dot: 'bg-fuchsia-500' },
 ];
 
 export const MARKETING_CHANNELS = [
