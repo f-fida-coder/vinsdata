@@ -288,6 +288,15 @@ function renderBillOfSalePdf(array $d): string
     $html .= '<p>Date: ' . $blank($saleDate, '160px') . '<br>Print Name: ' . $blank($d['seller_name'], '240px') . '</p>';
     $html .= '</div>';
 
+    // Odometer Disclosure block — wrapped in a single div with
+    // page-break-inside: avoid so it never splits across a page
+    // boundary mid-paragraph. With the page-break above section 5
+    // pinning sections 5-7 to page 2, and additional_terms capped
+    // (see bill_of_sale.php validation), the disclosure consistently
+    // lives on page 2. If sections somehow overflow, the avoid hint
+    // cleanly pushes the whole disclosure to page 3 instead of
+    // splitting it.
+    $html .= '<div style="page-break-inside: avoid">';
     $html .= '<h1 style="margin-top:24px">ODOMETER DISCLOSURE STATEMENT</h1>';
     $html .= '<p class="clause">FEDERAL and STATE LAW requires that you state the mileage in connection with the transfer of ownership. Failure to complete or providing a false statement may result in fines and/or imprisonment.</p>';
     $html .= '<p>I/We, ' . $blank($d['seller_name'], '220px')
@@ -304,6 +313,7 @@ function renderBillOfSalePdf(array $d): string
     $html .= '<p>Date: ' . $blank($saleDate, '160px') . '<br>Print Name: ' . $blank($d['buyer_name'], '240px') . '</p>';
     $html .= '<div class="sig-block" style="margin-top:14px"><b>Seller Signature:</b><span class="sig-line"></span></div>';
     $html .= '<p>Date: ' . $blank($saleDate, '160px') . '<br>Print Name: ' . $blank($d['seller_name'], '240px') . '</p>';
+    $html .= '</div>'; // close page-break-inside: avoid wrapper
 
     $mpdf->WriteHTML($html);
     return $mpdf->Output('', 'S');

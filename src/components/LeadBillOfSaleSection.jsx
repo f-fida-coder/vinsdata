@@ -169,21 +169,40 @@ function BoSEditor({ leadId, initial, onSaved, onClose }) {
               when blank, the PDF prints "No Additional Terms of Sale"
               so the section is always visually present. Distinct
               from the "other_terms" field above which is tied to
-              the "Other" payment-type checkbox. */}
+              the "Other" payment-type checkbox. Capped at 800 chars
+              both client (maxLength) + server (mb_strlen guard) so
+              sections 5-7 stay within page-2 budget and the Odometer
+              Disclosure block lands consistently on page 2 of the
+              rendered PDF. */}
           <section>
             <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-700 mb-2">5. Additional terms and conditions</h4>
             <label className="block">
               <span className={labelCls}>Additional terms (optional)</span>
               <textarea
                 rows={4}
+                maxLength={800}
                 placeholder="e.g. Sold as-is with known transmission noise. Buyer arranges and pays for transport."
                 className={inputCls}
                 value={d.additional_terms ?? ''}
                 onChange={(e) => set({ additional_terms: e.target.value })}
               />
-              <span className="block text-[10px] text-gray-500 mt-1 italic">
-                Leave blank to render &ldquo;No Additional Terms of Sale&rdquo; on the PDF.
-              </span>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-[10px] text-gray-500 italic">
+                  Leave blank to render &ldquo;No Additional Terms of Sale&rdquo; on the PDF.
+                </span>
+                {(() => {
+                  const len = (d.additional_terms ?? '').length;
+                  const over = len > 720; // amber when within 80 of the limit
+                  return (
+                    <span
+                      className={`text-[10px] tabular-nums ${over ? 'text-amber-700 font-semibold' : 'text-gray-400'}`}
+                      title="Keeps Odometer Disclosure on page 2 of the PDF"
+                    >
+                      {len.toLocaleString()} / 800 chars
+                    </span>
+                  );
+                })()}
+              </div>
             </label>
           </section>
 

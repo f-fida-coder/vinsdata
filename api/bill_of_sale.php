@@ -151,6 +151,18 @@ if ($method === 'PUT') {
     if (!empty($input['taxes_paid_by']) && !in_array($input['taxes_paid_by'], BOS_TAXES_PAID_BY, true)) {
         pipelineFail(400, 'Invalid taxes_paid_by', 'invalid_taxes_paid_by');
     }
+    // additional_terms cap. Keeps the Odometer Disclosure block on
+    // page 2 of the rendered PDF by guaranteeing sections 5-7 stay
+    // within page-2 budget. 800 chars ~ 150 words ~ 8-10 wrapped
+    // lines at 11pt — comfortable room for a thoughtful clause or
+    // two without overflowing the page. The client-side textarea
+    // also enforces maxLength=800; this is the server-side guard.
+    if (isset($input['additional_terms']) && $input['additional_terms'] !== null) {
+        $at = (string) $input['additional_terms'];
+        if (mb_strlen($at) > 800) {
+            pipelineFail(400, 'Additional terms must be 800 characters or fewer (got ' . mb_strlen($at) . ').', 'additional_terms_too_long');
+        }
+    }
 
     $columns = [
         'sale_county','sale_state','sale_date',
