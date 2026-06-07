@@ -158,7 +158,7 @@ if ($method === 'PUT') {
         'vehicle_make','vehicle_model','vehicle_body_type','vehicle_year','vehicle_color','vehicle_odometer','vehicle_vin',
         'payment_type','payment_amount','trade_amount',
         'trade_make','trade_model','trade_body_type','trade_year','trade_color','trade_odometer',
-        'gift_value','other_terms','taxes_paid_by',
+        'gift_value','other_terms','additional_terms','taxes_paid_by',
         'odometer_accurate','odometer_exceeds_limits','odometer_not_actual',
     ];
 

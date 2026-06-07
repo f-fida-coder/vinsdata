@@ -16,7 +16,7 @@ const STANDALONE_BOS_DEFAULTS = {
   payment_type: 'cash', payment_amount: null, trade_amount: null,
   trade_make: '', trade_model: '', trade_body_type: '',
   trade_year: '', trade_color: '', trade_odometer: '',
-  gift_value: null, other_terms: '',
+  gift_value: null, other_terms: '', additional_terms: '',
   taxes_paid_by: 'buyer',
   odometer_accurate: true, odometer_exceeds_limits: false, odometer_not_actual: false,
 };
@@ -162,6 +162,29 @@ function BoSEditor({ leadId, initial, onSaved, onClose }) {
                 </button>
               ))}
             </div>
+          </section>
+
+          {/* 5. ADDITIONAL TERMS AND CONDITIONS — free-form extra
+              clauses. Renders into a dedicated section on the PDF;
+              when blank, the PDF prints "No Additional Terms of Sale"
+              so the section is always visually present. Distinct
+              from the "other_terms" field above which is tied to
+              the "Other" payment-type checkbox. */}
+          <section>
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-700 mb-2">5. Additional terms and conditions</h4>
+            <label className="block">
+              <span className={labelCls}>Additional terms (optional)</span>
+              <textarea
+                rows={4}
+                placeholder="e.g. Sold as-is with known transmission noise. Buyer arranges and pays for transport."
+                className={inputCls}
+                value={d.additional_terms ?? ''}
+                onChange={(e) => set({ additional_terms: e.target.value })}
+              />
+              <span className="block text-[10px] text-gray-500 mt-1 italic">
+                Leave blank to render &ldquo;No Additional Terms of Sale&rdquo; on the PDF.
+              </span>
+            </label>
           </section>
 
           {/* ODOMETER DISCLOSURE */}
