@@ -72,6 +72,26 @@ const GROUPINGS = {
     })),
     pick: (l) => l.tier || computeLeadTier(l.normalized_payload || {}) || 'tier_3',
   },
+  // Closing-funnel view. Three-column board showing only the deal-in-
+  // progress statuses so the operator can see at a glance what's about
+  // to close. Leads in any other status drop out of the view (pick
+  // returns '__hidden' which isn't a column key, so they don't render).
+  // Distinct from the full Status grouping above — that one shows all
+  // 16 statuses; this one focuses on the bottom of the funnel.
+  flow: {
+    label: 'Flow',
+    columns: [
+      { key: 'verbal_commitment', label: 'Verbal Commitment', dot: STATUS_DOT_VAR.verbal_commitment },
+      { key: 'pending_close',     label: 'Pending Close',     dot: STATUS_DOT_VAR.pending_close },
+      { key: 'deal_closed',       label: 'Deal Closed',       dot: STATUS_DOT_VAR.deal_closed },
+    ],
+    pick: (l) => {
+      const status = l.crm_state?.status || l.status;
+      return ['verbal_commitment', 'pending_close', 'deal_closed'].includes(status)
+        ? status
+        : '__hidden';
+    },
+  },
 };
 
 function relativeAgo(s) {
@@ -290,7 +310,14 @@ export default function PipelinePage() {
     return out;
   }, [grouped, cols]);
 
-  const totalLeads = leads.length;
+  const totalLeads   = leads.length;
+  // Count leads that actually landed in a rendered column. Groupings
+  // like 'flow' deliberately drop non-funnel leads (pick returns
+  // '__hidden') — the subtitle should reflect what's visible, not
+  // the raw total, otherwise "1,234 leads · grouped by flow" reads
+  // wrong when only 5 are actually in the funnel.
+  const visibleLeads = Object.values(sortedGrouped).reduce((sum, arr) => sum + arr.length, 0);
+  const filtered     = visibleLeads !== totalLeads;
 
   return (
     <div className="page pipeline-page">
@@ -298,11 +325,15 @@ export default function PipelinePage() {
         <div>
           <h1 className="section-title">Pipeline</h1>
           <p className="section-subtitle">
-            {loading ? 'Loading…' : (
+            {loading ? 'Loading…' : (filtered ? (
+              <>
+                <strong>{visibleLeads.toLocaleString()}</strong> of {totalLeads.toLocaleString()} leads · grouped by {config.label.toLowerCase()}
+              </>
+            ) : (
               <>
                 <strong>{totalLeads.toLocaleString()}</strong> leads · grouped by {config.label.toLowerCase()}
               </>
-            )}
+            ))}
           </p>
         </div>
         <div className="pl-controls">
