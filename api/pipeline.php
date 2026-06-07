@@ -225,10 +225,10 @@ function checkImportEligibility(PDO $db, int $fileId, int $artifactId): array
 // ----- CRM actions layer -----
 
 const LEAD_STATUSES = [
-    'new','contacted','callback','interested',
+    'new','callback','interested',
     'verbal_commitment','pending_close',
     'value_gap','not_interested',
-    'wrong_number','no_answer','voicemail_left','deal_closed',
+    'wrong_number','no_answer','deal_closed',
     'nurture','disqualified','do_not_call',
     'marketing',
 ];

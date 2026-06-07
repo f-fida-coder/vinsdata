@@ -746,9 +746,9 @@ if (count($sortFields) > 2) $sortFields = array_slice($sortFields, 0, 2);
 // Mirrors the src/lib/crm.js LEAD_STATUSES array order.
 $statusOrderSql =
     "FIELD(COALESCE(s.status,'new'),"
-    . "'new','contacted','callback','interested',"
+    . "'new','callback','interested',"
     . "'verbal_commitment','pending_close',"
-    . "'value_gap','no_answer','voicemail_left','wrong_number','not_interested',"
+    . "'value_gap','no_answer','wrong_number','not_interested',"
     . "'nurture','marketing','deal_closed','disqualified','do_not_call'"
     . ")";
 

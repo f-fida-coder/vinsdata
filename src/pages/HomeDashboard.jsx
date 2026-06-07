@@ -301,7 +301,7 @@ function Funnel({ funnel }) {
     <div className="dash-section">
       <div className="dash-section-head">
         <span className="dash-section-title">Pipeline</span>
-        <span className="dash-section-sub">New → Contacted → Interested → Closed</span>
+        <span className="dash-section-sub">New → Callback → Interested → Closed</span>
       </div>
       <div className="dash-funnel">
         {funnel.map((s, i) => {
@@ -468,7 +468,7 @@ function AgentsPanel({ rows, isAdmin }) {
                 <th>Agent</th>
                 <th style={{ textAlign: 'right' }}>Leads</th>
                 <th style={{ textAlign: 'right' }} title="Status changes the agent made today (since midnight UTC)">Today</th>
-                <th style={{ textAlign: 'right' }}>Contacted</th>
+                <th style={{ textAlign: 'right' }}>Interested</th>
                 <th style={{ textAlign: 'right' }}>Hot</th>
                 <th style={{ textAlign: 'right' }}>Closed</th>
                 <th style={{ textAlign: 'right' }}>Tasks</th>
@@ -505,16 +505,19 @@ function AgentsPanel({ rows, isAdmin }) {
                     ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    {/* Click → leads filtered to this agent + status=contacted
-                        so admins can drill straight into "who has Saad
-                        actually been working today". */}
-                    {r.contacted > 0 ? (
+                    {/* Replaced the old "Contacted" cell after migration
+                        038 collapsed contacted + voicemail_left into
+                        no_answer. Surfaces Interested instead — same
+                        drill-through pattern, more actionable signal
+                        since interested is mid-funnel rather than
+                        terminal. */}
+                    {r.interested > 0 ? (
                       <Link
-                        to={`/leads?assigned_user_id=${r.user_id}&status=contacted`}
+                        to={`/leads?assigned_user_id=${r.user_id}&status=interested`}
                         className="dash-pill"
-                        style={{ background: '#dbeafe', color: '#1d4ed8' }}
+                        style={{ background: '#d1fae5', color: '#047857' }}
                       >
-                        {r.contacted}
+                        {r.interested}
                       </Link>
                     ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
                   </td>

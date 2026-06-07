@@ -493,12 +493,12 @@ function EmptyBars() {
 // Reuse the same dot-color maps the Pipeline page uses, so colors stay
 // consistent across the app.
 const STATUS_DOT_VAR = {
-  new: 'var(--info)', contacted: 'var(--text-2)', callback: 'var(--warm)',
+  new: 'var(--info)', callback: 'var(--warm)',
   interested: 'var(--success)',
   verbal_commitment: 'var(--success)', pending_close: 'var(--success)',
   not_interested: 'var(--text-3)',
   wrong_number: 'var(--hot)', no_answer: 'var(--text-3)',
-  voicemail_left: 'var(--info)', deal_closed: 'var(--success)',
+  deal_closed: 'var(--success)',
   nurture: 'var(--info)', disqualified: 'var(--text-3)',
   do_not_call: 'var(--danger)', marketing: 'var(--info)',
 };

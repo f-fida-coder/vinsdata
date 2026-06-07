@@ -133,10 +133,12 @@ foreach (LEAD_STATUSES as $s) {
     if (!isset($byStatus[$s])) $byStatus[$s] = 0;
 }
 
-// Active outbound pipeline — the four stages that matter for "where are
-// my leads sitting right now". do_not_call / deal_closed are
-// terminal-status visualizations elsewhere.
-$funnelStages = ['new', 'contacted', 'interested', 'deal_closed'];
+// Active outbound pipeline — the stages that matter for "where are my
+// leads sitting right now". Callback/interested are the working steps;
+// deal_closed is the terminal won state. (Previously included
+// 'contacted' as the second stage, but that status was collapsed into
+// 'no_answer' in migration 038.)
+$funnelStages = ['new', 'callback', 'interested', 'deal_closed'];
 $funnel = array_map(fn($s) => ['key' => $s, 'count' => $byStatus[$s] ?? 0], $funnelStages);
 
 // ---- Per-file breakdown ----
@@ -165,7 +167,6 @@ $fileRows = $db->query(
             SUM(CASE WHEN r.norm_phone_primary IS NOT NULL AND r.norm_phone_primary <> ''
                        AND s.assigned_user_id IS NULL THEN 1 ELSE 0 END) AS unassigned_with_phone,
             SUM(CASE WHEN s.status     = 'new' OR s.status IS NULL THEN 1 ELSE 0 END) AS new_leads,
-            SUM(CASE WHEN s.status     = 'contacted'   THEN 1 ELSE 0 END) AS contacted,
             SUM(CASE WHEN s.status     = 'interested'  THEN 1 ELSE 0 END) AS interested,
             SUM(CASE WHEN s.lead_temperature = 'hot'   THEN 1 ELSE 0 END) AS hot,
             SUM(CASE WHEN s.status     = 'deal_closed' THEN 1 ELSE 0 END) AS closed,
@@ -217,7 +218,6 @@ $byFile = array_map(function ($r) {
         'assigned_with_phone'  => $assignedWithPhone,
         'unassigned_with_phone'=> $unassignedWithPhone,
         'new_leads'            => (int) $r['new_leads'],
-        'contacted'            => (int) $r['contacted'],
         'interested'           => (int) $r['interested'],
         'hot'                  => (int) $r['hot'],
         'closed'               => (int) $r['closed'],
@@ -250,7 +250,6 @@ $agentParams     = $isAdmin ? [] : [':me' => (int) $user['id']];
 $agentSql =
     "SELECT u.id AS user_id, u.name, u.role,
             COUNT(r.id) AS total_assigned,
-            SUM(CASE WHEN s.status     = 'contacted'   AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS contacted,
             SUM(CASE WHEN s.status     = 'interested'  AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS interested,
             SUM(CASE WHEN s.lead_temperature = 'hot'   AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS hot,
             SUM(CASE WHEN s.status     = 'deal_closed' AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS closed
@@ -315,7 +314,6 @@ $byAgent = array_map(function ($r) use ($tasksByAgent, $statusChangesByAgent) {
         'name'                => $r['name'],
         'role'                => $r['role'],
         'total_assigned'      => (int) $r['total_assigned'],
-        'contacted'           => (int) $r['contacted'],
         'interested'          => (int) $r['interested'],
         'hot'                 => (int) $r['hot'],
         'closed'              => (int) $r['closed'],

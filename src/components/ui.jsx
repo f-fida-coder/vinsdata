@@ -109,10 +109,10 @@ const STATUS_VARIANT = {
   Draft: 'muted', Sold: 'success', Acquired: 'info', Open: 'neutral',
   Confirmed: 'success', Pending: 'warn', Ignored: 'muted',
   // CRM stage names (lowercase)
-  new: 'info', contacted: 'neutral', callback: 'warn', interested: 'success',
+  new: 'info', callback: 'warn', interested: 'success',
   verbal_commitment: 'success', pending_close: 'success',
   not_interested: 'muted', wrong_number: 'muted', no_answer: 'muted',
-  voicemail_left: 'neutral', deal_closed: 'success', nurture: 'info',
+  deal_closed: 'success', nurture: 'info',
   disqualified: 'muted', do_not_call: 'danger', marketing: 'info',
 };
 
