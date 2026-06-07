@@ -256,21 +256,7 @@ function renderBillOfSalePdf(array $d): string
 
     $html .= '<div class="page-break"></div>';
 
-    // 5. Additional Terms — operator-entered free-form text. When the
-    //    field is blank we still render the section heading + a clear
-    //    "No Additional Terms of Sale" placeholder so the printed
-    //    document doesn't look like it's missing a clause. Pre-wraps
-    //    so line breaks the operator typed survive into the PDF.
-    $additionalTerms = trim((string) ($d['additional_terms'] ?? ''));
-    $html .= '<div class="section"><p><span class="num">5. ADDITIONAL TERMS AND CONDITIONS.</span></p>';
-    if ($additionalTerms !== '') {
-        $html .= '<p class="clause" style="white-space: pre-wrap">' . $esc($additionalTerms) . '</p>';
-    } else {
-        $html .= '<p class="clause" style="font-style: italic; color:#555">No Additional Terms of Sale.</p>';
-    }
-    $html .= '</div>';
-
-    $html .= '<div class="section"><p><span class="num">6. BUYER AND SELLER CONDITIONS.</span></p>';
+    $html .= '<div class="section"><p><span class="num">5. BUYER AND SELLER CONDITIONS.</span></p>';
     $html .= '<p class="clause">The undersigned Seller affirms that the above information about the Vehicle is accurate to the best of their knowledge. The undersigned Buyer accepts receipt of this document and understands that the above vehicle is sold on an &ldquo;as is, where is&rdquo; condition with no guarantees or warranties, either expressed or implied.</p></div>';
 
     // Buyer signature is pre-filled with the current buyer_name (defaults
@@ -281,11 +267,29 @@ function renderBillOfSalePdf(array $d): string
         ? '<span class="sig-text">' . $esc($d['buyer_name']) . '</span>'
         : '<span class="sig-line"></span>';
 
-    $html .= '<div class="section"><p><span class="num">7. AUTHORIZATION.</span></p>';
+    $html .= '<div class="section"><p><span class="num">6. AUTHORIZATION.</span></p>';
     $html .= '<div class="sig-block"><b>Buyer Signature:</b>' . $buyerSig . '</div>';
     $html .= '<p>Date: ' . $blank($saleDate, '160px') . '<br>Print Name: ' . $blank($d['buyer_name'], '240px') . '</p>';
     $html .= '<div class="sig-block"><b>Seller Signature:</b><span class="sig-line"></span></div>';
     $html .= '<p>Date: ' . $blank($saleDate, '160px') . '<br>Print Name: ' . $blank($d['seller_name'], '240px') . '</p>';
+    $html .= '</div>';
+
+    // 7. Additional Terms — placed AFTER the traditional Bill of Sale
+    //    body (sections 1-6 above, including the buyer/seller signature
+    //    block) so the standard template reads cleanly first; the
+    //    operator-entered clauses come as an appendix-style block at
+    //    the end. Always rendered with the section heading even when
+    //    the field is blank — the placeholder ("No Additional Terms of
+    //    Sale") keeps the printed document from looking like it's
+    //    missing a clause. Pre-wrap preserves the line breaks the
+    //    operator typed.
+    $additionalTerms = trim((string) ($d['additional_terms'] ?? ''));
+    $html .= '<div class="section" style="margin-top:24px"><p><span class="num">7. ADDITIONAL TERMS AND CONDITIONS.</span></p>';
+    if ($additionalTerms !== '') {
+        $html .= '<p class="clause" style="white-space: pre-wrap">' . $esc($additionalTerms) . '</p>';
+    } else {
+        $html .= '<p class="clause" style="font-style: italic; color:#555">No Additional Terms of Sale.</p>';
+    }
     $html .= '</div>';
 
     // Odometer Disclosure block — pinned to its OWN page via a

@@ -164,18 +164,21 @@ function BoSEditor({ leadId, initial, onSaved, onClose }) {
             </div>
           </section>
 
-          {/* 5. ADDITIONAL TERMS AND CONDITIONS — free-form extra
-              clauses. Renders into a dedicated section on the PDF;
-              when blank, the PDF prints "No Additional Terms of Sale"
-              so the section is always visually present. Distinct
-              from the "other_terms" field above which is tied to
-              the "Other" payment-type checkbox. Capped at 1500 chars
-              client + server. Odometer Disclosure lives on its own
-              page (forced page-break in bos_helpers.php), so this
-              section can breathe — 1500 ~ 250 words is room for a
-              thoughtful multi-clause statement. */}
+          {/* 7. ADDITIONAL TERMS AND CONDITIONS — free-form extra
+              clauses. Lives at the BOTTOM of the rendered PDF (after
+              the traditional 1-6 BoS body including the signature
+              block, before Odometer Disclosure which has its own
+              page). When blank, the PDF prints "No Additional Terms
+              of Sale" so the section is always visually present.
+              Distinct from the "other_terms" field above which is
+              tied to the "Other" payment-type checkbox. Capped at
+              1500 chars client + server — room for a thoughtful
+              multi-clause statement (~250 words). Position in this
+              form intentionally stays right after Taxes for editing
+              convenience; the PDF section number (7) reflects the
+              print order. */}
           <section>
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-700 mb-2">5. Additional terms and conditions</h4>
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-700 mb-2">7. Additional terms and conditions</h4>
             <label className="block">
               <span className={labelCls}>Additional terms (optional)</span>
               <textarea
