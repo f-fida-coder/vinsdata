@@ -1628,8 +1628,42 @@ function LeadDetailInner({ leadId, onClose, onChanged, onOpenLead }) {
                 );
               })()}
             </div>
-            <div className="flex items-center gap-1">
-              {detail && (
+            {/* Only the close button lives in the title-bar action
+                slot. The archive / restore action moved to a clearly
+                separated row below the status chips — sitting next to
+                the × made it a misclick risk. */}
+            <button
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+              aria-label="Close drawer"
+            >
+              &times;
+            </button>
+          </div>
+          {detail && (
+            <>
+              {/* Header chips — intentionally just the five tags the
+                  operator cares about at a glance:
+                    Tier · Status · Priority · Temperature · Agent.
+                  Batch / Row # / notes-count / price / latest-note
+                  used to live here too; they were noise. Source file
+                  and batch metadata stay available in the Source
+                  section at the bottom of the drawer.
+
+                  The archive / restore action sits at the end of this
+                  row, well separated from the × close button at the
+                  top-right of the header. Subdued styling (text link,
+                  not an icon button) signals it's a less-common
+                  action that still needs the confirmation prompt. */}
+              <div className="flex items-center gap-2 mt-3 flex-wrap">
+                <TierPill tierKey={detail.tier || computeLeadTier(detail.normalized_payload || {})} />
+                <StatusPill statusKey={crmState.status} />
+                <PriorityPill priorityKey={crmState.priority} />
+                <TemperaturePill temperatureKey={crmState.lead_temperature} />
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-gray-50 text-gray-700 border border-gray-100 whitespace-nowrap">
+                  {crmState.assigned_user_name ? `Agent: ${crmState.assigned_user_name}` : 'Unassigned'}
+                </span>
+                <span className="ml-auto"/>
                 <button
                   onClick={async () => {
                     const archived = !!detail.deleted_at;
@@ -1646,33 +1680,16 @@ function LeadDetailInner({ leadId, onClose, onChanged, onOpenLead }) {
                       window.alert(extractApiError(err, `Failed to ${action} lead`));
                     }
                   }}
-                  className={`w-8 h-8 flex items-center justify-center rounded-lg ${detail.deleted_at ? 'text-emerald-600 hover:bg-emerald-50' : 'text-red-500 hover:bg-red-50'}`}
-                  title={detail.deleted_at ? 'Restore lead' : 'Archive lead'}
-                  aria-label={detail.deleted_at ? 'Restore lead' : 'Archive lead'}
+                  className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md border whitespace-nowrap ${
+                    detail.deleted_at
+                      ? 'text-emerald-700 bg-white border-emerald-200 hover:bg-emerald-50'
+                      : 'text-red-600 bg-white border-red-200 hover:bg-red-50'
+                  }`}
+                  title={detail.deleted_at ? 'Restore this lead' : 'Archive this lead (recoverable from the Archived view)'}
                 >
-                  <Icon name={detail.deleted_at ? 'check' : 'trash'} size={16} />
+                  <Icon name={detail.deleted_at ? 'check' : 'trash'} size={11} />
+                  {detail.deleted_at ? 'Restore' : 'Archive'}
                 </button>
-              )}
-              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">&times;</button>
-            </div>
-          </div>
-          {detail && (
-            <>
-              {/* Header chips — intentionally just the five tags the
-                  operator cares about at a glance:
-                    Tier · Status · Priority · Temperature · Agent.
-                  Batch / Row # / notes-count / price / latest-note
-                  used to live here too; they were noise. Source file
-                  and batch metadata stay available in the Source
-                  section at the bottom of the drawer. */}
-              <div className="flex items-center gap-2 mt-3 flex-wrap">
-                <TierPill tierKey={detail.tier || computeLeadTier(detail.normalized_payload || {})} />
-                <StatusPill statusKey={crmState.status} />
-                <PriorityPill priorityKey={crmState.priority} />
-                <TemperaturePill temperatureKey={crmState.lead_temperature} />
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-gray-50 text-gray-700 border border-gray-100 whitespace-nowrap">
-                  {crmState.assigned_user_name ? `Agent: ${crmState.assigned_user_name}` : 'Unassigned'}
-                </span>
               </div>
 
               {/* Multi-vehicle banner. When the same phone shows up on

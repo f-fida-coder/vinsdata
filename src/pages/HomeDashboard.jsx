@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { Fragment, useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import api, { extractApiError } from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -88,6 +88,7 @@ export default function HomeDashboard() {
           {data.is_admin && (
             <>
               <AgentTemperatureDetailPanel rows={data.by_agent} />
+              <StalledDealsPanel           rows={data.stalled_deals || []} />
               <ActivityPanel              rows={data.by_agent} />
               <LeadManagementPanel        rows={data.by_agent} />
               <DealClosedPanel            rows={data.by_agent} />
@@ -758,6 +759,139 @@ function LeadManagementPanel({ rows }) {
                     ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
                   </td>
                 </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StalledDealsPanel({ rows }) {
+  // Group rows by assigned agent so the admin sees the warning sorted
+  // by who's letting deals slip. Unassigned leads fall into a synthetic
+  // 'Unassigned' bucket at the top so they're impossible to miss.
+  const grouped = useMemo(() => {
+    const out = new Map();
+    for (const r of rows) {
+      const k = r.assigned_user_id || '__unassigned';
+      const label = r.assigned_user_name || 'Unassigned';
+      if (!out.has(k)) out.set(k, { user_id: r.assigned_user_id, name: label, items: [] });
+      out.get(k).items.push(r);
+    }
+    return [...out.values()].sort((a, b) => {
+      if (a.user_id === null && b.user_id !== null) return -1; // unassigned first
+      if (b.user_id === null && a.user_id !== null) return 1;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  }, [rows]);
+
+  const fmtPhone = (p) => {
+    if (!p) return null;
+    const d = String(p).replace(/\D+/g, '');
+    if (d.length === 11 && d[0] === '1') return `(${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7)}`;
+    if (d.length === 10)                  return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
+    return p;
+  };
+  const fmtYmm = (r) => [r.year, r.make, r.model].filter(Boolean).join(' ');
+  const STATUS_LABEL = {
+    interested: 'Interested',
+    verbal_commitment: 'Verbal Commit.',
+    pending_close: 'Pending Close',
+  };
+  const STATUS_BG = {
+    interested: { bg: '#d1fae5', text: '#047857' },
+    verbal_commitment: { bg: '#ccfbf1', text: '#0f766e' },
+    pending_close: { bg: '#ecfccb', text: '#65a30d' },
+  };
+
+  return (
+    <div className="dash-section">
+      <div className="dash-section-head">
+        <span className="dash-section-title">Stalled Deals</span>
+        <span className="dash-section-sub">
+          Interested / Verbal Commit. / Pending Close · no note + no completed task in 5+ days
+        </span>
+      </div>
+      {rows.length === 0 ? (
+        <p style={{ fontSize: 12, color: 'var(--text-3)', padding: 12 }}>
+          No stalled deals — every closing-funnel lead has a note or completed task within the last 5 days.
+        </p>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="dash-table">
+            <thead>
+              <tr>
+                <th>Agent</th>
+                <th>First name</th>
+                <th>Last name</th>
+                <th>Vehicle (year/make/model)</th>
+                <th>Phone</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {grouped.map((group) => (
+                <Fragment key={group.user_id ?? '__u'}>
+                  {/* Group header row — bold agent name, spans the
+                      whole table width. Clicking jumps to that agent's
+                      filtered leads view. */}
+                  <tr style={{ background: 'var(--bg-2)' }}>
+                    <td colSpan={6} style={{ fontWeight: 700, fontSize: 12, padding: '6px 8px' }}>
+                      {group.user_id != null ? (
+                        <Link to={`/leads?assigned_user_id=${group.user_id}`} style={{ color: 'var(--text-0)', textDecoration: 'none' }}>
+                          {group.name} <span style={{ fontWeight: 500, color: 'var(--text-3)' }}>· {group.items.length} stalled</span>
+                        </Link>
+                      ) : (
+                        <span style={{ color: 'var(--warm)' }}>{group.name} · {group.items.length} stalled</span>
+                      )}
+                    </td>
+                  </tr>
+                  {group.items.map((r) => {
+                    const phoneRendered = fmtPhone(r.phone);
+                    const ymm = fmtYmm(r);
+                    const sb = STATUS_BG[r.status] || { bg: 'var(--bg-2)', text: 'var(--text-2)' };
+                    return (
+                      <tr key={r.lead_id}>
+                        <td className="cell-muted tiny" style={{ paddingLeft: 16 }}>↳</td>
+                        <td>
+                          <Link to={`/leads?lead_id=${r.lead_id}`} style={{ color: 'var(--text-0)', textDecoration: 'none', fontWeight: 500 }}>
+                            {r.first_name || <span style={{ color: 'var(--text-3)' }}>—</span>}
+                          </Link>
+                        </td>
+                        <td>
+                          <Link to={`/leads?lead_id=${r.lead_id}`} style={{ color: 'var(--text-0)', textDecoration: 'none', fontWeight: 500 }}>
+                            {r.last_name || <span style={{ color: 'var(--text-3)' }}>—</span>}
+                          </Link>
+                        </td>
+                        <td>
+                          {ymm ? (
+                            <Link to={`/leads?lead_id=${r.lead_id}`} style={{ color: 'var(--text-1)', textDecoration: 'none' }}>
+                              {ymm}
+                            </Link>
+                          ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
+                        </td>
+                        <td>
+                          {phoneRendered ? (
+                            <a href={`tel:${r.phone}`} className="cell-mono" style={{ color: 'var(--text-1)', textDecoration: 'none' }}>
+                              {phoneRendered}
+                            </a>
+                          ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
+                        </td>
+                        <td>
+                          <Link
+                            to={`/leads?status=${r.status}${r.assigned_user_id ? `&assigned_user_id=${r.assigned_user_id}` : ''}`}
+                            className="dash-pill"
+                            style={{ background: sb.bg, color: sb.text }}
+                          >
+                            {STATUS_LABEL[r.status] || r.status}
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
               ))}
             </tbody>
           </table>

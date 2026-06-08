@@ -1180,15 +1180,22 @@ export default function DispatchPage() {
   };
   const fcEvents = filteredEvents.map((e) => {
     const meta = TRANSPORT_STATUS_BY_KEY[e.status] || TRANSPORT_STATUS_BY_KEY.new;
+    // Delivered events are the "complete" state — render as a
+    // saturated green with white text so they visually stand out
+    // from the in-flight pastel cards. Operators scanning the
+    // calendar see at a glance which jobs are wrapped vs still
+    // moving. Cancelled keeps its rose tint (different "done"
+    // meaning).
+    const delivered = e.status === 'delivered';
     const bgSoft = BG_SOFT[meta.hex] || '#f3f4f6';
     return {
       id:           String(e.id),
       title:        e.title,
       start:        e.start,
       allDay:       e.all_day,
-      backgroundColor: bgSoft,
-      borderColor:     meta.hex,
-      textColor:       '#111827', // gray-900 — readable on every pastel
+      backgroundColor: delivered ? '#10b981' : bgSoft,           // emerald-500 vs pastel
+      borderColor:     delivered ? '#047857' : meta.hex,          // emerald-700 stripe
+      textColor:       delivered ? '#ffffff' : '#111827',         // white on green, dark on pastels
       extendedProps:   e,
     };
   });

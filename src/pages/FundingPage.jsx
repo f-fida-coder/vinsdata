@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import api, { extractApiError } from '../api';
 import { SectionHeader, Button, Icon, Input, EmptyState, KPI, StatusBadge, TempPill } from '../components/ui';
+import { useAuth } from '../context/AuthContext';
 import LeadDetailDrawer from '../components/LeadDetailDrawer';
 
 // 5-stage post-close pipeline. The order here is the order they render
@@ -50,6 +51,8 @@ function formatMoney(n) {
  * Click anywhere else on a row to open the lead drawer.
  */
 export default function FundingPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [rows, setRows] = useState([]);
   const [counts, setCounts] = useState({});
   const [loading, setLoading] = useState(true);
@@ -208,6 +211,30 @@ export default function FundingPage() {
                         >
                           <Icon name="chevronRight" size={12} /> Open
                         </button>
+                        {/* Admin-only hard delete. Hits DELETE
+                            /api/lead_archive which permanently removes
+                            the imported_leads_raw row (CASCADE clears
+                            bill_of_sale, lead_transport, lead_states,
+                            etc). The confirm prompt is the safety gate
+                            on top of the server-side admin role check. */}
+                        {isAdmin && (
+                          <button
+                            onClick={async () => {
+                              const label = r.lead_name || `Lead #${r.lead_id}`;
+                              if (!window.confirm(`Permanently delete ${label}? This cannot be undone — the lead and every related BoS / transport / state record will be removed.`)) return;
+                              try {
+                                await api.delete('/lead_archive', { data: { lead_id: r.lead_id } });
+                                load();
+                              } catch (err) {
+                                window.alert(extractApiError(err, 'Failed to delete lead'));
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50 rounded"
+                            title="Permanently delete this lead (admin only — irreversible)"
+                          >
+                            <Icon name="trash" size={12} /> Delete
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -456,6 +456,74 @@ $byAgent = array_map(function ($r) use (
     ];
 }, $agentRows);
 
+// ---- Stalled deals --------------------------------------------------
+//
+// Leads sitting in the closing funnel (interested / verbal_commitment /
+// pending_close) where no operator activity has happened for 5+ days —
+// the "deal getting stuck" early-warning signal. Activity = a note
+// added OR a task completed by anyone on that lead. If both are silent
+// 5+ days, the lead surfaces here so the admin can poke the agent.
+//
+// Returns first/last name, vehicle (year/make/model), phone, assigned
+// agent. Frontend groups by agent and renders one clickable card per
+// lead.
+//
+// Admin view = every stalled lead system-wide. Non-admin view = only
+// the operator's own assigned leads (mirrors the rest of the per-agent
+// scoping in this endpoint).
+$stalledScopeWhere = $isAdmin ? '' : 'AND s.assigned_user_id = :me_stalled';
+$stalledParams     = $isAdmin ? [] : [':me_stalled' => (int) $user['id']];
+$stalledSql =
+    "SELECT r.id AS lead_id,
+            JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.first_name')) AS first_name,
+            JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.last_name'))  AS last_name,
+            JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.year'))       AS year,
+            JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.make'))       AS make,
+            JSON_UNQUOTE(JSON_EXTRACT(r.normalized_payload_json, '$.model'))      AS model,
+            r.norm_phone_primary AS phone,
+            s.status,
+            s.assigned_user_id,
+            u.name AS assigned_user_name,
+            -- Last note + last task-completed timestamps for the
+            -- inactivity comparison. NULL = never. Frontend doesn't
+            -- need these but they're useful for debugging.
+            (SELECT MAX(n.created_at) FROM lead_notes  n WHERE n.imported_lead_id = r.id) AS last_note_at,
+            (SELECT MAX(t.completed_at) FROM lead_tasks t WHERE t.imported_lead_id = r.id AND t.status = 'completed') AS last_task_completed_at
+       FROM imported_leads_raw r
+       JOIN lead_states  s ON s.imported_lead_id = r.id
+       LEFT JOIN users   u ON u.id = s.assigned_user_id
+      WHERE r.import_status = 'imported'
+        AND r.deleted_at IS NULL
+        AND s.status IN ('interested','verbal_commitment','pending_close')
+        $stalledScopeWhere
+        -- Both signals silent 5+ days. COALESCE(...,0) treats 'never'
+        -- as 'forever ago' so brand-new closing-funnel leads with no
+        -- activity yet surface as stalled.
+        AND COALESCE((SELECT MAX(n.created_at) FROM lead_notes n WHERE n.imported_lead_id = r.id), '1970-01-01')
+              < DATE_SUB(NOW(), INTERVAL 5 DAY)
+        AND COALESCE((SELECT MAX(t.completed_at) FROM lead_tasks t WHERE t.imported_lead_id = r.id AND t.status = 'completed'), '1970-01-01')
+              < DATE_SUB(NOW(), INTERVAL 5 DAY)
+      ORDER BY u.name ASC, last_name ASC, first_name ASC
+      LIMIT 500";
+$st = $db->prepare($stalledSql);
+$st->execute($stalledParams);
+$stalled = array_map(function ($r) {
+    return [
+        'lead_id'             => (int) $r['lead_id'],
+        'first_name'          => $r['first_name'],
+        'last_name'           => $r['last_name'],
+        'year'                => $r['year'],
+        'make'                => $r['make'],
+        'model'               => $r['model'],
+        'phone'               => $r['phone'],
+        'status'              => $r['status'],
+        'assigned_user_id'    => $r['assigned_user_id'] !== null ? (int) $r['assigned_user_id'] : null,
+        'assigned_user_name'  => $r['assigned_user_name'],
+        'last_note_at'        => $r['last_note_at'],
+        'last_task_completed_at' => $r['last_task_completed_at'],
+    ];
+}, $st->fetchAll());
+
 // ---- Top makes / models by lead volume ----
 //
 // Source spreadsheets occasionally put a model in the make column —
@@ -519,6 +587,7 @@ echo json_encode([
     'by_status'      => $byStatus,
     'by_file'        => $byFile,
     'by_agent'       => $byAgent,
+    'stalled_deals'  => $stalled,
     'by_make'        => $byMake,
     'recent_imports' => $recent,
     'role'           => $role,
