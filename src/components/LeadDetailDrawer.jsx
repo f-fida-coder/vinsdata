@@ -277,11 +277,23 @@ function CrmStateSection({ leadId, initialState, importedMiles, autoTier, users,
   const [baseline, setBaseline] = useState(state);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  // When status flips to 'callback', the inline scheduler shows so the
-  // operator can immediately spawn a "Callback" task with the right
-  // due time. Saved alongside the state change.
-  const [callbackDueAt, setCallbackDueAt] = useState('');
-  const justSetCallback = state.status === 'callback' && baseline.status !== 'callback';
+  // Status-change automations. Three transitions create a task on
+  // save:
+  //   callback           → operator picks the due date/time inline.
+  //                        Required (Save blocked until a date is set).
+  //   verbal_commitment  → operator picks the due date/time inline.
+  //                        Required (lead is too high-value to forget).
+  //   nurture            → no prompt; auto-created with due_at = today
+  //                        + 45 days (the long-cycle follow-up cadence
+  //                        the team uses for cold-but-not-dead leads).
+  // Pending_close has its own surface: the Stalled Deals dashboard
+  // table catches it after 5+ days of inactivity, no per-transition
+  // prompt needed at status-change time.
+  const [followUpDueAt, setFollowUpDueAt] = useState('');
+  const justSetCallback         = state.status === 'callback'          && baseline.status !== 'callback';
+  const justSetVerbalCommitment = state.status === 'verbal_commitment' && baseline.status !== 'verbal_commitment';
+  const justSetNurture          = state.status === 'nurture'           && baseline.status !== 'nurture';
+  const requiresFollowUpDate    = justSetCallback || justSetVerbalCommitment;
 
   const dirty = useMemo(() => (
     state.status !== baseline.status
@@ -328,26 +340,63 @@ function CrmStateSection({ leadId, initialState, importedMiles, autoTier, users,
         // lead returns to the auto-computed tier on next render.
         payload.tier_override = state.tier_override === '' ? null : state.tier_override;
       }
+      // Guard the required-date transitions BEFORE the PUT so a
+      // missing date doesn't leave the lead half-saved (status flipped,
+      // task missing). Pending_close stays prompt-free here — its
+      // alert lives in the Stalled Deals dashboard table.
+      if (requiresFollowUpDate && !followUpDueAt) {
+        setError(
+          justSetCallback
+            ? 'Pick a callback date/time before saving.'
+            : 'Pick a follow-up date/time before saving (Verbal Commitment requires a scheduled next step).'
+        );
+        setSaving(false);
+        return;
+      }
+
       await api.put('/lead_state', payload);
-      // If the operator just flipped this lead to 'callback' AND
-      // picked a date/time in the inline scheduler, create the
-      // matching Callback task on the same lead so the follow-up is
-      // already on someone's queue. We assign to the lead's current
-      // agent if set, else to the actor who pushed the status change.
-      if (state.status === 'callback' && baseline.status !== 'callback' && callbackDueAt) {
-        try {
+
+      // Auto-create the matching follow-up task. We assign to the
+      // lead's current agent if set, else server falls back to the
+      // actor who pushed the status change. Each transition uses a
+      // different task_type + title so the kanban/task list reads
+      // sensibly without a separate per-status label.
+      try {
+        if (justSetCallback && followUpDueAt) {
           await api.post('/lead_tasks', {
             lead_id:          leadId,
             title:            'Callback follow-up',
             task_type:        'callback',
-            due_at:           callbackDueAt,
+            due_at:           followUpDueAt,
             assigned_user_id: state.assigned_user_id ?? null,
           });
-          setCallbackDueAt('');
-        } catch (e) {
-          // Don't blow up the state save — surface the task error inline.
-          setError(extractApiError(e, 'Status saved, but failed to create callback task'));
+        } else if (justSetVerbalCommitment && followUpDueAt) {
+          await api.post('/lead_tasks', {
+            lead_id:          leadId,
+            title:            'Verbal commitment follow-up — confirm close',
+            task_type:        'follow_up',
+            due_at:           followUpDueAt,
+            assigned_user_id: state.assigned_user_id ?? null,
+          });
+        } else if (justSetNurture) {
+          // Auto due-date = 45 days from today in YYYY-MM-DDTHH:MM
+          // form (datetime-local-compatible). Hard-coded T09:00 so
+          // it lands in operator hours rather than midnight.
+          const due = new Date();
+          due.setDate(due.getDate() + 45);
+          const iso = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')}T09:00:00`;
+          await api.post('/lead_tasks', {
+            lead_id:          leadId,
+            title:            'Nurture follow-up (45-day cycle)',
+            task_type:        'follow_up',
+            due_at:           iso,
+            assigned_user_id: state.assigned_user_id ?? null,
+          });
         }
+        setFollowUpDueAt('');
+      } catch (e) {
+        // Don't blow up the state save — surface the task error inline.
+        setError(extractApiError(e, 'Status saved, but failed to create follow-up task'));
       }
       setBaseline(state);
       onChanged?.();
@@ -407,18 +456,34 @@ function CrmStateSection({ leadId, initialState, importedMiles, autoTier, users,
             {LEAD_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
           {/* Inline scheduler — appears the moment the operator flips
-              this lead to 'callback'. Picking a date here creates a
-              "Callback follow-up" task automatically when the section
-              saves. Leaving it blank just saves the status. */}
-          {justSetCallback && (
+              this lead to a status that requires a scheduled follow-up
+              (callback or verbal_commitment). The date is required;
+              Save shows an inline error if it's empty. Creates a task
+              of the appropriate type alongside the state change. */}
+          {requiresFollowUpDate && (
             <div className="mt-1.5 rounded-md border border-amber-200 bg-amber-50/60 px-2 py-1.5">
-              <p className="text-[10px] text-amber-900 mb-1">Schedule the callback (creates a task):</p>
+              <p className="text-[10px] text-amber-900 mb-1">
+                {justSetCallback
+                  ? 'Schedule the callback (required — creates a task):'
+                  : 'Schedule the verbal-commitment follow-up (required — creates a task):'}
+              </p>
               <input
                 type="datetime-local"
-                value={callbackDueAt}
-                onChange={(e) => setCallbackDueAt(e.target.value)}
+                value={followUpDueAt}
+                onChange={(e) => setFollowUpDueAt(e.target.value)}
                 className="w-full bg-white border border-amber-200 rounded-md px-2 py-1 text-xs focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none"
               />
+            </div>
+          )}
+          {/* Nurture — no date prompt, just a heads-up that a 45-day
+              follow-up task will be created on save. Lets the operator
+              cancel/change status before committing if that's not what
+              they meant. */}
+          {justSetNurture && (
+            <div className="mt-1.5 rounded-md border border-violet-200 bg-violet-50/60 px-2 py-1.5">
+              <p className="text-[10px] text-violet-900">
+                A nurture follow-up task will be created for 45 days from today on save.
+              </p>
             </div>
           )}
         </label>
