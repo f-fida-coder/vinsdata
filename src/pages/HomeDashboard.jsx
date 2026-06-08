@@ -79,8 +79,20 @@ export default function HomeDashboard() {
           <Funnel funnel={data.funnel} />
           <div className="dash-grid">
             <FilesPanel rows={data.by_file} isAdmin={data.is_admin} />
-            <AgentsPanel rows={data.by_agent} isAdmin={data.is_admin} />
+            <AgentStatusDetailPanel rows={data.by_agent} isAdmin={data.is_admin} />
           </div>
+          {/* Admin-only operational tables. Each shows a different
+              slice of per-agent productivity. Stacked full-width since
+              they all have multiple columns and don't pair well
+              side-by-side. */}
+          {data.is_admin && (
+            <>
+              <AgentTemperatureDetailPanel rows={data.by_agent} />
+              <ActivityPanel              rows={data.by_agent} />
+              <LeadManagementPanel        rows={data.by_agent} />
+              <DealClosedPanel            rows={data.by_agent} />
+            </>
+          )}
           <div className="dash-grid">
             <MakesPanel rows={data.by_make} />
             <RecentImportsPanel rows={data.recent_imports} />
@@ -449,11 +461,11 @@ function FilesPanel({ rows, isAdmin }) {
 
 // ---- Agents panel -----------------------------------------------------
 
-function AgentsPanel({ rows, isAdmin }) {
+function AgentStatusDetailPanel({ rows, isAdmin }) {
   return (
     <div className="dash-section">
       <div className="dash-section-head">
-        <span className="dash-section-title">{isAdmin ? 'Agents' : 'My pipeline'}</span>
+        <span className="dash-section-title">{isAdmin ? 'Agent Status Detail' : 'My pipeline'}</span>
         <span className="dash-section-sub">
           {rows.length} {isAdmin ? (rows.length === 1 ? 'active' : 'active') : ''} {isAdmin ? '' : 'agent'}
         </span>
@@ -468,7 +480,9 @@ function AgentsPanel({ rows, isAdmin }) {
                 <th>Agent</th>
                 <th style={{ textAlign: 'right' }}>Leads</th>
                 <th style={{ textAlign: 'right' }} title="Status changes the agent made today (since midnight UTC)">Today</th>
+                <th style={{ textAlign: 'right' }} title="Status changes the agent made this week (Mon–Sun)">Week</th>
                 <th style={{ textAlign: 'right' }}>Interested</th>
+                <th style={{ textAlign: 'right' }} title="Leads where the lead has verbally committed to the deal">Verbal Commit.</th>
                 <th style={{ textAlign: 'right' }}>Hot</th>
                 <th style={{ textAlign: 'right' }}>Closed</th>
                 <th style={{ textAlign: 'right' }}>Tasks</th>
@@ -504,13 +518,24 @@ function AgentsPanel({ rows, isAdmin }) {
                       </span>
                     ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
                   </td>
+                  {/* Week column — status changes this week (Mon-Sun).
+                      Same color scaling, just a higher activity bar
+                      since it's accumulated over 7 days. */}
                   <td style={{ textAlign: 'right' }}>
-                    {/* Replaced the old "Contacted" cell after migration
-                        038 collapsed contacted + voicemail_left into
-                        no_answer. Surfaces Interested instead — same
-                        drill-through pattern, more actionable signal
-                        since interested is mid-funnel rather than
-                        terminal. */}
+                    {r.status_changes_week > 0 ? (
+                      <span
+                        className="dash-pill"
+                        style={{
+                          background: r.status_changes_week >= 40 ? '#d1fae5' : '#dbeafe',
+                          color:      r.status_changes_week >= 40 ? '#047857' : '#1d4ed8',
+                        }}
+                        title={`${r.status_changes_week} status change${r.status_changes_week === 1 ? '' : 's'} this week (Mon–Sun)`}
+                      >
+                        {r.status_changes_week}
+                      </span>
+                    ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
                     {r.interested > 0 ? (
                       <Link
                         to={`/leads?assigned_user_id=${r.user_id}&status=interested`}
@@ -518,6 +543,20 @@ function AgentsPanel({ rows, isAdmin }) {
                         style={{ background: '#d1fae5', color: '#047857' }}
                       >
                         {r.interested}
+                      </Link>
+                    ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
+                  </td>
+                  {/* Verbal Commitment — between Interested and Hot in
+                      the funnel; flagged as teal to distinguish from
+                      Interested's emerald and the deal-closed greens. */}
+                  <td style={{ textAlign: 'right' }}>
+                    {r.verbal_commitment > 0 ? (
+                      <Link
+                        to={`/leads?assigned_user_id=${r.user_id}&status=verbal_commitment`}
+                        className="dash-pill"
+                        style={{ background: '#ccfbf1', color: '#0f766e' }}
+                      >
+                        {r.verbal_commitment}
                       </Link>
                     ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
                   </td>
@@ -540,6 +579,244 @@ function AgentsPanel({ rows, isAdmin }) {
                   </td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Admin-only operational tables ----------------------------------
+//
+// Four admin-only views, each a different slice of per-agent productivity.
+// Share the same row source (data.by_agent) — backend builds every
+// aggregate; each panel just picks the columns it cares about. Each
+// row's Agent cell links to /leads?assigned_user_id=X so admins can
+// drill into a specific agent's pool with one click.
+
+function AgentRowCell({ row }) {
+  return (
+    <td>
+      <Link to={`/leads?assigned_user_id=${row.user_id}`} style={{ color: 'var(--text-0)', textDecoration: 'none' }}>
+        <div style={{ fontWeight: 500 }}>{row.name}</div>
+        <div style={{ fontSize: 10, color: 'var(--text-3)' }}>{roleLabel(row.role)}</div>
+      </Link>
+    </td>
+  );
+}
+
+function NumCell({ value, color, dim }) {
+  if (!value) {
+    return <td style={{ textAlign: 'right', color: 'var(--text-3)' }}>—</td>;
+  }
+  return (
+    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: dim ? 'var(--text-2)' : (color || 'var(--text-0)') }}>
+      {value.toLocaleString()}
+    </td>
+  );
+}
+
+function AgentTemperatureDetailPanel({ rows }) {
+  return (
+    <div className="dash-section">
+      <div className="dash-section-head">
+        <span className="dash-section-title">Agent Temperature Detail</span>
+        <span className="dash-section-sub">Interested broken down by temperature + priority</span>
+      </div>
+      {rows.length === 0 ? (
+        <p style={{ fontSize: 12, color: 'var(--text-3)', padding: 12 }}>No agents yet.</p>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="dash-table">
+            <thead>
+              <tr>
+                <th>Agent</th>
+                <th style={{ textAlign: 'right' }} title="status=interested AND temperature=hot">Interested + Hot</th>
+                <th style={{ textAlign: 'right' }} title="status=interested AND priority=high">Interested + High</th>
+                <th style={{ textAlign: 'right' }} title="status=interested AND priority=medium">Interested + Medium</th>
+                <th style={{ textAlign: 'right' }} title="status=verbal_commitment">Verbal Commit.</th>
+                <th style={{ textAlign: 'right' }} title="status=pending_close">Pending Close</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.user_id}>
+                  <AgentRowCell row={r}/>
+                  <NumCell value={r.interested_hot}    color="var(--hot)"/>
+                  <NumCell value={r.interested_high}   color="var(--warm)"/>
+                  <NumCell value={r.interested_medium} dim/>
+                  <NumCell value={r.verbal_commitment} color="#0f766e"/>
+                  <NumCell value={r.pending_close}     color="#65a30d"/>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActivityPanel({ rows }) {
+  return (
+    <div className="dash-section">
+      <div className="dash-section-head">
+        <span className="dash-section-title">Activity</span>
+        <span className="dash-section-sub">Today / This week (Mon–Sun)</span>
+      </div>
+      {rows.length === 0 ? (
+        <p style={{ fontSize: 12, color: 'var(--text-3)', padding: 12 }}>No agents yet.</p>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="dash-table">
+            <thead>
+              {/* Two-row header: top groups columns by metric, bottom
+                  splits each into Today / Week. Keeps the table from
+                  needing 8 separately-labeled columns. */}
+              <tr>
+                <th rowSpan={2}>Agent</th>
+                <th colSpan={2} style={{ textAlign: 'center', borderBottom: '1px solid var(--border-0)' }}>Status changes</th>
+                <th colSpan={2} style={{ textAlign: 'center', borderBottom: '1px solid var(--border-0)' }} title="Calls picked up via OpenPhone (authenticated phone events)">Calls logged</th>
+                <th colSpan={2} style={{ textAlign: 'center', borderBottom: '1px solid var(--border-0)' }}>Tasks completed</th>
+                <th colSpan={2} style={{ textAlign: 'center', borderBottom: '1px solid var(--border-0)' }} title="Tasks the agent created AND assigned to themselves (not delegated)">Self-tasks created</th>
+              </tr>
+              <tr>
+                <th style={{ textAlign: 'right', fontSize: 10 }}>Today</th>
+                <th style={{ textAlign: 'right', fontSize: 10 }}>Week</th>
+                <th style={{ textAlign: 'right', fontSize: 10 }}>Today</th>
+                <th style={{ textAlign: 'right', fontSize: 10 }}>Week</th>
+                <th style={{ textAlign: 'right', fontSize: 10 }}>Today</th>
+                <th style={{ textAlign: 'right', fontSize: 10 }}>Week</th>
+                <th style={{ textAlign: 'right', fontSize: 10 }}>Today</th>
+                <th style={{ textAlign: 'right', fontSize: 10 }}>Week</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.user_id}>
+                  <AgentRowCell row={r}/>
+                  <NumCell value={r.status_changes_today}/>
+                  <NumCell value={r.status_changes_week} dim/>
+                  <NumCell value={r.calls_today}/>
+                  <NumCell value={r.calls_week} dim/>
+                  <NumCell value={r.tasks_completed_today}/>
+                  <NumCell value={r.tasks_completed_week} dim/>
+                  <NumCell value={r.self_tasks_today}/>
+                  <NumCell value={r.self_tasks_week} dim/>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LeadManagementPanel({ rows }) {
+  return (
+    <div className="dash-section">
+      <div className="dash-section-head">
+        <span className="dash-section-title">Lead Management</span>
+        <span className="dash-section-sub">Untouched + No Answer pools per agent</span>
+      </div>
+      {rows.length === 0 ? (
+        <p style={{ fontSize: 12, color: 'var(--text-3)', padding: 12 }}>No agents yet.</p>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="dash-table">
+            <thead>
+              <tr>
+                <th>Agent</th>
+                <th style={{ textAlign: 'right' }} title="Assigned leads still in 'new' status (or no state row yet)">Untouched</th>
+                <th style={{ textAlign: 'right' }} title="Assigned leads with status='no_answer'">No Answer</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.user_id}>
+                  <AgentRowCell row={r}/>
+                  <td style={{ textAlign: 'right' }}>
+                    {r.untouched > 0 ? (
+                      <Link
+                        to={`/leads?assigned_user_id=${r.user_id}&status=new`}
+                        className="dash-pill dash-pill-warn"
+                      >
+                        {r.untouched}
+                      </Link>
+                    ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {r.no_answer > 0 ? (
+                      <Link
+                        to={`/leads?assigned_user_id=${r.user_id}&status=no_answer`}
+                        className="dash-pill dash-pill-neutral"
+                      >
+                        {r.no_answer}
+                      </Link>
+                    ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DealClosedPanel({ rows }) {
+  // Aggregate totals across all agents — appended as a footer row so
+  // admins see the team-wide signal in addition to per-agent breakdown.
+  const totals = rows.reduce((acc, r) => ({
+    prev_month: acc.prev_month + (r.deals_prev_month || 0),
+    curr_month: acc.curr_month + (r.deals_curr_month || 0),
+    ytd:        acc.ytd        + (r.deals_ytd        || 0),
+  }), { prev_month: 0, curr_month: 0, ytd: 0 });
+  return (
+    <div className="dash-section">
+      <div className="dash-section-head">
+        <span className="dash-section-title">Deals Closed</span>
+        <span className="dash-section-sub">Status flipped to deal_closed by agent + total</span>
+      </div>
+      {rows.length === 0 ? (
+        <p style={{ fontSize: 12, color: 'var(--text-3)', padding: 12 }}>No agents yet.</p>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="dash-table">
+            <thead>
+              <tr>
+                <th>Agent</th>
+                <th style={{ textAlign: 'right' }}>Previous month</th>
+                <th style={{ textAlign: 'right' }}>Current month</th>
+                <th style={{ textAlign: 'right' }}>YTD</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.user_id}>
+                  <AgentRowCell row={r}/>
+                  <NumCell value={r.deals_prev_month} dim/>
+                  <NumCell value={r.deals_curr_month} color="var(--success)"/>
+                  <NumCell value={r.deals_ytd}/>
+                </tr>
+              ))}
+              {/* Totals row — bold + top border so it visually separates
+                  from the per-agent body. */}
+              <tr style={{ borderTop: '2px solid var(--border-0)', background: 'var(--bg-2)' }}>
+                <td style={{ fontWeight: 700 }}>Total</td>
+                <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                  {totals.prev_month.toLocaleString()}
+                </td>
+                <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--success)' }}>
+                  {totals.curr_month.toLocaleString()}
+                </td>
+                <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                  {totals.ytd.toLocaleString()}
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>

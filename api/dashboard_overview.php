@@ -247,12 +247,29 @@ $agentParams     = $isAdmin ? [] : [':me' => (int) $user['id']];
 // don't inflate the per-agent total — the LEFT JOIN to
 // imported_leads_raw with the predicate yields NULL for archived
 // leads, and COUNT(non-null) skips them.
+//
+// Aggregates power five dashboard tables — see HomeDashboard.jsx:
+//   - Agent Status Detail  (interested / verbal_commitment / hot temp / closed)
+//   - Agent Temperature Detail (interested×hot, interested×high, etc.)
+//   - Deal Closed (only uses closed here; date splits via deals_by_period below)
+//   - Lead Management (untouched, no_answer)
 $agentSql =
     "SELECT u.id AS user_id, u.name, u.role,
             COUNT(r.id) AS total_assigned,
-            SUM(CASE WHEN s.status     = 'interested'  AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS interested,
-            SUM(CASE WHEN s.lead_temperature = 'hot'   AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS hot,
-            SUM(CASE WHEN s.status     = 'deal_closed' AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS closed
+            SUM(CASE WHEN s.status     = 'interested'        AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS interested,
+            SUM(CASE WHEN s.status     = 'verbal_commitment' AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS verbal_commitment,
+            SUM(CASE WHEN s.status     = 'pending_close'     AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS pending_close,
+            SUM(CASE WHEN s.lead_temperature = 'hot'         AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS hot,
+            SUM(CASE WHEN s.status     = 'deal_closed'       AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS closed,
+            -- Interested × temperature/priority combos for the Agent
+            -- Temperature Detail table. interested_hot is the same lead
+            -- pool as 'hot' filtered to status=interested.
+            SUM(CASE WHEN s.status='interested' AND s.lead_temperature='hot'    AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS interested_hot,
+            SUM(CASE WHEN s.status='interested' AND s.priority='high'           AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS interested_high,
+            SUM(CASE WHEN s.status='interested' AND s.priority='medium'         AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS interested_medium,
+            -- Lead Management aggregates.
+            SUM(CASE WHEN (s.status='new' OR s.status IS NULL) AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS untouched,
+            SUM(CASE WHEN s.status='no_answer'                 AND r.id IS NOT NULL THEN 1 ELSE 0 END) AS no_answer
        FROM users u
        LEFT JOIN lead_states s          ON s.assigned_user_id = u.id
        LEFT JOIN imported_leads_raw r   ON r.id = s.imported_lead_id
@@ -286,40 +303,156 @@ if (!empty($agentIds)) {
     }
 }
 
-// Status changes per agent today — operator-requested "productivity"
-// signal. Counts every status_changed lead_activities row authored by
-// the agent since midnight (local server time = UTC on this box;
-// good enough for daily activity, no need for per-user timezone yet).
+// Per-agent productivity aggregates. Each block does today + this-week
+// counts in a single SUM(CASE) query so we touch each source table
+// exactly once. Week boundary is Monday→Sunday — WEEKDAY() returns
+// 0 for Mon, 6 for Sun, so DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
+// gives the Monday of the current week.
 $statusChangesByAgent = [];
+$callsByAgent         = [];
+$tasksCompletedByAgent = [];
+$selfTasksCreatedByAgent = [];
+$dealsByAgent         = [];
 if (!empty($agentIds)) {
     $placeholders = implode(',', array_fill(0, count($agentIds), '?'));
+
+    // Status changes — both today and week (Mon-Sun).
     $stmt = $db->prepare(
-        "SELECT user_id, COUNT(*) AS changes_today
+        "SELECT user_id,
+                SUM(CASE WHEN created_at >= CURDATE() THEN 1 ELSE 0 END) AS today,
+                SUM(CASE WHEN created_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) THEN 1 ELSE 0 END) AS week
            FROM lead_activities
           WHERE activity_type = 'status_changed'
             AND user_id IN ($placeholders)
-            AND created_at >= CURDATE()
+            AND created_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
           GROUP BY user_id"
     );
     $stmt->execute($agentIds);
     foreach ($stmt->fetchAll() as $r) {
-        $statusChangesByAgent[(int) $r['user_id']] = (int) $r['changes_today'];
+        $statusChangesByAgent[(int) $r['user_id']] = ['today' => (int) $r['today'], 'week' => (int) $r['week']];
+    }
+
+    // Calls logged via phone authentication — inbound_calls rows the
+    // agent actually picked up (status=answered|completed AND
+    // ack_user_id = agent). This is the OpenPhone-authenticated event
+    // stream, not free-form "I called them" notes.
+    $stmt = $db->prepare(
+        "SELECT ack_user_id AS user_id,
+                SUM(CASE WHEN created_at >= CURDATE() THEN 1 ELSE 0 END) AS today,
+                SUM(CASE WHEN created_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) THEN 1 ELSE 0 END) AS week
+           FROM inbound_calls
+          WHERE ack_user_id IN ($placeholders)
+            AND status IN ('answered','completed')
+            AND created_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
+          GROUP BY ack_user_id"
+    );
+    $stmt->execute($agentIds);
+    foreach ($stmt->fetchAll() as $r) {
+        $callsByAgent[(int) $r['user_id']] = ['today' => (int) $r['today'], 'week' => (int) $r['week']];
+    }
+
+    // Tasks completed — keyed off completed_by + completed_at (the
+    // operator who flipped status='completed' and when they did it).
+    $stmt = $db->prepare(
+        "SELECT completed_by AS user_id,
+                SUM(CASE WHEN completed_at >= CURDATE() THEN 1 ELSE 0 END) AS today,
+                SUM(CASE WHEN completed_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) THEN 1 ELSE 0 END) AS week
+           FROM lead_tasks
+          WHERE status = 'completed'
+            AND completed_by IN ($placeholders)
+            AND completed_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
+          GROUP BY completed_by"
+    );
+    $stmt->execute($agentIds);
+    foreach ($stmt->fetchAll() as $r) {
+        $tasksCompletedByAgent[(int) $r['user_id']] = ['today' => (int) $r['today'], 'week' => (int) $r['week']];
+    }
+
+    // Self-assigned tasks created — created_by = assigned_user_id
+    // (the agent both created AND assigned the task to themselves,
+    // not received it from someone else). Signals operator-initiated
+    // workload management vs delegation from admin/marketer.
+    $stmt = $db->prepare(
+        "SELECT created_by AS user_id,
+                SUM(CASE WHEN created_at >= CURDATE() THEN 1 ELSE 0 END) AS today,
+                SUM(CASE WHEN created_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) THEN 1 ELSE 0 END) AS week
+           FROM lead_tasks
+          WHERE created_by IN ($placeholders)
+            AND created_by = assigned_user_id
+            AND created_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
+          GROUP BY created_by"
+    );
+    $stmt->execute($agentIds);
+    foreach ($stmt->fetchAll() as $r) {
+        $selfTasksCreatedByAgent[(int) $r['user_id']] = ['today' => (int) $r['today'], 'week' => (int) $r['week']];
+    }
+
+    // Deal closures over time — counts every status_changed → deal_closed
+    // activity row by the agent, split into previous month / current
+    // month / YTD windows.
+    // Previous month: created_at IN [first-of-last-month, first-of-this-month)
+    // Current month:  created_at >= first-of-this-month
+    // YTD:            created_at >= Jan 1 of this year
+    $stmt = $db->prepare(
+        "SELECT user_id,
+                SUM(CASE WHEN created_at >= DATE_SUB(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)
+                          AND created_at <  DATE_FORMAT(CURDATE(), '%Y-%m-01') THEN 1 ELSE 0 END) AS prev_month,
+                SUM(CASE WHEN created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01') THEN 1 ELSE 0 END) AS curr_month,
+                COUNT(*) AS ytd
+           FROM lead_activities
+          WHERE activity_type = 'status_changed'
+            AND JSON_EXTRACT(new_value_json, '$.status') = 'deal_closed'
+            AND user_id IN ($placeholders)
+            AND created_at >= DATE_FORMAT(CURDATE(), '%Y-01-01')
+          GROUP BY user_id"
+    );
+    $stmt->execute($agentIds);
+    foreach ($stmt->fetchAll() as $r) {
+        $dealsByAgent[(int) $r['user_id']] = [
+            'prev_month' => (int) $r['prev_month'],
+            'curr_month' => (int) $r['curr_month'],
+            'ytd'        => (int) $r['ytd'],
+        ];
     }
 }
 
-$byAgent = array_map(function ($r) use ($tasksByAgent, $statusChangesByAgent) {
+$byAgent = array_map(function ($r) use (
+    $tasksByAgent, $statusChangesByAgent, $callsByAgent,
+    $tasksCompletedByAgent, $selfTasksCreatedByAgent, $dealsByAgent
+) {
     $uid = (int) $r['user_id'];
     return [
-        'user_id'             => $uid,
-        'name'                => $r['name'],
-        'role'                => $r['role'],
-        'total_assigned'      => (int) $r['total_assigned'],
-        'interested'          => (int) $r['interested'],
-        'hot'                 => (int) $r['hot'],
-        'closed'              => (int) $r['closed'],
-        'open_tasks'          => $tasksByAgent[$uid]['open']    ?? 0,
-        'overdue_tasks'       => $tasksByAgent[$uid]['overdue'] ?? 0,
-        'status_changes_today'=> $statusChangesByAgent[$uid]    ?? 0,
+        'user_id'                => $uid,
+        'name'                   => $r['name'],
+        'role'                   => $r['role'],
+        'total_assigned'         => (int) $r['total_assigned'],
+        // Current-state counts (from lead_states).
+        'interested'             => (int) $r['interested'],
+        'verbal_commitment'      => (int) $r['verbal_commitment'],
+        'pending_close'          => (int) $r['pending_close'],
+        'hot'                    => (int) $r['hot'],
+        'closed'                 => (int) $r['closed'],
+        'interested_hot'         => (int) $r['interested_hot'],
+        'interested_high'        => (int) $r['interested_high'],
+        'interested_medium'      => (int) $r['interested_medium'],
+        'untouched'              => (int) $r['untouched'],
+        'no_answer'              => (int) $r['no_answer'],
+        // Task pool aggregates (rolling, not time-bounded).
+        'open_tasks'             => $tasksByAgent[$uid]['open']    ?? 0,
+        'overdue_tasks'          => $tasksByAgent[$uid]['overdue'] ?? 0,
+        // Time-bounded productivity signals (today + this week).
+        'status_changes_today'   => $statusChangesByAgent[$uid]['today']    ?? 0,
+        'status_changes_week'    => $statusChangesByAgent[$uid]['week']     ?? 0,
+        'calls_today'            => $callsByAgent[$uid]['today']            ?? 0,
+        'calls_week'             => $callsByAgent[$uid]['week']             ?? 0,
+        'tasks_completed_today'  => $tasksCompletedByAgent[$uid]['today']   ?? 0,
+        'tasks_completed_week'   => $tasksCompletedByAgent[$uid]['week']    ?? 0,
+        'self_tasks_today'       => $selfTasksCreatedByAgent[$uid]['today'] ?? 0,
+        'self_tasks_week'        => $selfTasksCreatedByAgent[$uid]['week']  ?? 0,
+        // Deal closures by period (from status_changed activities).
+        'deals_prev_month'       => $dealsByAgent[$uid]['prev_month'] ?? 0,
+        'deals_curr_month'       => $dealsByAgent[$uid]['curr_month'] ?? 0,
+        'deals_ytd'              => $dealsByAgent[$uid]['ytd']        ?? 0,
     ];
 }, $agentRows);
 
