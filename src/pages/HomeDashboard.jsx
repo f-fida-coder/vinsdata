@@ -88,10 +88,15 @@ export default function HomeDashboard() {
           {data.is_admin && (
             <>
               <AgentTemperatureDetailPanel rows={data.by_agent} />
-              <StalledDealsPanel           rows={data.stalled_deals || []} />
               <ActivityPanel              rows={data.by_agent} />
               <LeadManagementPanel        rows={data.by_agent} />
               <DealClosedPanel            rows={data.by_agent} />
+              {/* Stalled Deals is the tallest of the admin tables
+                  (one row per stuck lead, many per agent), so it
+                  sits last — the shorter operational tables stay
+                  above the fold while Stalled Deals scrolls in
+                  beneath them. */}
+              <StalledDealsPanel           rows={data.stalled_deals || []} />
             </>
           )}
           <div className="dash-grid">
