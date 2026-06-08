@@ -274,32 +274,15 @@ function renderBillOfSalePdf(array $d): string
     $html .= '<p>Date: ' . $blank($saleDate, '160px') . '<br>Print Name: ' . $blank($d['seller_name'], '240px') . '</p>';
     $html .= '</div>';
 
-    // 7. Additional Terms — placed AFTER the traditional Bill of Sale
-    //    body (sections 1-6 above, including the buyer/seller signature
-    //    block) so the standard template reads cleanly first; the
-    //    operator-entered clauses come as an appendix-style block at
-    //    the end. Always rendered with the section heading even when
-    //    the field is blank — the placeholder ("No Additional Terms of
-    //    Sale") keeps the printed document from looking like it's
-    //    missing a clause. Pre-wrap preserves the line breaks the
-    //    operator typed.
-    $additionalTerms = trim((string) ($d['additional_terms'] ?? ''));
-    $html .= '<div class="section" style="margin-top:24px"><p><span class="num">7. ADDITIONAL TERMS AND CONDITIONS.</span></p>';
-    if ($additionalTerms !== '') {
-        $html .= '<p class="clause" style="white-space: pre-wrap">' . $esc($additionalTerms) . '</p>';
-    } else {
-        $html .= '<p class="clause" style="font-style: italic; color:#555">No Additional Terms of Sale.</p>';
-    }
-    $html .= '</div>';
-
-    // Odometer Disclosure block — flows naturally after Section 7.
+    // Odometer Disclosure block — flows directly after Authorization
+    // (Section 6). Placed BEFORE Additional Terms because the
+    // Odometer Disclosure has a Seller Signature line that the
+    // OpenSign signing flow expects to find at a known location on
+    // page 2 (see api/opensign.php placeholder coords). Moving
+    // signatures to a dynamic page (3, depending on terms length)
+    // would orphan the OpenSign widget on the wrong page.
     // page-break-inside: avoid keeps the disclosure together as a
-    // single unit (heading + clauses + signatures), so mPDF will
-    // push the whole block to the next page if it doesn't fit on
-    // the current one — but it won't be FORCED there. Short or
-    // blank Additional Terms means Odometer often fits at the end
-    // of page 2; long Additional Terms cleanly moves it to page 3.
-    // Either way, no near-empty page from a forced break.
+    // single unit and ensures it never splits mid-paragraph.
     $html .= '<div style="page-break-inside: avoid; margin-top: 24px">';
     $html .= '<h1 style="margin-top:0">ODOMETER DISCLOSURE STATEMENT</h1>';
     $html .= '<p class="clause">FEDERAL and STATE LAW requires that you state the mileage in connection with the transfer of ownership. Failure to complete or providing a false statement may result in fines and/or imprisonment.</p>';
@@ -318,6 +301,26 @@ function renderBillOfSalePdf(array $d): string
     $html .= '<div class="sig-block" style="margin-top:14px"><b>Seller Signature:</b><span class="sig-line"></span></div>';
     $html .= '<p>Date: ' . $blank($saleDate, '160px') . '<br>Print Name: ' . $blank($d['seller_name'], '240px') . '</p>';
     $html .= '</div>'; // close page-break-inside: avoid wrapper
+
+    // 7. Additional Terms — the LAST block in the PDF, after the
+    //    Odometer Disclosure. Sits below ALL signature blocks so
+    //    OpenSign placeholders (Auth sig + Odometer sig, both
+    //    targeting page 2) remain stable regardless of how much
+    //    operator-entered text follows. Short or blank terms fit at
+    //    the bottom of page 2 with the rest of the doc; long terms
+    //    spill cleanly to page 3 without affecting signing.
+    //    Always rendered with the section heading even when the
+    //    field is blank — the placeholder ("No Additional Terms of
+    //    Sale") keeps the printed document from looking like it's
+    //    missing a clause. Pre-wrap preserves line breaks.
+    $additionalTerms = trim((string) ($d['additional_terms'] ?? ''));
+    $html .= '<div class="section" style="margin-top:24px"><p><span class="num">7. ADDITIONAL TERMS AND CONDITIONS.</span></p>';
+    if ($additionalTerms !== '') {
+        $html .= '<p class="clause" style="white-space: pre-wrap">' . $esc($additionalTerms) . '</p>';
+    } else {
+        $html .= '<p class="clause" style="font-style: italic; color:#555">No Additional Terms of Sale.</p>';
+    }
+    $html .= '</div>';
 
     $mpdf->WriteHTML($html);
     return $mpdf->Output('', 'S');
