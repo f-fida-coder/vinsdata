@@ -769,12 +769,46 @@ function LeadManagementPanel({ rows }) {
 }
 
 function StalledDealsPanel({ rows }) {
-  // Group rows by assigned agent so the admin sees the warning sorted
-  // by who's letting deals slip. Unassigned leads fall into a synthetic
-  // 'Unassigned' bucket at the top so they're impossible to miss.
-  const grouped = useMemo(() => {
-    const out = new Map();
+  // Agent filter dropdown — admins picked agent-by-agent inspection
+  // over the all-at-once grouped view. Default '' = every stalled
+  // deal across every agent; pick a specific agent_id to narrow.
+  // Special value '__unassigned' = leads with no assignee.
+  const [agentFilter, setAgentFilter] = useState('');
+
+  // Build the agent picker options + per-agent stall count so admins
+  // see who has the worst backlog without opening the dropdown.
+  const agentOptions = useMemo(() => {
+    const counts = new Map();
     for (const r of rows) {
+      const k = r.assigned_user_id == null ? '__unassigned' : String(r.assigned_user_id);
+      const name = r.assigned_user_name || 'Unassigned';
+      if (!counts.has(k)) counts.set(k, { value: k, name, count: 0 });
+      counts.get(k).count++;
+    }
+    return [...counts.values()].sort((a, b) => {
+      if (a.value === '__unassigned') return -1;
+      if (b.value === '__unassigned') return 1;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  }, [rows]);
+
+  // Filtered rows. When all agents picked, keep the agent-grouped
+  // layout so the admin can still scan across the team; when one
+  // agent picked, drop the group headers and just list their leads.
+  const filtered = useMemo(() => {
+    if (!agentFilter) return rows;
+    if (agentFilter === '__unassigned') return rows.filter((r) => r.assigned_user_id == null);
+    return rows.filter((r) => String(r.assigned_user_id) === agentFilter);
+  }, [rows, agentFilter]);
+
+  const grouped = useMemo(() => {
+    // Single-agent mode: collapse to one group so we don't double-
+    // render the agent header that's already in the filter chip.
+    if (agentFilter) {
+      return [{ user_id: agentFilter === '__unassigned' ? null : Number(agentFilter), name: agentOptions.find((o) => o.value === agentFilter)?.name || '', items: filtered }];
+    }
+    const out = new Map();
+    for (const r of filtered) {
       const k = r.assigned_user_id || '__unassigned';
       const label = r.assigned_user_name || 'Unassigned';
       if (!out.has(k)) out.set(k, { user_id: r.assigned_user_id, name: label, items: [] });
@@ -785,7 +819,7 @@ function StalledDealsPanel({ rows }) {
       if (b.user_id === null && a.user_id !== null) return 1;
       return (a.name || '').localeCompare(b.name || '');
     });
-  }, [rows]);
+  }, [filtered, agentFilter, agentOptions]);
 
   const fmtPhone = (p) => {
     if (!p) return null;
@@ -808,15 +842,62 @@ function StalledDealsPanel({ rows }) {
 
   return (
     <div className="dash-section">
-      <div className="dash-section-head">
-        <span className="dash-section-title">Stalled Deals</span>
-        <span className="dash-section-sub">
-          Interested / Verbal Commit. / Pending Close · no note + no completed task in 5+ days
-        </span>
+      <div className="dash-section-head" style={{ alignItems: 'center', gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span className="dash-section-title">Stalled Deals</span>
+          <span className="dash-section-sub" style={{ display: 'block' }}>
+            Interested / Verbal Commit. / Pending Close · no note + no completed task in 5+ days
+          </span>
+        </div>
+        {/* Agent filter — defaults to all agents; pick one to narrow
+            the list to that operator's backlog. Per-agent counts in
+            the option labels surface who has the worst stall debt. */}
+        {agentOptions.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Agent:</span>
+            <select
+              value={agentFilter}
+              onChange={(e) => setAgentFilter(e.target.value)}
+              style={{
+                fontSize: 12,
+                padding: '4px 8px',
+                borderRadius: 6,
+                border: '1px solid var(--border-0)',
+                background: 'var(--bg-1)',
+                color: 'var(--text-0)',
+                minWidth: 180,
+              }}
+            >
+              <option value="">All agents ({rows.length})</option>
+              {agentOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.name} ({o.count})
+                </option>
+              ))}
+            </select>
+            {agentFilter && (
+              <button
+                type="button"
+                onClick={() => setAgentFilter('')}
+                style={{
+                  fontSize: 11, padding: '2px 6px', border: 'none',
+                  background: 'transparent', color: 'var(--text-3)', cursor: 'pointer',
+                }}
+                title="Clear agent filter"
+              >
+                clear
+              </button>
+            )}
+          </div>
+        )}
       </div>
       {rows.length === 0 ? (
         <p style={{ fontSize: 12, color: 'var(--text-3)', padding: 12 }}>
           No stalled deals — every closing-funnel lead has a note or completed task within the last 5 days.
+        </p>
+      ) : filtered.length === 0 ? (
+        <p style={{ fontSize: 12, color: 'var(--text-3)', padding: 12 }}>
+          No stalled deals for this agent.
         </p>
       ) : (
         <div style={{ overflowX: 'auto' }}>
@@ -836,18 +917,22 @@ function StalledDealsPanel({ rows }) {
                 <Fragment key={group.user_id ?? '__u'}>
                   {/* Group header row — bold agent name, spans the
                       whole table width. Clicking jumps to that agent's
-                      filtered leads view. */}
-                  <tr style={{ background: 'var(--bg-2)' }}>
-                    <td colSpan={6} style={{ fontWeight: 700, fontSize: 12, padding: '6px 8px' }}>
-                      {group.user_id != null ? (
-                        <Link to={`/leads?assigned_user_id=${group.user_id}`} style={{ color: 'var(--text-0)', textDecoration: 'none' }}>
-                          {group.name} <span style={{ fontWeight: 500, color: 'var(--text-3)' }}>· {group.items.length} stalled</span>
-                        </Link>
-                      ) : (
-                        <span style={{ color: 'var(--warm)' }}>{group.name} · {group.items.length} stalled</span>
-                      )}
-                    </td>
-                  </tr>
+                      filtered leads view. Hidden when the filter
+                      dropdown already isolated a single agent (the
+                      header would just be a duplicate label). */}
+                  {!agentFilter && (
+                    <tr style={{ background: 'var(--bg-2)' }}>
+                      <td colSpan={6} style={{ fontWeight: 700, fontSize: 12, padding: '6px 8px' }}>
+                        {group.user_id != null ? (
+                          <Link to={`/leads?assigned_user_id=${group.user_id}`} style={{ color: 'var(--text-0)', textDecoration: 'none' }}>
+                            {group.name} <span style={{ fontWeight: 500, color: 'var(--text-3)' }}>· {group.items.length} stalled</span>
+                          </Link>
+                        ) : (
+                          <span style={{ color: 'var(--warm)' }}>{group.name} · {group.items.length} stalled</span>
+                        )}
+                      </td>
+                    </tr>
+                  )}
                   {group.items.map((r) => {
                     const phoneRendered = fmtPhone(r.phone);
                     const ymm = fmtYmm(r);
