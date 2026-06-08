@@ -504,7 +504,7 @@ const STATUS_DOT_VAR = {
 };
 const PRIORITY_COLOR = {
   low: 'var(--cold)', medium: 'var(--text-2)',
-  high: 'var(--warm)', hot: 'var(--hot)',
+  high: 'var(--warm)',
 };
 const TEMP_COLOR = {
   cold: 'var(--cold)', warm: 'var(--warm)',

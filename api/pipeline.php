@@ -232,7 +232,10 @@ const LEAD_STATUSES = [
     'nurture','disqualified','do_not_call',
     'marketing',
 ];
-const LEAD_PRIORITIES = ['low','medium','high','hot'];
+// 'hot' belongs to lead_temperature, not priority — dropped from this
+// list (migration 040). Anyone trying to set priority='hot' now gets
+// 'invalid_priority' from assertPriority().
+const LEAD_PRIORITIES = ['low','medium','high'];
 const LEAD_TEMPERATURES = ['cold','warm','hot','closed'];
 
 // -- Tier classification --------------------------------------------------

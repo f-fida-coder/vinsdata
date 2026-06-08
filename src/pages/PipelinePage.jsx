@@ -21,7 +21,7 @@ const STATUS_DOT_VAR = {
 };
 const PRIORITY_DOT_VAR = {
   low: 'var(--cold)', medium: 'var(--text-2)',
-  high: 'var(--warm)', hot: 'var(--hot)',
+  high: 'var(--warm)',
 };
 const TIER_DOT_VAR = {
   tier_1: 'var(--tier1)', tier_2: 'var(--tier2)', tier_3: 'var(--tier3)',
