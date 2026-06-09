@@ -305,9 +305,32 @@ if (!empty($agentIds)) {
 
 // Per-agent productivity aggregates. Each block does today + this-week
 // counts in a single SUM(CASE) query so we touch each source table
-// exactly once. Week boundary is Monday→Sunday — WEEKDAY() returns
-// 0 for Mon, 6 for Sun, so DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
-// gives the Monday of the current week.
+// exactly once.
+//
+// Time-zone-aware boundaries: server stores timestamps in UTC but
+// operators are in America/Chicago. MySQL CURDATE() would split
+// "today" at 7pm Central (midnight UTC) which made the Today / Week
+// counts look wrong — a status change at 6:29 PM Central showed up as
+// "yesterday". MySQL's tz tables aren't loaded on this box so we can't
+// CONVERT_TZ; instead we compute the boundaries in PHP using
+// America/Chicago, then re-anchor to UTC for the bound-parameter
+// comparison against the UTC timestamps stored in the row.
+$opsTz = new DateTimeZone('America/Chicago');
+$utcTz = new DateTimeZone('UTC');
+$nowOps = new DateTime('now', $opsTz);
+$todayStartOps = (clone $nowOps)->setTime(0, 0, 0);
+$weekStartOps  = (clone $todayStartOps)->modify('-' . ((int) $nowOps->format('N') - 1) . ' days');
+$currMonthStartOps = (clone $nowOps)->modify('first day of this month')->setTime(0, 0, 0);
+$prevMonthStartOps = (clone $currMonthStartOps)->modify('-1 month');
+$ytdStartOps       = (clone $nowOps)->setDate((int) $nowOps->format('Y'), 1, 1)->setTime(0, 0, 0);
+$toUtcSql = function (DateTime $dt) use ($utcTz) {
+    return (clone $dt)->setTimezone($utcTz)->format('Y-m-d H:i:s');
+};
+$todayStartUtc     = $toUtcSql($todayStartOps);
+$weekStartUtc      = $toUtcSql($weekStartOps);
+$currMonthStartUtc = $toUtcSql($currMonthStartOps);
+$prevMonthStartUtc = $toUtcSql($prevMonthStartOps);
+$ytdStartUtc       = $toUtcSql($ytdStartOps);
 $statusChangesByAgent = [];
 $callsByAgent         = [];
 $tasksCompletedByAgent = [];
@@ -316,18 +339,18 @@ $dealsByAgent         = [];
 if (!empty($agentIds)) {
     $placeholders = implode(',', array_fill(0, count($agentIds), '?'));
 
-    // Status changes — both today and week (Mon-Sun).
+    // Status changes — both today and week (Mon-Sun, Central time).
     $stmt = $db->prepare(
         "SELECT user_id,
-                SUM(CASE WHEN created_at >= CURDATE() THEN 1 ELSE 0 END) AS today,
-                SUM(CASE WHEN created_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) THEN 1 ELSE 0 END) AS week
+                SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS today,
+                SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS week
            FROM lead_activities
           WHERE activity_type = 'status_changed'
             AND user_id IN ($placeholders)
-            AND created_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
+            AND created_at >= ?
           GROUP BY user_id"
     );
-    $stmt->execute($agentIds);
+    $stmt->execute(array_merge([$todayStartUtc, $weekStartUtc], $agentIds, [$weekStartUtc]));
     foreach ($stmt->fetchAll() as $r) {
         $statusChangesByAgent[(int) $r['user_id']] = ['today' => (int) $r['today'], 'week' => (int) $r['week']];
     }
@@ -338,15 +361,15 @@ if (!empty($agentIds)) {
     // stream, not free-form "I called them" notes.
     $stmt = $db->prepare(
         "SELECT ack_user_id AS user_id,
-                SUM(CASE WHEN created_at >= CURDATE() THEN 1 ELSE 0 END) AS today,
-                SUM(CASE WHEN created_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) THEN 1 ELSE 0 END) AS week
+                SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS today,
+                SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS week
            FROM inbound_calls
           WHERE ack_user_id IN ($placeholders)
             AND status IN ('answered','completed')
-            AND created_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
+            AND created_at >= ?
           GROUP BY ack_user_id"
     );
-    $stmt->execute($agentIds);
+    $stmt->execute(array_merge([$todayStartUtc, $weekStartUtc], $agentIds, [$weekStartUtc]));
     foreach ($stmt->fetchAll() as $r) {
         $callsByAgent[(int) $r['user_id']] = ['today' => (int) $r['today'], 'week' => (int) $r['week']];
     }
@@ -355,15 +378,15 @@ if (!empty($agentIds)) {
     // operator who flipped status='completed' and when they did it).
     $stmt = $db->prepare(
         "SELECT completed_by AS user_id,
-                SUM(CASE WHEN completed_at >= CURDATE() THEN 1 ELSE 0 END) AS today,
-                SUM(CASE WHEN completed_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) THEN 1 ELSE 0 END) AS week
+                SUM(CASE WHEN completed_at >= ? THEN 1 ELSE 0 END) AS today,
+                SUM(CASE WHEN completed_at >= ? THEN 1 ELSE 0 END) AS week
            FROM lead_tasks
           WHERE status = 'completed'
             AND completed_by IN ($placeholders)
-            AND completed_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
+            AND completed_at >= ?
           GROUP BY completed_by"
     );
-    $stmt->execute($agentIds);
+    $stmt->execute(array_merge([$todayStartUtc, $weekStartUtc], $agentIds, [$weekStartUtc]));
     foreach ($stmt->fetchAll() as $r) {
         $tasksCompletedByAgent[(int) $r['user_id']] = ['today' => (int) $r['today'], 'week' => (int) $r['week']];
     }
@@ -374,15 +397,15 @@ if (!empty($agentIds)) {
     // workload management vs delegation from admin/marketer.
     $stmt = $db->prepare(
         "SELECT created_by AS user_id,
-                SUM(CASE WHEN created_at >= CURDATE() THEN 1 ELSE 0 END) AS today,
-                SUM(CASE WHEN created_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) THEN 1 ELSE 0 END) AS week
+                SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS today,
+                SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS week
            FROM lead_tasks
           WHERE created_by IN ($placeholders)
             AND created_by = assigned_user_id
-            AND created_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
+            AND created_at >= ?
           GROUP BY created_by"
     );
-    $stmt->execute($agentIds);
+    $stmt->execute(array_merge([$todayStartUtc, $weekStartUtc], $agentIds, [$weekStartUtc]));
     foreach ($stmt->fetchAll() as $r) {
         $selfTasksCreatedByAgent[(int) $r['user_id']] = ['today' => (int) $r['today'], 'week' => (int) $r['week']];
     }
@@ -395,18 +418,21 @@ if (!empty($agentIds)) {
     // YTD:            created_at >= Jan 1 of this year
     $stmt = $db->prepare(
         "SELECT user_id,
-                SUM(CASE WHEN created_at >= DATE_SUB(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)
-                          AND created_at <  DATE_FORMAT(CURDATE(), '%Y-%m-01') THEN 1 ELSE 0 END) AS prev_month,
-                SUM(CASE WHEN created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01') THEN 1 ELSE 0 END) AS curr_month,
+                SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) AS prev_month,
+                SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS curr_month,
                 COUNT(*) AS ytd
            FROM lead_activities
           WHERE activity_type = 'status_changed'
             AND JSON_EXTRACT(new_value_json, '$.status') = 'deal_closed'
             AND user_id IN ($placeholders)
-            AND created_at >= DATE_FORMAT(CURDATE(), '%Y-01-01')
+            AND created_at >= ?
           GROUP BY user_id"
     );
-    $stmt->execute($agentIds);
+    $stmt->execute(array_merge(
+        [$prevMonthStartUtc, $currMonthStartUtc, $currMonthStartUtc],
+        $agentIds,
+        [$ytdStartUtc]
+    ));
     foreach ($stmt->fetchAll() as $r) {
         $dealsByAgent[(int) $r['user_id']] = [
             'prev_month' => (int) $r['prev_month'],
