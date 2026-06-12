@@ -259,6 +259,34 @@ function renderBillOfSalePdf(array $d): string
     $html .= '<div class="section"><p><span class="num">5. BUYER AND SELLER CONDITIONS.</span></p>';
     $html .= '<p class="clause">The undersigned Seller affirms that the above information about the Vehicle is accurate to the best of their knowledge. The undersigned Buyer accepts receipt of this document and understands that the above vehicle is sold on an &ldquo;as is, where is&rdquo; condition with no guarantees or warranties, either expressed or implied.</p></div>';
 
+    // 6. Additional Terms — placed BEFORE Section 7 Authorization so
+    //    any operator-entered clauses are part of the agreement the
+    //    buyer + seller sign for. When the field is blank, we render
+    //    a default "as-is / no-warranty / buyer-pays-fees / final-
+    //    sale" boilerplate clause so the section always carries
+    //    operative legal content — never appears as a placeholder.
+    //    Operators who type something replace the boilerplate
+    //    entirely. Pre-wrap preserves the line breaks they typed.
+    $additionalTerms = trim((string) ($d['additional_terms'] ?? ''));
+    $defaultTerms = (
+        'The Vehicle is sold in its current condition, &ldquo;as-is, where-is,&rdquo; with no warranties of any kind, '
+      . 'either expressed or implied, including but not limited to any implied warranty of merchantability or '
+      . 'fitness for a particular purpose. Buyer acknowledges that they have had the opportunity to inspect the '
+      . 'Vehicle and accepts it in its present condition. All title transfer fees, registration costs, and applicable '
+      . 'taxes shall be the responsibility of the party identified in Section 4 above. This sale shall be considered '
+      . 'final upon execution by both parties.'
+    );
+    $html .= '<div class="section"><p><span class="num">6. ADDITIONAL TERMS AND CONDITIONS.</span></p>';
+    if ($additionalTerms !== '') {
+        $html .= '<p class="clause" style="white-space: pre-wrap">' . $esc($additionalTerms) . '</p>';
+    } else {
+        // Default boilerplate uses real entity-encoded quotes already,
+        // so render without esc() — the htmlspecialchars helper would
+        // double-encode the &ldquo; / &rdquo; entities above.
+        $html .= '<p class="clause">' . $defaultTerms . '</p>';
+    }
+    $html .= '</div>';
+
     // Buyer signature is pre-filled with the current buyer_name (defaults
     // to "Mitchell Briggs", editable on the form) so VinVault never has to
     // physically sign every BoS. Seller signature stays blank for the lead
@@ -267,23 +295,20 @@ function renderBillOfSalePdf(array $d): string
         ? '<span class="sig-text">' . $esc($d['buyer_name']) . '</span>'
         : '<span class="sig-line"></span>';
 
-    $html .= '<div class="section"><p><span class="num">6. AUTHORIZATION.</span></p>';
+    $html .= '<div class="section"><p><span class="num">7. AUTHORIZATION.</span></p>';
     $html .= '<div class="sig-block"><b>Buyer Signature:</b>' . $buyerSig . '</div>';
     $html .= '<p>Date: ' . $blank($saleDate, '160px') . '<br>Print Name: ' . $blank($d['buyer_name'], '240px') . '</p>';
     $html .= '<div class="sig-block"><b>Seller Signature:</b><span class="sig-line"></span></div>';
     $html .= '<p>Date: ' . $blank($saleDate, '160px') . '<br>Print Name: ' . $blank($d['seller_name'], '240px') . '</p>';
     $html .= '</div>';
 
-    // Odometer Disclosure block — flows directly after Authorization
-    // (Section 6). Placed BEFORE Additional Terms because the
-    // Odometer Disclosure has a Seller Signature line that the
-    // OpenSign signing flow expects to find at a known location on
-    // page 2 (see api/opensign.php placeholder coords). Moving
-    // signatures to a dynamic page (3, depending on terms length)
-    // would orphan the OpenSign widget on the wrong page.
-    // page-break-inside: avoid keeps the disclosure together as a
-    // single unit and ensures it never splits mid-paragraph.
-    $html .= '<div style="page-break-inside: avoid; margin-top: 24px">';
+    // Odometer Disclosure Statement — ALWAYS on its own page via a
+    // forced page-break-before. The block is a distinct federally-
+    // mandated certification, not part of the BoS body, and operators
+    // want it visually + structurally isolated so it can be detached
+    // and filed separately if needed. page-break-inside: avoid keeps
+    // the disclosure together if the page ever overflows.
+    $html .= '<div style="page-break-before: always; page-break-inside: avoid">';
     $html .= '<h1 style="margin-top:0">ODOMETER DISCLOSURE STATEMENT</h1>';
     $html .= '<p class="clause">FEDERAL and STATE LAW requires that you state the mileage in connection with the transfer of ownership. Failure to complete or providing a false statement may result in fines and/or imprisonment.</p>';
     $html .= '<p>I/We, ' . $blank($d['seller_name'], '220px')
@@ -300,27 +325,7 @@ function renderBillOfSalePdf(array $d): string
     $html .= '<p>Date: ' . $blank($saleDate, '160px') . '<br>Print Name: ' . $blank($d['buyer_name'], '240px') . '</p>';
     $html .= '<div class="sig-block" style="margin-top:14px"><b>Seller Signature:</b><span class="sig-line"></span></div>';
     $html .= '<p>Date: ' . $blank($saleDate, '160px') . '<br>Print Name: ' . $blank($d['seller_name'], '240px') . '</p>';
-    $html .= '</div>'; // close page-break-inside: avoid wrapper
-
-    // 7. Additional Terms — the LAST block in the PDF, after the
-    //    Odometer Disclosure. Sits below ALL signature blocks so
-    //    OpenSign placeholders (Auth sig + Odometer sig, both
-    //    targeting page 2) remain stable regardless of how much
-    //    operator-entered text follows. Short or blank terms fit at
-    //    the bottom of page 2 with the rest of the doc; long terms
-    //    spill cleanly to page 3 without affecting signing.
-    //    Always rendered with the section heading even when the
-    //    field is blank — the placeholder ("No Additional Terms of
-    //    Sale") keeps the printed document from looking like it's
-    //    missing a clause. Pre-wrap preserves line breaks.
-    $additionalTerms = trim((string) ($d['additional_terms'] ?? ''));
-    $html .= '<div class="section" style="margin-top:24px"><p><span class="num">7. ADDITIONAL TERMS AND CONDITIONS.</span></p>';
-    if ($additionalTerms !== '') {
-        $html .= '<p class="clause" style="white-space: pre-wrap">' . $esc($additionalTerms) . '</p>';
-    } else {
-        $html .= '<p class="clause" style="font-style: italic; color:#555">No Additional Terms of Sale.</p>';
-    }
-    $html .= '</div>';
+    $html .= '</div>'; // close page-break-before/inside wrapper
 
     $mpdf->WriteHTML($html);
     return $mpdf->Output('', 'S');

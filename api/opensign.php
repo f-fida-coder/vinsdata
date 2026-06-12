@@ -256,39 +256,63 @@ $placeholders   = [[
     'signerPtr'    => ['__type' => 'Pointer', 'className' => 'contracts_Contactbook', 'objectId' => $contactId],
     'email'        => $signerEmail,
     'blockColor'   => '#93a3db',
-    'placeHolder'  => [[
-        'pageNumber' => 2,
-        'pos'        => [
-            // Authorization → Seller Signature line
-            [
-                'key'       => $widgetKeyAuth,
-                'xPosition' => 190,
-                'yPosition' => 240,
-                'width'     => 220,
-                'height'    => 45,
-                'Width'     => 220,
-                'Height'    => 45,
-                'isStamp'   => false,
-                'type'      => 'signature',
-                'options'   => ['name' => 'Signature'],
-            ],
-            // Odometer Disclosure → Seller Signature line (final line on
-            // page 2). Sits ~y=700: after the H1, statement paragraph, two
-            // checkbox lines, and the pre-signed Buyer Signature row.
-            [
-                'key'       => $widgetKeyOdom,
-                'xPosition' => 190,
-                'yPosition' => 700,
-                'width'     => 220,
-                'height'    => 45,
-                'Width'     => 220,
-                'Height'    => 45,
-                'isStamp'   => false,
-                'type'      => 'signature',
-                'options'   => ['name' => 'Signature'],
+    // Two placeholder groups now — one per page that carries a
+    // Seller Signature line. Layout (after bos_helpers.php restructure):
+    //   Page 1: Sections 1-4 (no signatures)
+    //   Page 2: Section 5 (Conditions), 6 (Additional Terms — with
+    //           pre-written default if blank, capped at 1500 chars),
+    //           7 (Authorization with Buyer + Seller sigs)
+    //   Page 3: ODOMETER DISCLOSURE STATEMENT (forced own page) with
+    //           its own Buyer + Seller sig block
+    // Y-positions are best-effort estimates based on the rendered
+    // section heights; OpenSign's UI allows manual drag-adjust if
+    // they end up a few px off on a particular run.
+    'placeHolder'  => [
+        [
+            'pageNumber' => 2,
+            'pos'        => [
+                // Authorization → Seller Signature line. Y ~ 360 reflects
+                // the new layout where Section 6 (Additional Terms with
+                // boilerplate default ~100pt) sits between Sections 5 and
+                // 7 — pushes the Authorization sig down from the prior
+                // y=240 location.
+                [
+                    'key'       => $widgetKeyAuth,
+                    'xPosition' => 190,
+                    'yPosition' => 360,
+                    'width'     => 220,
+                    'height'    => 45,
+                    'Width'     => 220,
+                    'Height'    => 45,
+                    'isStamp'   => false,
+                    'type'      => 'signature',
+                    'options'   => ['name' => 'Signature'],
+                ],
             ],
         ],
-    ]],
+        [
+            'pageNumber' => 3,
+            'pos'        => [
+                // Odometer Disclosure → Seller Signature line. Now lives
+                // on its own page (forced page-break-before in bos_
+                // helpers.php), so Y reflects offset from page-3 top:
+                // H1 + clause + cert paragraph + checkboxes + pre-signed
+                // Buyer Sig row + Date/Name = ~270pt down.
+                [
+                    'key'       => $widgetKeyOdom,
+                    'xPosition' => 190,
+                    'yPosition' => 270,
+                    'width'     => 220,
+                    'height'    => 45,
+                    'Width'     => 220,
+                    'Height'    => 45,
+                    'isStamp'   => false,
+                    'type'      => 'signature',
+                    'options'   => ['name' => 'Signature'],
+                ],
+            ],
+        ],
+    ],
 ]];
 
 try {

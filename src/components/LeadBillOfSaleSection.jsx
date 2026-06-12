@@ -178,7 +178,7 @@ function BoSEditor({ leadId, initial, onSaved, onClose }) {
               convenience; the PDF section number (7) reflects the
               print order. */}
           <section>
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-700 mb-2">7. Additional terms and conditions</h4>
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-700 mb-2">6. Additional terms and conditions</h4>
             <label className="block">
               <span className={labelCls}>Additional terms (optional)</span>
               <textarea
@@ -191,7 +191,7 @@ function BoSEditor({ leadId, initial, onSaved, onClose }) {
               />
               <div className="flex items-center justify-between mt-1">
                 <span className="text-[10px] text-gray-500 italic">
-                  Leave blank to render &ldquo;No Additional Terms of Sale&rdquo; on the PDF.
+                  Leave blank to render the standard as-is / no-warranty / buyer-pays-fees / final-sale clause.
                 </span>
                 {(() => {
                   const len = (d.additional_terms ?? '').length;
