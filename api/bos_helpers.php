@@ -302,13 +302,17 @@ function renderBillOfSalePdf(array $d): string
     $html .= '<p>Date: ' . $blank($saleDate, '160px') . '<br>Print Name: ' . $blank($d['seller_name'], '240px') . '</p>';
     $html .= '</div>';
 
-    // Odometer Disclosure Statement — ALWAYS on its own page via a
-    // forced page-break-before. The block is a distinct federally-
-    // mandated certification, not part of the BoS body, and operators
-    // want it visually + structurally isolated so it can be detached
-    // and filed separately if needed. page-break-inside: avoid keeps
-    // the disclosure together if the page ever overflows.
-    $html .= '<div style="page-break-before: always; page-break-inside: avoid">';
+    // Odometer Disclosure Statement — ALWAYS on its own page. We use
+    // mPDF's explicit <pagebreak /> tag rather than CSS
+    // page-break-before because the CSS variant was producing an
+    // empty intermediate page after a Section 7 that ended near the
+    // natural page boundary. The hard tag forces exactly one page
+    // advance and lands the Odometer block on the next sheet
+    // deterministically. page-break-inside: avoid still wraps the
+    // disclosure body so it can't split mid-paragraph if its own
+    // contents ever grow.
+    $html .= '<pagebreak />';
+    $html .= '<div style="page-break-inside: avoid">';
     $html .= '<h1 style="margin-top:0">ODOMETER DISCLOSURE STATEMENT</h1>';
     $html .= '<p class="clause">FEDERAL and STATE LAW requires that you state the mileage in connection with the transfer of ownership. Failure to complete or providing a false statement may result in fines and/or imprisonment.</p>';
     $html .= '<p>I/We, ' . $blank($d['seller_name'], '220px')

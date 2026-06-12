@@ -256,30 +256,34 @@ $placeholders   = [[
     'signerPtr'    => ['__type' => 'Pointer', 'className' => 'contracts_Contactbook', 'objectId' => $contactId],
     'email'        => $signerEmail,
     'blockColor'   => '#93a3db',
-    // Two placeholder groups now — one per page that carries a
-    // Seller Signature line. Layout (after bos_helpers.php restructure):
+    // Two placeholder groups — one per page that carries a Seller
+    // Signature line. Layout (after bos_helpers.php restructure):
     //   Page 1: Sections 1-4 (no signatures)
     //   Page 2: Section 5 (Conditions), 6 (Additional Terms — with
     //           pre-written default if blank, capped at 1500 chars),
     //           7 (Authorization with Buyer + Seller sigs)
-    //   Page 3: ODOMETER DISCLOSURE STATEMENT (forced own page) with
-    //           its own Buyer + Seller sig block
-    // Y-positions are best-effort estimates based on the rendered
-    // section heights; OpenSign's UI allows manual drag-adjust if
-    // they end up a few px off on a particular run.
+    //   Page 3: ODOMETER DISCLOSURE STATEMENT (forced own page via
+    //           mPDF <pagebreak />) with its own Buyer + Seller sig block
+    //
+    // Y-positions below are CALIBRATED — derived from a sample render
+    // measured with pdftotext -bbox-layout (see ops/bos_sig_align.php +
+    // ops/bos_sig_align.py). The "Seller Signature:" label text sits at
+    // these PDF y-coords (from top of page, Letter = 612x792):
+    //   page 2 (Authorization)  — yMin=414.7, baseline ≈ 424
+    //   page 3 (Odometer)       — yMin=381.7, baseline ≈ 391
+    // The widget is centered on the underline (baseline) so the
+    // rendered signature visually straddles the line: widget_top =
+    // baseline - height/2 ⇒ height=45 ⇒ widget_top = baseline - 22.
     'placeHolder'  => [
         [
             'pageNumber' => 2,
             'pos'        => [
-                // Authorization → Seller Signature line. Y ~ 360 reflects
-                // the new layout where Section 6 (Additional Terms with
-                // boilerplate default ~100pt) sits between Sections 5 and
-                // 7 — pushes the Authorization sig down from the prior
-                // y=240 location.
+                // Authorization → Seller Signature line on page 2.
+                // baseline ≈ 424, height 45 ⇒ yPosition = 402.
                 [
                     'key'       => $widgetKeyAuth,
                     'xPosition' => 190,
-                    'yPosition' => 360,
+                    'yPosition' => 402,
                     'width'     => 220,
                     'height'    => 45,
                     'Width'     => 220,
@@ -293,15 +297,12 @@ $placeholders   = [[
         [
             'pageNumber' => 3,
             'pos'        => [
-                // Odometer Disclosure → Seller Signature line. Now lives
-                // on its own page (forced page-break-before in bos_
-                // helpers.php), so Y reflects offset from page-3 top:
-                // H1 + clause + cert paragraph + checkboxes + pre-signed
-                // Buyer Sig row + Date/Name = ~270pt down.
+                // Odometer Disclosure → Seller Signature line on page 3.
+                // baseline ≈ 391, height 45 ⇒ yPosition = 369.
                 [
                     'key'       => $widgetKeyOdom,
                     'xPosition' => 190,
-                    'yPosition' => 270,
+                    'yPosition' => 369,
                     'width'     => 220,
                     'height'    => 45,
                     'Width'     => 220,
