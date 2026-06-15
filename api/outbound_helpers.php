@@ -75,13 +75,16 @@ function dispatchGmailJob(array $job): array
     $fromEmail = getEnvValue('GMAIL_FROM_EMAIL', $user);
     $fromName  = getEnvValue('GMAIL_FROM_NAME',  '');
 
-    // Pull sender's first name + signature from DB to compose the sign-off.
-    $db = getDBConnection();
-    $sig = buildEmailSignature($db, (int) ($job['created_by'] ?? 0));
-
-    $rawBody  = (string) ($job['body'] ?? '');
-    $textBody = $sig['text'] !== '' ? $rawBody . "\n\n" . $sig['text'] : $rawBody;
-    $htmlBody = renderEmailHtmlBody($rawBody, $sig['html']);
+    // Plain-text only. The operator's template (defaultEmailBody in
+    // LeadOutreachSection.jsx) already includes the agent's name + the
+    // VinVault callback line as a hand-written sign-off, so appending
+    // the buildEmailSignature() brand block (URL + phone + logo) on top
+    // of that produces a double sign-off. Drop both the appended
+    // signature AND the HTML alternative — smtp.php sends as plain
+    // text/plain when body_html is null. This matches what the operator
+    // asked for: emails should look like a standard agent-sent email,
+    // not a marketing send.
+    $rawBody = (string) ($job['body'] ?? '');
 
     $result = sendSmtpMessage([
         'host'       => 'smtp.gmail.com',
@@ -92,8 +95,8 @@ function dispatchGmailJob(array $job): array
         'from_name'  => $fromName,
         'to'         => $job['to_address'],
         'subject'    => (string) ($job['subject'] ?? ''),
-        'body_text'  => $textBody,
-        'body_html'  => $htmlBody,
+        'body_text'  => $rawBody,
+        // No body_html → smtp.php emits Content-Type: text/plain only.
     ]);
 
     return [

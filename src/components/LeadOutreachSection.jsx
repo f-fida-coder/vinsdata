@@ -399,7 +399,14 @@ function Composer({ kind, leadId, initialTo, initialSubject, initialBody, phones
             ? 'Logged (stub mode — provider not configured on this server).'
             : kind === 'email' ? 'Email sent.' : 'Text sent.',
         });
-        setBody('');
+        // Do NOT clear the body after send. Operators routinely send the
+        // same message to Email 1, then switch the recipient dropdown to
+        // Email 2 and send again — previously `setBody('')` here wiped
+        // the textarea on success, so flipping to Email 2 left them
+        // looking at an empty composer (read as "the body disappeared").
+        // Leaving the body intact lets them re-send to Email 2 with one
+        // click; the green "Email sent." banner still confirms the
+        // previous send went through.
         onSent?.();
       } else {
         const reason = res.data?.result?.fail_reason
@@ -469,7 +476,7 @@ function Composer({ kind, leadId, initialTo, initialSubject, initialBody, phones
           </p>
         )}
         {kind === 'email' && (
-          <p className="text-[10px] text-gray-400 mt-1">Branded signature is appended automatically.</p>
+          <p className="text-[10px] text-gray-400 mt-1">Sent as plain text — what you see is what the recipient gets.</p>
         )}
       </div>
 
