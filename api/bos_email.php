@@ -61,22 +61,58 @@ if ($bosId > 0) {
 // Default the subject + body if the caller didn't provide them. After
 // the buyer/seller swap the lead is the SELLER — they're the one we're
 // asking to sign — so the greeting + ask-to-sign copy speaks to them.
-$sellerFirst = '';
-if (!empty($bos['seller_name'])) {
-    $sellerFirst = trim(explode(' ', trim($bos['seller_name']))[0] ?? '');
+//
+// Greeting uses the seller's FULL name; the closing "Congratulations"
+// line uses just the first name so it reads naturally ("Congrats, you,
+// John, and Mitchell" not "Congrats, you, John Doe, and Mitchell").
+$sellerName  = trim((string) ($bos['seller_name'] ?? ''));
+$sellerFirst = $sellerName !== '' ? trim(explode(' ', $sellerName)[0]) : '';
+
+// Agent = whoever's pressing Send (the authenticated user). Pulled from
+// the users table so the body says "filled out by Jane Smith" instead
+// of a placeholder. Falls back to "our team" if the user row is gone.
+$agentName  = '';
+try {
+    $stmt = $db->prepare('SELECT name FROM users WHERE id = :id');
+    $stmt->execute([':id' => (int) $user['id']]);
+    $row = $stmt->fetch();
+    if ($row && !empty($row['name'])) $agentName = trim((string) $row['name']);
+} catch (Throwable $_e) {
+    // Best-effort — body just renders the fallback below.
 }
-$vehicleDesc = trim(implode(' ', array_filter([$bos['vehicle_year'] ?? null, $bos['vehicle_make'] ?? null, $bos['vehicle_model'] ?? null])));
+$agentFirst = $agentName !== '' ? trim(explode(' ', $agentName)[0]) : '';
+
+// Year + Make + Model — feeds both subject + the "your [vehicle]" line.
+$vehicleDesc = trim(implode(' ', array_filter([
+    $bos['vehicle_year']  ?? null,
+    $bos['vehicle_make']  ?? null,
+    $bos['vehicle_model'] ?? null,
+])));
+
 if ($subject === '') {
     $subject = $vehicleDesc !== ''
         ? "Bill of Sale for your $vehicleDesc"
         : 'Your Motor Vehicle Bill of Sale';
 }
 if ($body === '') {
-    $greeting = $sellerFirst !== '' ? "Hi $sellerFirst," : 'Hi,';
-    $vehLine  = $vehicleDesc !== '' ? "the sale of your $vehicleDesc" : 'this vehicle sale';
+    // Plain personalized template — deliberately NO brand block / phone
+    // / logo. The operator asked for it to read like a standard email
+    // from the agent, not a marketing send. The agent's name appears
+    // only under "Best Regards" as a normal sign-off.
+    $greeting       = $sellerName !== ''     ? "Hi $sellerName,"      : 'Hi,';
+    $vehLine        = $vehicleDesc !== ''    ? $vehicleDesc           : 'the vehicle';
+    $agentRefFull   = $agentName !== ''      ? $agentName             : 'our team';
+    $agentRefFirst  = $agentFirst !== ''     ? $agentFirst            : 'our team';
+    $sellerRefFirst = $sellerFirst !== ''    ? $sellerFirst           : 'you';
+
     $body = "$greeting\n\n"
-          . "Attached is the Motor Vehicle Bill of Sale for $vehLine. The buyer side is already signed on our end — please review the details, then sign + date the Seller Signature lines (Authorization + Odometer Disclosure), and send a signed copy back when you're ready.\n\n"
-          . "Reply to this email with any questions or corrections before signing.";
+          . "Attached is the Motor Vehicle Bill of Sale for the sale of your $vehLine.\n\n"
+          . "The buyer side was filled out by $agentRefFull and has already been signed. Please sign + date the Seller Signature lines (on the Authorization and Odometer Disclosure sections).\n\n"
+          . "Congratulations, to you, $sellerRefFirst, and $agentRefFirst.\n\n"
+          . 'Best Regards';
+    if ($agentName !== '') {
+        $body .= ",\n$agentName";
+    }
 }
 
 // Render the PDF.
@@ -101,12 +137,13 @@ if ($gmailUser === '' || $gmailPass === '') {
 $fromEmail = getEnvValue('GMAIL_FROM_EMAIL', $gmailUser);
 $fromName  = getEnvValue('GMAIL_FROM_NAME',  '');
 
-// Append the branded signature to the plain-text body. We don't render
-// the HTML alternative here — the attachment IS the main content; the
-// body text is just a cover note. Signature gets pulled from the same
-// helper the Outreach composer uses so it matches everywhere.
-$sig = buildEmailSignature($db, (int) $user['id']);
-$textWithSig = $sig['text'] !== '' ? $body . "\n\n" . $sig['text'] : $body;
+// No appended brand signature on this path. The BoS template above
+// already ends with "Best Regards, [Agent Name]" — appending the
+// Outreach-style brand block (URL + phone + logo) on top of that would
+// produce a double sign-off and contradict the operator's "looks like
+// a standard email" requirement. If we ever need brand info on BoS
+// sends, add it as a footer line, not as a second signature block.
+$textWithSig = $body;
 
 $result = sendSmtpMessage([
     'host'       => 'smtp.gmail.com',

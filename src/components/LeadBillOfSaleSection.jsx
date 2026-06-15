@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import api, { extractApiError, getBillOfSalePdfUrl } from '../api';
 import { BOS_PAYMENT_TYPES } from '../lib/crm';
+import { useAuth } from '../context/AuthContext';
 
 // Empty shape for a standalone Bill of Sale (no lead attached). Mirrors
 // the structure of the lead-prefilled defaults from defaultsFromLead()
@@ -347,16 +348,34 @@ export default function LeadBillOfSaleSection({ leadId, onChanged }) {
  */
 export function EmailBoSModal({ bos, defaultTo, onClose, onSent }) {
   // The lead is the SELLER in this flow — they're the one we're asking
-  // to sign. First name is pulled from seller_name for the greeting.
-  const sellerFirst = bos?.seller_name ? bos.seller_name.trim().split(' ')[0] : '';
+  // to sign. Full name greets them; first name is used in the closing
+  // "Congratulations" line so it reads conversationally.
+  const { user } = useAuth() || {};
+  const sellerName  = bos?.seller_name ? bos.seller_name.trim() : '';
+  const sellerFirst = sellerName ? sellerName.split(' ')[0] : '';
+  const agentName   = user?.name ? user.name.trim() : '';
+  const agentFirst  = agentName ? agentName.split(' ')[0] : '';
   const vehicleDesc = [bos?.vehicle_year, bos?.vehicle_make, bos?.vehicle_model].filter(Boolean).join(' ');
   const defaultSubject = vehicleDesc
     ? `Bill of Sale for your ${vehicleDesc}`
     : 'Your Motor Vehicle Bill of Sale';
   const defaultBody = (() => {
-    const greeting = sellerFirst ? `Hi ${sellerFirst},` : 'Hi,';
-    const vehLine = vehicleDesc ? `the sale of your ${vehicleDesc}` : 'this vehicle sale';
-    return `${greeting}\n\nAttached is the Motor Vehicle Bill of Sale for ${vehLine}. The buyer side is already signed on our end — please review the details, then sign + date the Seller Signature lines (on the Authorization and Odometer Disclosure sections) and send a signed copy back when you're ready.\n\nReply to this email with any questions or corrections before signing.`;
+    // Plain personalized template — no brand block, no logo, no
+    // "Reply with questions" cover-note line. Reads like a standard
+    // agent-to-seller email. The server-side default in
+    // api/bos_email.php mirrors this exactly so an empty submission
+    // produces identical output.
+    const greeting       = sellerName ? `Hi ${sellerName},` : 'Hi,';
+    const vehLine        = vehicleDesc || 'the vehicle';
+    const agentRefFull   = agentName   || 'our team';
+    const agentRefFirst  = agentFirst  || 'our team';
+    const sellerRefFirst = sellerFirst || 'you';
+    const close = agentName ? `Best Regards,\n${agentName}` : 'Best Regards';
+    return `${greeting}\n\n`
+         + `Attached is the Motor Vehicle Bill of Sale for the sale of your ${vehLine}.\n\n`
+         + `The buyer side was filled out by ${agentRefFull} and has already been signed. Please sign + date the Seller Signature lines (on the Authorization and Odometer Disclosure sections).\n\n`
+         + `Congratulations, to you, ${sellerRefFirst}, and ${agentRefFirst}.\n\n`
+         + close;
   })();
 
   // Build the preview URL once per render. Prefer the lead-attached path
