@@ -56,7 +56,7 @@ if ($rateLimitFailed) {
     exit();
 }
 
-$stmt = $db->prepare("SELECT id, name, email, password, role FROM users WHERE email = :email LIMIT 1");
+$stmt = $db->prepare("SELECT id, name, email, password, role, quo_phone_number FROM users WHERE email = :email LIMIT 1");
 $stmt->execute([':email' => $email]);
 $user = $stmt->fetch();
 
@@ -92,5 +92,6 @@ echo json_encode([
         "id" => $user['id'],
         "name" => $user['name'],
         "role" => $user['role'],
+        "quo_phone_number" => $user['quo_phone_number'] ?: null,
     ]
 ]);

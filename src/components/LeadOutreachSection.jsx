@@ -3,10 +3,26 @@ import api, { extractApiError } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { formatPhone } from '../lib/crm';
 
-// VinVault's shared callback number — same line that's printed on the
-// signed Bills of Sale + the auto-text in the outreach signoff. Living
-// here as a constant so we have one place to swap it if it moves.
+// VinVault's shared callback number — used as the fallback when the
+// signed-in agent doesn't have a per-line Quo number on file yet
+// (users.quo_phone_number, migration 041). Otherwise we drop the
+// AGENT's own number into outreach-email templates so callbacks ring
+// the right line, not the shared org one.
 const VINVAULT_CALLBACK_PHONE = '469-971-2609';
+
+/**
+ * Reformat a stored Quo line ("+12548708757" / "12548708757" / etc.)
+ * as "XXX-XXX-XXXX" so it reads the same way the shared fallback
+ * does. Non-US 10/11-digit inputs fall through to the raw value so we
+ * never silently render nothing.
+ */
+function formatAgentCallback(raw) {
+  const digits = String(raw || '').replace(/\D/g, '');
+  let d = digits;
+  if (d.length === 11 && d.startsWith('1')) d = d.slice(1);
+  if (d.length === 10) return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+  return raw || '';
+}
 
 // SMS templates — selectable from the chip row above the Text composer.
 // Each template's `build` returns the body string. Interpolation context:
@@ -85,6 +101,13 @@ export default function LeadOutreachSection({ leadId, normalizedPayload, onChang
   // still uses the full name for the sign-off.
   const agentName = (user?.name || '').trim() || 'Vin Vault';
   const agentFirst = agentName.split(' ')[0] || 'Vin Vault';
+  // Per-agent callback number — drops the agent's own Quo line into the
+  // outreach email's CTA so a "call me back" lands on THEIR phone.
+  // Falls back to the shared VinVault number for agents without a Quo
+  // line on file yet (today: anyone other than Maurice + Brandon).
+  const agentCallbackPhone = user?.quo_phone_number
+    ? formatAgentCallback(user.quo_phone_number)
+    : VINVAULT_CALLBACK_PHONE;
   const firstName = (np.first_name || '').trim();
   const greetingName = firstName || 'there';
 
@@ -108,7 +131,7 @@ export default function LeadOutreachSection({ leadId, normalizedPayload, onChang
     + `Please text, call, or email me back when you have time.\n`
     + `\n`
     + `- ${agentName}\n`
-    + `${VINVAULT_CALLBACK_PHONE}`;
+    + `${agentCallbackPhone}`;
 
   // SMS — body comes from whichever template chip is selected. Default
   // is "Voicemail Left" (most-used) but the operator can toggle between

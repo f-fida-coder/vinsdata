@@ -299,24 +299,61 @@ function openPhoneToE164(string $raw): string
 /**
  * Returns {text, html} for the email sign-off block. First name comes
  * from users.name; brand fields come from .env (SIGNATURE_*) with
- * sensible vinvault.us defaults.
+ * sensible vinvault.us defaults. Phone prefers users.quo_phone_number
+ * (per-agent line — migration 041) over the shared env default so
+ * callbacks land on the right agent.
  */
+
+/**
+ * Reformat a stored Quo line ("+12548708757" / "12548708757" / etc.)
+ * as "XXX-XXX-XXXX" for the signature block. The shared env default
+ * uses that same dashed form, so this keeps signatures visually
+ * consistent regardless of which agent sends. Non-US numbers fall
+ * through to the raw stored value.
+ */
+function formatPhoneForSignature(string $raw): string
+{
+    $digits = preg_replace('/\D+/', '', $raw);
+    if (strlen($digits) === 11 && $digits[0] === '1') {
+        $digits = substr($digits, 1);
+    }
+    if (strlen($digits) === 10) {
+        return substr($digits, 0, 3) . '-' . substr($digits, 3, 3) . '-' . substr($digits, 6);
+    }
+    return $raw;
+}
+
 function buildEmailSignature(PDO $db, int $userId): array
 {
     $firstName = '';
+    $agentQuoPhone = '';
     if ($userId > 0) {
-        $stmt = $db->prepare('SELECT name FROM users WHERE id = :id');
+        // One round-trip — pull name AND quo_phone_number together so
+        // per-agent line ownership (migration 041) carries through to
+        // signatures on JV agreement + OpenSign emails.
+        $stmt = $db->prepare('SELECT name, quo_phone_number FROM users WHERE id = :id');
         $stmt->execute([':id' => $userId]);
         $row = $stmt->fetch();
         if ($row && !empty($row['name'])) {
             $firstName = trim(explode(' ', trim($row['name']))[0] ?? '');
+        }
+        if ($row && !empty($row['quo_phone_number'])) {
+            $agentQuoPhone = (string) $row['quo_phone_number'];
         }
     }
 
     $brandUrl = getEnvValue('SIGNATURE_BRAND_URL',     'https://vinvault.us');
     $logoUrl  = getEnvValue('SIGNATURE_LOGO_URL',      'https://crm.vinvault.us/brand/vinvault-logo.svg');
     $email    = getEnvValue('SIGNATURE_CONTACT_EMAIL', 'admin@vinvault.us');
-    $phone    = getEnvValue('SIGNATURE_CONTACT_PHONE', '(469) 971-2609');
+    // Phone: prefer the agent's own Quo line so the signature CTA in
+    // outbound emails rings THEIR phone, not the shared org line.
+    // Falls back to SIGNATURE_CONTACT_PHONE env for agents who don't
+    // have a per-line Quo number on file yet (most of the team today).
+    // E.164 stored value gets reformatted as "XXX-XXX-XXXX" so it
+    // reads the same way the shared default does.
+    $phone = $agentQuoPhone !== ''
+        ? formatPhoneForSignature($agentQuoPhone)
+        : getEnvValue('SIGNATURE_CONTACT_PHONE', '(469) 971-2609');
 
     $brandHost = preg_replace('#^https?://#', '', $brandUrl);
 
