@@ -8,6 +8,43 @@ import { formatPhone } from '../lib/crm';
 // here as a constant so we have one place to swap it if it moves.
 const VINVAULT_CALLBACK_PHONE = '469-971-2609';
 
+// SMS templates — selectable from the chip row above the Text composer.
+// Each template's `build` returns the body string. Interpolation context:
+//   first  → lead's first name (falls back to "there")
+//   agent  → signed-in agent's FIRST name (falls back to "Vin Vault")
+//   ymm    → Year + Make + Model (e.g. "2011 Lexus IS F"; falls back to "vehicle")
+// Add templates here — chip label comes from `label`, chip identity
+// from `id`, default body from `build`. Operators can still edit
+// before sending; chips just seed the textarea.
+const SMS_TEMPLATES = [
+  {
+    id: 'voicemail',
+    label: 'Voicemail Left',
+    build: ({ first, agent, ymm }) =>
+      `Hey ${first}, this is ${agent}. I just left you a voicemail regarding your ${ymm}. Shoot me a call back when you can please!!`,
+  },
+  {
+    id: 'cold',
+    label: 'Cold Outreach',
+    build: ({ first, agent, ymm }) =>
+      `Hey ${first}, this is ${agent} — I'm a cash buyer interested in your ${ymm}. Just curious if you still have it and are open to selling. Shoot me a text or call back when you get a chance.`,
+  },
+  {
+    id: 'follow_up',
+    label: 'Following Up',
+    build: ({ first, agent, ymm }) =>
+      `Hey ${first}, ${agent} again — just following up on your ${ymm}. Wanted to see if you'd had a chance to think it over. Let me know when you've got a minute!`,
+  },
+  {
+    id: 'price',
+    label: 'Price Talk',
+    build: ({ first, agent, ymm }) =>
+      `Hey ${first}, ${agent} here. About your ${ymm} — I think we can find a number that works for both of us. Give me a call when you have a minute and we'll talk it through.`,
+  },
+];
+
+const DEFAULT_SMS_TEMPLATE_ID = 'voicemail';
+
 /**
  * In-drawer Email + Text composer.
  *
@@ -43,7 +80,11 @@ export default function LeadOutreachSection({ leadId, normalizedPayload, onChang
   const ymm = [np.year, np.make, np.model].filter(Boolean).join(' ');
   // Agent name comes from the signed-in user. Falls back to "Vin Vault"
   // so the templates still read sensibly if user context is missing.
+  // SMS templates use the agent's FIRST name (more personal "this is
+  // [Maurice]" vs "this is [Maurice Franklin]"); the email composer
+  // still uses the full name for the sign-off.
   const agentName = (user?.name || '').trim() || 'Vin Vault';
+  const agentFirst = agentName.split(' ')[0] || 'Vin Vault';
   const firstName = (np.first_name || '').trim();
   const greetingName = firstName || 'there';
 
@@ -69,14 +110,19 @@ export default function LeadOutreachSection({ leadId, normalizedPayload, onChang
     + `- ${agentName}\n`
     + `${VINVAULT_CALLBACK_PHONE}`;
 
-  // SMS — the voicemail follow-up script the team is running. Keeps
-  // the same dream-car pitch but explicitly references the voicemail
-  // that was just left, which converts better than a cold text.
-  const defaultSmsBody =
-    `Hi ${greetingName}, I just left you a voicemail about your ${ymmPhrase}. `
-    + `Not sure if you still have yours, but, I'm a cash buyer and I'm looking to add one to my personal collection. `
-    + `Call or txt me back when you can please.\n`
-    + `- ${agentName}`;
+  // SMS — body comes from whichever template chip is selected. Default
+  // is "Voicemail Left" (most-used) but the operator can toggle between
+  // Cold Outreach / Following Up / Price Talk above the textarea, or
+  // just edit the field manually. Switching chips re-seeds the body
+  // (the Composer's body-reset effect is keyed on smsTemplateId).
+  const [smsTemplateId, setSmsTemplateId] = useState(DEFAULT_SMS_TEMPLATE_ID);
+  const activeSmsTemplate =
+    SMS_TEMPLATES.find((t) => t.id === smsTemplateId) || SMS_TEMPLATES[0];
+  const defaultSmsBody = activeSmsTemplate.build({
+    first: greetingName,
+    agent: agentFirst,
+    ymm: ymmPhrase,
+  });
 
   // Call tab is the default when there's a phone on file — calling is
   // the highest-converting touch for cold acquisitions and we want it
@@ -140,7 +186,24 @@ export default function LeadOutreachSection({ leadId, normalizedPayload, onChang
 
       {tab === 'sms' && (
         phones.length > 0
-          ? <Composer kind="sms" leadId={leadId} initialTo={phones[0]} phones={phones} initialBody={defaultSmsBody} onSent={onSent} />
+          ? (
+            <div className="space-y-2 pt-2">
+              <SmsTemplatePicker
+                templates={SMS_TEMPLATES}
+                active={smsTemplateId}
+                onChange={setSmsTemplateId}
+              />
+              <Composer
+                kind="sms"
+                leadId={leadId}
+                initialTo={phones[0]}
+                phones={phones}
+                initialBody={defaultSmsBody}
+                templateId={smsTemplateId}
+                onSent={onSent}
+              />
+            </div>
+          )
           : <p className="text-xs text-gray-400 italic py-2">No phone on file for this lead.</p>
       )}
 
@@ -363,7 +426,39 @@ function OutreachTab({ active, onClick, disabled, children }) {
   );
 }
 
-function Composer({ kind, leadId, initialTo, initialSubject, initialBody, phones, emails, onSent }) {
+/**
+ * SmsTemplatePicker — chip row above the SMS textarea. Each chip swaps
+ * the body to that template's seed text. Active chip renders dark; the
+ * rest are pill-style ghost buttons. Wraps onto multiple lines on
+ * narrow drawers so all four chips stay reachable.
+ */
+function SmsTemplatePicker({ templates, active, onChange }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mr-1">Template</span>
+      {templates.map((t) => {
+        const isActive = t.id === active;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => onChange(t.id)}
+            className={`px-2.5 py-1 text-[11px] rounded-md border transition-colors ${
+              isActive
+                ? 'bg-gray-900 text-white border-gray-900'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400 hover:text-gray-900'
+            }`}
+            title={t.label}
+          >
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function Composer({ kind, leadId, initialTo, initialSubject, initialBody, phones, emails, templateId, onSent }) {
   const [to, setTo] = useState(initialTo || '');
   const [subject, setSubject] = useState(initialSubject || '');
   const [body, setBody] = useState(initialBody || '');
@@ -376,10 +471,13 @@ function Composer({ kind, leadId, initialTo, initialSubject, initialBody, phones
     if (initialSubject !== undefined) setSubject(initialSubject);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId, kind]);
+  // templateId is included in the deps so swapping SMS template chips
+  // re-seeds the body. Undefined for email (no chips there) — its
+  // presence in the array is a no-op when it never changes.
   useEffect(() => {
     if (initialBody !== undefined) setBody(initialBody);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leadId, kind]);
+  }, [leadId, kind, templateId]);
 
   const inputCls = 'w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-2 text-[13px] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none';
 
