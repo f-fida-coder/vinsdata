@@ -27,19 +27,19 @@ const SMS_TEMPLATES = [
     id: 'cold',
     label: 'Cold Outreach',
     build: ({ first, agent, ymm }) =>
-      `Hey ${first}, this is ${agent} — I'm a cash buyer interested in your ${ymm}. Just curious if you still have it and are open to selling. Shoot me a text or call back when you get a chance.`,
+      `Hey ${first}, this is ${agent}. I'm a cash buyer interested in your ${ymm}. Just curious if you still have it and are open to selling. Shoot me a text or call back when you get a chance.`,
   },
   {
     id: 'follow_up',
     label: 'Following Up',
     build: ({ first, agent, ymm }) =>
-      `Hey ${first}, ${agent} again — just following up on your ${ymm}. Wanted to see if you'd had a chance to think it over. Let me know when you've got a minute!`,
+      `Hey ${first}, it's ${agent} again. Just following up on your ${ymm}. Wanted to see if you'd had a chance to think it over. Let me know when you've got a minute!`,
   },
   {
     id: 'price',
     label: 'Price Talk',
     build: ({ first, agent, ymm }) =>
-      `Hey ${first}, ${agent} here. About your ${ymm} — I think we can find a number that works for both of us. Give me a call when you have a minute and we'll talk it through.`,
+      `Hey ${first}, ${agent} here. About your ${ymm}, I think we can find a number that works for both of us. Give me a call when you have a minute and we'll talk it through.`,
   },
 ];
 
