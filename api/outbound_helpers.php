@@ -182,9 +182,33 @@ function dispatchOpenPhoneJob(array $job): array
         return ['ok' => false, 'fail_reason' => 'openphone_not_configured'];
     }
 
-    $fromE164 = resolveOpenPhoneFromNumber($apiKey, $phoneId);
+    // Per-agent line: if the user who pressed Send has their own Quo
+    // number configured (users.quo_phone_number — migration 041), use
+    // that as the `from` so the text comes from THEIR line and replies
+    // route back to their notification bell. If not configured, fall
+    // back to the org-default number resolved from env. Lookup is
+    // best-effort; any error path drops through to the env default
+    // rather than failing the send.
+    $fromE164 = '';
+    $createdBy = (int) ($job['created_by'] ?? 0);
+    if ($createdBy > 0) {
+        try {
+            $db = getDBConnection();
+            $stmt = $db->prepare('SELECT quo_phone_number FROM users WHERE id = :id');
+            $stmt->execute([':id' => $createdBy]);
+            $row = $stmt->fetch();
+            if ($row && !empty($row['quo_phone_number'])) {
+                $fromE164 = openPhoneToE164((string) $row['quo_phone_number']);
+            }
+        } catch (Throwable $_e) {
+            // Falls through to the env-default lookup below.
+        }
+    }
     if ($fromE164 === '') {
-        return ['ok' => false, 'fail_reason' => 'openphone_from_number_unresolved (set OPENPHONE_FROM_NUMBER in app_secrets, or check OPENPHONE_PHONE_NUMBER_ID)'];
+        $fromE164 = resolveOpenPhoneFromNumber($apiKey, $phoneId);
+    }
+    if ($fromE164 === '') {
+        return ['ok' => false, 'fail_reason' => 'openphone_from_number_unresolved (set OPENPHONE_FROM_NUMBER in app_secrets, set users.quo_phone_number for the sender, or check OPENPHONE_PHONE_NUMBER_ID)'];
     }
 
     // OpenPhone's /v1/messages requires recipients in E.164 form

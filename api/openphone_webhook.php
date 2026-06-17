@@ -191,6 +191,17 @@ function handleInboundMessage(PDO $db, array $msg): void
     $from = (string) ($msg['from'] ?? '');
     $body = (string) ($msg['body'] ?? '');
     $msgId = (string) ($msg['id'] ?? '');
+    // `to` is the Quo line that RECEIVED the inbound text. Used below to
+    // resolve which agent owns the line (users.quo_phone_number / id)
+    // so the bell-notification + activity actor land on the right user.
+    // Quo sometimes ships `to` as an array of recipients on multi-line
+    // accounts — take the first non-empty entry.
+    $toRaw = $msg['to'] ?? $msg['to_number'] ?? '';
+    if (is_array($toRaw)) {
+        $toRaw = $toRaw[0] ?? '';
+    }
+    $to    = (string) $toRaw;
+    $toPid = (string) ($msg['phoneNumberId'] ?? '');
     if ($from === '' || $body === '') {
         error_log('[openphone_webhook] inbound message missing from/body');
         return;
@@ -277,6 +288,47 @@ function handleInboundMessage(PDO $db, array $msg): void
         );
     }
 
+    // Per-agent line: if the receiving Quo number belongs to a specific
+    // user (users.quo_phone_number — migration 041), drop a bell
+    // notification on THEIR account so the message lights up their
+    // NotificationBell instead of getting lost in a shared inbox. Falls
+    // through silently when the line isn't owned by any user (shared
+    // org line / legacy configuration).
+    $lineOwnerId = lookupLineOwnerUserId($db, $to, $toPid);
+    if ($lineOwnerId !== null) {
+        try {
+            $row = $db->prepare(
+                "SELECT JSON_UNQUOTE(JSON_EXTRACT(normalized_payload_json, '$.full_name'))  AS full_name,
+                        JSON_UNQUOTE(JSON_EXTRACT(normalized_payload_json, '$.first_name')) AS first_name,
+                        JSON_UNQUOTE(JSON_EXTRACT(normalized_payload_json, '$.last_name'))  AS last_name
+                   FROM imported_leads_raw WHERE id = :id"
+            );
+            $row->execute([':id' => $leadId]);
+            $nm = $row->fetch() ?: [];
+            $leadDisplay = $nm['full_name'] ?: trim(((string) ($nm['first_name'] ?? '')) . ' ' . ((string) ($nm['last_name'] ?? '')));
+            $leadDisplay = $leadDisplay !== '' ? $leadDisplay : 'Unknown lead';
+
+            $title   = "New text from $leadDisplay";
+            $excerpt = mb_substr($body, 0, 140);
+            $message = $from !== '' ? "$from · $excerpt" : $excerpt;
+            // dedupe_key includes the provider message id so an event
+            // retry from Quo won't double-insert (INSERT IGNORE on the
+            // UNIQUE (user_id, dedupe_key) constraint).
+            createNotification(
+                $db,
+                $lineOwnerId,
+                'inbound_sms',
+                'sms:' . ($msgId !== '' ? $msgId : ($from . '|' . substr(md5($body), 0, 8))),
+                $title,
+                $message,
+                $leadId,
+                null
+            );
+        } catch (Throwable $e) {
+            error_log('[openphone_webhook] inbound_sms notification failed: ' . $e->getMessage());
+        }
+    }
+
     // Auto-bump cold/no_answer → warm. Hot and closed are deliberate;
     // leave them alone. Warm stays warm.
     if (in_array($currentTemp, ['cold', 'no_answer'], true)) {
@@ -298,6 +350,60 @@ function handleInboundMessage(PDO $db, array $msg): void
             );
         }
     }
+}
+
+/**
+ * Resolves a Quo line (E.164 number and/or phoneNumberId) to the user
+ * who owns it. Returns null if no user has that line registered, which
+ * is the normal fallback when the org is still on a shared line and
+ * only some agents have per-line ownership configured.
+ *
+ * Lookup precedence:
+ *   1. quo_phone_number_id exact match (Quo's internal ID, most stable)
+ *   2. quo_phone_number exact match on E.164 (set users.quo_phone_number
+ *      to "+12548708757" via migration 041 / the admin UI)
+ *   3. quo_phone_number match after canonicalization through
+ *      openPhoneToE164() — handles webhook payloads that ship the raw
+ *      "(254) 870-8757" / "254-870-8757" formats instead of E.164.
+ *
+ * Cached per-request to keep the webhook hot path cheap when a burst of
+ * events arrives for the same line.
+ */
+function lookupLineOwnerUserId(PDO $db, string $e164, string $phoneNumberId = ''): ?int
+{
+    static $cache = [];
+    $key = $phoneNumberId . '|' . $e164;
+    if (array_key_exists($key, $cache)) return $cache[$key];
+
+    try {
+        if ($phoneNumberId !== '') {
+            $stmt = $db->prepare('SELECT id FROM users WHERE quo_phone_number_id = :pid LIMIT 1');
+            $stmt->execute([':pid' => $phoneNumberId]);
+            $id = $stmt->fetchColumn();
+            if ($id !== false) { $cache[$key] = (int) $id; return $cache[$key]; }
+        }
+        if ($e164 !== '') {
+            $stmt = $db->prepare('SELECT id FROM users WHERE quo_phone_number = :p LIMIT 1');
+            $stmt->execute([':p' => $e164]);
+            $id = $stmt->fetchColumn();
+            if ($id !== false) { $cache[$key] = (int) $id; return $cache[$key]; }
+
+            // Fallback: canonicalize the raw incoming number through the
+            // same E.164 helper outbound uses. Some Quo events ship
+            // unformatted variants on the `to` field.
+            $canonical = openPhoneToE164($e164);
+            if ($canonical !== '' && $canonical !== $e164) {
+                $stmt = $db->prepare('SELECT id FROM users WHERE quo_phone_number = :p LIMIT 1');
+                $stmt->execute([':p' => $canonical]);
+                $id = $stmt->fetchColumn();
+                if ($id !== false) { $cache[$key] = (int) $id; return $cache[$key]; }
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[openphone_webhook] lookupLineOwnerUserId failed: ' . $e->getMessage());
+    }
+    $cache[$key] = null;
+    return null;
 }
 
 /**
@@ -395,6 +501,16 @@ function handleCallEvent(PDO $db, string $eventType, array $call, string $rawBod
         $stateRow->execute([':id' => $leadId]);
         $sr = $stateRow->fetch();
         $assignedUserId = $sr && $sr['assigned_user_id'] !== null ? (int) $sr['assigned_user_id'] : null;
+    }
+
+    // Per-agent line: if the call is to a Quo number owned by a specific
+    // user, prefer THAT user for matched_user_id so the RingingCallToast
+    // pops on their screen (not the assigned-rep's). Falls back to the
+    // lead's assigned_user_id when the line isn't owned by any user.
+    $callToPid = (string) ($call['phoneNumberId'] ?? '');
+    $lineOwnerId = lookupLineOwnerUserId($db, $to, $callToPid);
+    if ($lineOwnerId !== null) {
+        $assignedUserId = $lineOwnerId;
     }
 
     // Upsert keyed by provider_call_id so we update an existing ring

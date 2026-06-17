@@ -462,6 +462,10 @@ const CONTACT_OUTCOMES   = [
 
 const NOTIFICATION_TYPES = [
     'task_overdue','task_due_today','task_due_soon','task_assigned','task_reopened',
+    // Per-agent Quo line notifications (migration 041) — dropped by
+    // openphone_webhook.php when an inbound text or call hits a Quo
+    // number owned by a specific user (users.quo_phone_number).
+    'inbound_sms','inbound_call',
 ];
 
 // "Due soon" window, in hours, used by the scanner.
