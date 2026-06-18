@@ -407,6 +407,127 @@ function lookupLineOwnerUserId(PDO $db, string $e164, string $phoneNumberId = ''
 }
 
 /**
+ * Builds the body for the auto-fire SMS that goes out when the
+ * line owner misses an inbound call from a known lead. The text
+ * comes from the line OWNER (not the lead's assigned rep), so the
+ * reply lands in the right inbox and the no-reassignment rule
+ * stays intact. Conversational style + first names match the rest
+ * of the SMS templates (see SMS_TEMPLATES in LeadOutreachSection.jsx).
+ */
+function buildMissedCallAutoTextBody(string $leadFirst, string $agentFirst): string
+{
+    $lf = $leadFirst !== '' ? $leadFirst : 'there';
+    $af = $agentFirst !== '' ? $agentFirst : 'Vin Vault';
+    return "Hey $lf, this is $af. Sorry I missed your call! Shoot me a text or give me another try when you have a minute.";
+}
+
+/**
+ * Fire-and-forget: when the line owner misses an inbound call from a
+ * known lead, send a templated SMS from THEIR Quo line apologizing
+ * for the miss. Idempotent via the inbound_calls.auto_text_sent_at
+ * column — a call chain that fires ringing → missed → voicemail will
+ * only ship one auto-text.
+ *
+ * Guard chain (any failure → silent no-op, never throws):
+ *   - status must be 'missed' or 'voicemail' (not ringing/answered/completed)
+ *   - direction must be inbound (we never auto-text when WE called THEM
+ *     and got no answer — they're the ones reaching out)
+ *   - line owner must be a known user (Quo line must be tied to a CRM
+ *     user via users.quo_phone_number — migration 041)
+ *   - lead must have matched a row in imported_leads_raw
+ *   - lead must have a phone_primary
+ *   - auto_text_sent_at on the inbound_calls row must still be NULL
+ *
+ * Stays out of the call-event hot path's success/failure — if anything
+ * downstream throws (Quo API 500s, lead has no phone, etc.) we log and
+ * move on; the inbound_calls row was already written above.
+ */
+function maybeSendMissedCallAutoText(
+    PDO $db,
+    int $inboundCallId,
+    string $status,
+    string $direction,
+    ?int $lineOwnerId,
+    ?int $leadId
+): void {
+    if (!in_array($status, ['missed', 'voicemail'], true)) return;
+    if ($lineOwnerId === null || $leadId === null) return;
+
+    // Accept Quo's variants — "incoming"/"inbound" both mean inbound.
+    // Outbound calls that go to a lead's voicemail aren't "we missed
+    // them", they're "they didn't pick up our outreach" — different UX,
+    // we don't auto-text on those.
+    $d = strtolower($direction);
+    if ($d !== '' && !in_array($d, ['inbound', 'incoming'], true)) return;
+
+    try {
+        // Dedupe: skip if a prior event in the same call chain already
+        // fired the auto-text. The UPDATE at the end is the locking
+        // gate, but we cheap-check first to avoid the agent + lead
+        // lookups when we already know we won't send.
+        $check = $db->prepare(
+            'SELECT auto_text_sent_at FROM inbound_calls WHERE id = :id'
+        );
+        $check->execute([':id' => $inboundCallId]);
+        $sentAt = $check->fetchColumn();
+        if ($sentAt !== false && $sentAt !== null) return;
+
+        // Lead first name + phone — pulled from the normalized payload
+        // so we get the same name the agent sees in the drawer.
+        $leadRow = $db->prepare(
+            "SELECT JSON_UNQUOTE(JSON_EXTRACT(normalized_payload_json, '$.first_name'))    AS first_name,
+                    JSON_UNQUOTE(JSON_EXTRACT(normalized_payload_json, '$.phone_primary')) AS phone_primary
+               FROM imported_leads_raw WHERE id = :id"
+        );
+        $leadRow->execute([':id' => $leadId]);
+        $lead = $leadRow->fetch() ?: [];
+        $leadFirst = trim((string) ($lead['first_name'] ?? ''));
+        $leadPhone = trim((string) ($lead['phone_primary'] ?? ''));
+        if ($leadPhone === '') return;
+
+        // Agent first name — line owner's display name; first token.
+        $agentRow = $db->prepare('SELECT name FROM users WHERE id = :id');
+        $agentRow->execute([':id' => $lineOwnerId]);
+        $agentName = trim((string) ($agentRow->fetchColumn() ?: ''));
+        $agentFirst = $agentName !== '' ? trim(explode(' ', $agentName)[0]) : '';
+
+        $body = buildMissedCallAutoTextBody($leadFirst, $agentFirst);
+
+        // Dispatch via the same path the lead-drawer Send button uses.
+        // created_by = lineOwnerId — dispatchOpenPhoneJob reads their
+        // users.quo_phone_number and uses it as the API `from`, so the
+        // SMS goes out from the agent's own line. Falls back to env
+        // default if the owner's number is unset (shouldn't happen
+        // since lineOwnerId resolution requires the column to be set,
+        // but the dispatcher's safety chain still applies).
+        enqueueAndDispatchOutbound($db, [
+            'kind'             => 'sms',
+            'to'               => $leadPhone,
+            'body'             => $body,
+            'imported_lead_id' => $leadId,
+            'created_by'       => $lineOwnerId,
+        ]);
+
+        // Latch the dedupe sentinel AFTER successful enqueue. If the
+        // dispatch threw (caught above), we never set this, so a retry
+        // event on the same call CAN re-attempt. Trade-off: a transient
+        // Quo API blip might dispatch twice if the second event comes
+        // in after a successful enqueue but before this UPDATE — narrow
+        // window, low probability. If we ever see duplicates in
+        // practice, flip the order: UPDATE first, dispatch second.
+        $latch = $db->prepare(
+            'UPDATE inbound_calls SET auto_text_sent_at = NOW() WHERE id = :id'
+        );
+        $latch->execute([':id' => $inboundCallId]);
+    } catch (Throwable $e) {
+        // Soft-fail — call event already logged + matched_user_id set.
+        // The auto-text is a courtesy; if it fails we don't want to
+        // poison the webhook with a 5xx.
+        error_log('[openphone_webhook] maybeSendMissedCallAutoText failed: ' . $e->getMessage());
+    }
+}
+
+/**
  * Returns a user id we can attribute system-driven activity to. We pick
  * the lowest-id admin so the same user is used consistently across runs.
  * Cached for the lifetime of the request.
@@ -437,9 +558,13 @@ function getSystemActorId(PDO $db): ?int
  */
 function handleCallEvent(PDO $db, string $eventType, array $call, string $rawBody): void
 {
-    $callId = (string) ($call['id'] ?? $call['callId'] ?? '');
-    $from   = (string) ($call['from'] ?? $call['from_number'] ?? $call['caller'] ?? '');
-    $to     = (string) ($call['to']   ?? $call['to_number']   ?? $call['callee'] ?? '');
+    $callId    = (string) ($call['id'] ?? $call['callId'] ?? '');
+    $from      = (string) ($call['from'] ?? $call['from_number'] ?? $call['caller'] ?? '');
+    $to        = (string) ($call['to']   ?? $call['to_number']   ?? $call['callee'] ?? '');
+    // Quo ships "incoming"/"outgoing" on most call events; older
+    // events sometimes use "inbound"/"outbound". Both forms are
+    // normalized in maybeSendMissedCallAutoText below.
+    $direction = (string) ($call['direction'] ?? '');
 
     if ($from === '' && $callId === '') {
         error_log('[openphone_webhook] call event missing from + callId — skipping');
@@ -546,6 +671,13 @@ function handleCallEvent(PDO $db, string $eventType, array $call, string $rawBod
             ':raw'     => $rawBody,
             ':id'      => $existingId,
         ]);
+        // Missed-call auto-text path. Fires when the status transitions
+        // to missed/voicemail on a known per-agent line for a known
+        // lead. Idempotent via auto_text_sent_at (migration 042) so
+        // ringing → missed → voicemail chains only ship one SMS.
+        maybeSendMissedCallAutoText(
+            $db, $existingId, $status, $direction, $lineOwnerId, $leadId
+        );
         return;
     }
 
@@ -569,6 +701,16 @@ function handleCallEvent(PDO $db, string $eventType, array $call, string $rawBod
         ':uid'    => $assignedUserId,
         ':raw'    => $rawBody,
     ]);
+    // Same auto-text path for the case where the very first event we
+    // see is already the missed/voicemail one (no prior ringing event
+    // — Quo sometimes collapses short rings into a single missed
+    // event). Use the just-inserted row's id for the dedupe sentinel.
+    $newId = (int) $db->lastInsertId();
+    if ($newId > 0) {
+        maybeSendMissedCallAutoText(
+            $db, $newId, $status, $direction, $lineOwnerId, $leadId
+        );
+    }
 }
 
 function handleDeliveredMessage(PDO $db, array $msg): void
