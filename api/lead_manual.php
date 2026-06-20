@@ -203,16 +203,20 @@ try {
           WHERE id = :bid"
     )->execute([':bid' => $batchId]);
 
-    // 6. Lead state + assignment. Creator becomes the assignee by
-    //    default so an acquisition agent can see their own walk-in
-    //    immediately (visibility filter requires assigned_user_id =
-    //    self for agent roles).
+    // 6. Lead state + assignment. Every manually-created lead gets a
+    //    lead_states row with status='new'/priority='medium' so it
+    //    surfaces under the standard status filter on the leads page
+    //    (strict equality on lead_states.status — without a row the
+    //    lead is a "ghost" and invisible to that filter, dashboard
+    //    counters, pipeline view, etc.). Whether the creator becomes
+    //    the assignee is the only thing the assignToSelf checkbox
+    //    controls now; the row itself always lands.
+    $assigneeId = $assignToSelf ? (int) $user['id'] : null;
+    $db->prepare(
+        "INSERT INTO lead_states (imported_lead_id, assigned_user_id, status, priority)
+         VALUES (:lid, :uid, 'new', 'medium')"
+    )->execute([':lid' => $leadId, ':uid' => $assigneeId]);
     if ($assignToSelf) {
-        $db->prepare(
-            "INSERT INTO lead_states (imported_lead_id, assigned_user_id, status, priority)
-             VALUES (:lid, :uid, 'new', 'medium')"
-        )->execute([':lid' => $leadId, ':uid' => (int) $user['id']]);
-
         logLeadActivity($db, $leadId, (int) $user['id'], 'assigned', null, (int) $user['id']);
     }
 

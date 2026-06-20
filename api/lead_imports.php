@@ -206,6 +206,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ':id'   => $batchId,
         ]);
 
+        // Create the matching lead_states row for every successfully-
+        // imported lead in this batch. Without this row the leads page
+        // filter `status='new'` (strict equality on lead_states.status)
+        // never surfaces these leads — they show up as "ghosts" in the
+        // raw table but the working surface skips them entirely.
+        // Schema defaults: status='new', priority='medium'. INSERT
+        // IGNORE guards the lead_states.imported_lead_id UNIQUE key in
+        // case the same lead somehow already has one (shouldn't happen
+        // inside this transaction but cheap insurance). One round-trip
+        // for the whole batch instead of N inserts during the per-row
+        // loop above. See migration 043 for the matching backfill of
+        // historical ghosts.
+        $db->exec(
+            "INSERT IGNORE INTO lead_states (imported_lead_id, status, priority)
+             SELECT id, 'new', 'medium'
+               FROM imported_leads_raw
+              WHERE batch_id = $batchId
+                AND import_status = 'imported'"
+        );
+
         $db->commit();
     } catch (Throwable $e) {
         $db->rollBack();
