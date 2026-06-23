@@ -3,6 +3,7 @@ import api, { extractApiError, getBillOfSalePdfUrl } from '../api';
 import { SectionHeader, Button, Icon, Input, EmptyState, KPI } from '../components/ui';
 import LeadDetailDrawer from '../components/LeadDetailDrawer';
 import { BoSEditor, STANDALONE_BOS_DEFAULTS, EmailBoSModal } from '../components/LeadBillOfSaleSection';
+import { useAuth } from '../context/AuthContext';
 
 // --- Status metadata ---------------------------------------------------------
 // Status is derived server-side from the BoS row's signature_* + buyer/payment
@@ -54,6 +55,7 @@ function formatMoney(n) {
  * without UI changes.
  */
 export default function BillOfSalePage() {
+  const { user } = useAuth();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -336,7 +338,7 @@ export default function BillOfSalePage() {
       {standaloneEditor && (
         <BoSEditor
           leadId={null}
-          initial={standaloneEditor === 'new' ? STANDALONE_BOS_DEFAULTS : standaloneEditor}
+          initial={standaloneEditor === 'new' ? { ...STANDALONE_BOS_DEFAULTS, buyer_name: user?.name || '' } : standaloneEditor}
           onSaved={() => { setStandaloneEditor(null); load(); }}
           onClose={() => setStandaloneEditor(null)}
         />

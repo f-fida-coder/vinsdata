@@ -332,4 +332,4 @@ if ($method === 'DELETE') {
     exit();
 }
 
-pipelineFail(405, 'Method not allowed', '
+pipelineFail(405, 'Method not allowed', 'method_not_allowed');

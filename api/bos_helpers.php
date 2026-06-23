@@ -331,4 +331,7 @@ function renderBillOfSalePdf(array $d): string
     $html .= '<p>Date: ' . $blank($saleDate, '160px') . '<br>Print Name: ' . $blank($d['seller_name'], '240px') . '</p>';
     $html .= '</div>'; // close page-break-before/inside wrapper
 
-    $mpdf->WriteHTML($html
+    $mpdf->WriteHTML($html);
+    return $mpdf->Output('', 'S');
+}
+}
