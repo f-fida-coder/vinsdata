@@ -37,7 +37,7 @@ function fetchBoS(PDO $db, int $leadId): ?array
 }
 
 if (!function_exists('defaultsFromLead')) {
-function defaultsFromLead(PDO $db, int $leadId): array
+function defaultsFromLead(PDO $db, int $leadId, ?string $agentName = null): array
 {
     $stmt = $db->prepare('SELECT normalized_payload_json, raw_payload_json FROM imported_leads_raw WHERE id = :id');
     $stmt->execute([':id' => $leadId]);
@@ -72,16 +72,16 @@ function defaultsFromLead(PDO $db, int $leadId): array
     $cs = $stmt->fetch() ?: [];
 
     // Lead becomes the SELLER (the current owner of the vehicle).
-    // BUYER side defaults to Mitchell Briggs at the company address —
-    // VinVault's representative on the acquisition. Operator can override
-    // the buyer name from the form if a different rep signs the deal.
+    // BUYER side defaults to the logged-in agent's name at the company
+    // address — VinVault's representative on the acquisition. Operator
+    // can override the buyer name from the form if a different rep signs.
     return [
         'sale_county'       => $cs['default_county'] ?? null,
         'sale_state'        => $cs['default_state']  ?? null,
         'sale_date'         => date('Y-m-d'),
         'seller_name'       => $name ?: null,
         'seller_address'    => $addr ?: null,
-        'buyer_name'        => 'Mitchell Briggs',
+        'buyer_name'        => $agentName ?: 'Agent',
         'buyer_address'     => $cs['company_address'] ?? null,
         'vehicle_make'      => $np['make']    ?? null,
         'vehicle_model'     => $np['model']   ?? null,
@@ -288,9 +288,9 @@ function renderBillOfSalePdf(array $d): string
     $html .= '</div>';
 
     // Buyer signature is pre-filled with the current buyer_name (defaults
-    // to "Mitchell Briggs", editable on the form) so VinVault never has to
-    // physically sign every BoS. Seller signature stays blank for the lead
-    // to fill in by hand or e-sign.
+    // to the logged-in agent's name, editable on the form) so VinVault
+    // never has to physically sign every BoS. Seller signature stays blank
+    // for the lead to fill in by hand or e-sign.
     $buyerSig = $d['buyer_name']
         ? '<span class="sig-text">' . $esc($d['buyer_name']) . '</span>'
         : '<span class="sig-line"></span>';
@@ -331,7 +331,4 @@ function renderBillOfSalePdf(array $d): string
     $html .= '<p>Date: ' . $blank($saleDate, '160px') . '<br>Print Name: ' . $blank($d['seller_name'], '240px') . '</p>';
     $html .= '</div>'; // close page-break-before/inside wrapper
 
-    $mpdf->WriteHTML($html);
-    return $mpdf->Output('', 'S');
-}
-}
+    $mpdf->WriteHTML($html

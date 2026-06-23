@@ -93,7 +93,7 @@ if ($method === 'GET') {
         $row['odometer_not_actual']     = (bool) $row['odometer_not_actual'];
     } elseif ($leadId > 0) {
         loadLeadOrFail($db, $leadId);
-        $row = fetchBoS($db, $leadId) ?: defaultsFromLead($db, $leadId);
+        $row = fetchBoS($db, $leadId) ?: defaultsFromLead($db, $leadId, $user['name'] ?? null);
     } else {
         pipelineFail(400, 'Either id or lead_id is required', 'missing_id');
     }
@@ -332,4 +332,4 @@ if ($method === 'DELETE') {
     exit();
 }
 
-pipelineFail(405, 'Method not allowed', 'method_not_allowed');
+pipelineFail(405, 'Method not allowed', '
